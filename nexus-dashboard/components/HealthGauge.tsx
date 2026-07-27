@@ -36,8 +36,8 @@ export default function HealthGauge({ value, label = "Aave V3 Health Factor", si
   return (
     <div
       className={clsx(
-        "glass-card flex flex-col items-center justify-center p-8 text-center relative overflow-hidden",
-        value < 1.15 && "pulse-critical border-rose-500/50"
+        "kh-card flex flex-col items-center justify-center p-8 text-center relative overflow-hidden",
+        value < 1.15 && "border-rose-500/50 shadow-rose-500/20"
       )}
     >
       {/* Background Radial Glow */}
@@ -67,7 +67,7 @@ export default function HealthGauge({ value, label = "Aave V3 Health Factor", si
             strokeDashoffset={strokeDashoffset}
             style={{
               transition: "stroke-dashoffset 1.2s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.4s ease",
-              filter: `drop-shadow(0 0 8px ${statusColor}80)`
+              filter: `drop-shadow(0 0 10px ${statusColor}80)`
             }}
           />
         </svg>
@@ -77,13 +77,13 @@ export default function HealthGauge({ value, label = "Aave V3 Health Factor", si
           <span className="font-heading font-black text-5xl tracking-tight" style={{ color: statusColor }}>
             {value.toFixed(2)}
           </span>
-          <span className="text-xs text-[var(--color-text-muted)] font-medium mt-1 uppercase tracking-wider">{label}</span>
+          <span className="text-xs text-[var(--color-text-muted)] font-semibold mt-1 uppercase tracking-wider">{label}</span>
         </div>
       </div>
 
       {/* Status Pill Badge */}
       <div
-        className="mt-6 inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide"
+        className="mt-6 inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-bold tracking-wide"
         style={{
           background: `${statusColor}18`,
           color: statusColor,
