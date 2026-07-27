@@ -3,7 +3,7 @@ import { AbiCoder, parseUnits } from "ethers";
 const abi = new AbiCoder();
 
 // ─── Contract Addresses (Ethereum Sepolia) ────────────────────────────────────
-export const AAVE_V3_POOL       = "0x6Ae43d3271ff68408378a467C62b15264c8d77e4";
+export const AAVE_V3_POOL       = "0x6aE43d3271fF68408378A467c62b15264c8d77E4";
 export const UNISWAP_V3_ROUTER  = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
 export const USDC_SEPOLIA       = "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8";
 export const WETH_SEPOLIA       = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
