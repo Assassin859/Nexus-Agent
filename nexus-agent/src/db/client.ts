@@ -1,0 +1,14 @@
+﻿import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+import * as schema from "./schema.js";
+
+// Fall back to DATABASE_PUBLIC_URL if DATABASE_URL is not set (e.g. during local dev)
+const connectionString = process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL;
+
+if (!connectionString) {
+  throw new Error("DATABASE_URL or DATABASE_PUBLIC_URL environment variable must be set.");
+}
+
+const pool = new pg.Pool({ connectionString });
+export const db = drizzle(pool, { schema });
+export { pool };

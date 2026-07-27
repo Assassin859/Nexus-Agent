@@ -1,0 +1,15 @@
+{
+  "messages": [
+    {
+      "role": "system",
+      "content": "You are a DeFi portfolio manager AI. You analyze on-chain lending positions and output a single JSON decision. You MUST respond with ONLY valid JSON - no explanations, no markdown codeblocks, no extra text. Schema: {\"action\": \"repay\" | \"supply_collateral\" | \"hold\", \"urgency\": \"critical\" | \"warning\" | \"safe\", \"amount_usdc\": number, \"reason\": string}"
+    },
+    {
+      "role": "user",
+      "content": "Current Aave V3 position on Sepolia: Collateral: 1.5 ETH ($3750 USD) at 82.5% Liquidation Threshold. Debt: 2200 USDC. Current Health Factor: 1.41. ETH price trend: falling (-3.2% in last 2 hours). Wallet USDC balance: 800 USDC available to repay. Should I repay debt, supply more collateral, or hold? Decide and output JSON only."
+    }
+  ],
+  "model": "Llama-3.3-70B-Instruct",
+  "max_tokens": 200,
+  "temperature": 0.1
+}
