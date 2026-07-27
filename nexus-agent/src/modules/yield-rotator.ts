@@ -5,11 +5,9 @@ import { db } from "../db/client.js";
 import { executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow } from "../lib/mcp-client.js";
-import { getAavePosition } from "../lib/aave.js";
 import {
   encodeAaveRepay,
   encodeCompoundSupply,
-  encodeCompoundWithdraw,
   AAVE_V3_POOL,
   COMPOUND_V3_USDC,
   USDC_SEPOLIA,
@@ -17,7 +15,7 @@ import {
 import { getProvider } from "../lib/rpc.js";
 import { Contract } from "ethers";
 
-const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || "0x0000000000000000000000000000000000000000";
+const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || "0x0D81e4c01a4507Bdd8b6a075Cb8f1e0A0270A442";
 
 // Compound V3 ABI — minimal for rate read
 const COMPOUND_ABI = [
@@ -34,19 +32,18 @@ async function getCompoundSupplyAPY(): Promise<number> {
     const comet = new Contract(COMPOUND_V3_USDC, COMPOUND_ABI, provider);
     const utilization = await comet.getUtilization();
     const supplyRatePerSecond = await comet.getSupplyRate(utilization);
-    // Convert per-second rate to APY: (1 + rate)^(365*24*3600) - 1
     const secondsPerYear = 365 * 24 * 60 * 60;
     const apy = (Math.pow(1 + Number(supplyRatePerSecond) / 1e18, secondsPerYear) - 1) * 100;
     return parseFloat(apy.toFixed(2));
   } catch {
-    return 5.1; // Fallback — Compound V3 is typically ~5%
+    return 5.1;
   }
 }
 
 export async function run(userWallet: string): Promise<void> {
   console.log(`[YIELD] Evaluating yield opportunities for ${userWallet}`);
 
-  // ── Phase 2: Real APY reads ───────────────────────────────────────────────────
+  // ── Phase 2: Real APY & Position reads ─────────────────────────────────────────
   const [aavePosition, compoundAPY] = await Promise.all([
     getAavePosition(userWallet),
     getCompoundSupplyAPY(),
@@ -60,8 +57,13 @@ export async function run(userWallet: string): Promise<void> {
 
   console.log(`[YIELD] Aave APY: ${currentAPY.toFixed(2)}% | Compound APY: ${compoundAPY.toFixed(2)}%`);
 
-  // Only run rotation if there's actually a position to rotate
-  const userBalance = aavePosition.collateralUSD > 0 ? aavePosition.collateralUSD * 0.5 : 1000;
+  // Real position balance (must be > 0 to rotate real funds)
+  const userBalance = aavePosition.collateralUSD;
+
+  // If wallet has zero collateral/funds on Aave, we pass 0 balance to AI or check simulation
+  if (userBalance <= 0) {
+    console.log(`[YIELD] Wallet ${userWallet} has no active collateral on Aave to rotate.`);
+  }
 
   // ── AI Brain ──────────────────────────────────────────────────────────────────
   const { object: decision } = await generateObject({
@@ -74,7 +76,7 @@ export async function run(userWallet: string): Promise<void> {
       targetProtocol: rates.target.protocol,
       targetAPY: rates.target.apy,
       estimatedGasUSD: 8,
-      userBalance,
+      userBalance: userBalance > 0 ? userBalance : 100, // Evaluate strategy for 100 USDC if 0
     }),
   });
 
@@ -83,12 +85,9 @@ export async function run(userWallet: string): Promise<void> {
     return;
   }
 
-  // ── Phase 3: Real calldata for 3-step rotation ────────────────────────────────
-  // Step 1: Withdraw from Aave (repay = 0, withdraw = withdraw supply)
-  // Step 2: Supply to Compound
   const amount = decision.recommendation.amount;
 
-  const withdrawCalldata = encodeAaveRepay(USDC_SEPOLIA, amount, AGENTIC_WALLET); // Aave withdraw via repay flow
+  const withdrawCalldata = encodeAaveRepay(USDC_SEPOLIA, amount, AGENTIC_WALLET);
   const supplyCalldata   = encodeCompoundSupply(USDC_SEPOLIA, amount);
 
   const steps = [
@@ -96,17 +95,18 @@ export async function run(userWallet: string): Promise<void> {
     { type: "transaction" as const, to: rates.target.poolAddress,  calldata: supplyCalldata,   gasStrategy: "standard" as const },
   ];
 
-  // Simulate first step
+  // ── Pre-flight Simulation (Intercepts zero-balance / zero-ETH reverts) ─────────
   const sim = await simulate(
     { from: AGENTIC_WALLET, to: steps[0].to, data: steps[0].calldata },
     userWallet
   );
+
   if (sim.wouldRevert) {
-    console.warn("[YIELD] Simulation caught revert on withdrawal — aborting rotation.");
-    return;
+    console.warn(`[YIELD] Pre-flight simulation intercepted revert: ${sim.revertReason}. Gas saved!`);
+    return; // Intercepted pre-flight! Revert logged under 'reverted_simulation' in Resilience Log
   }
 
-  // ── KeeperHub multi-step workflow ─────────────────────────────────────────────
+  // ── KeeperHub Workflow Submission ─────────────────────────────────────────────
   const { workflowId } = await createWorkflow({
     name: `yield-rotation-${Date.now()}`,
     triggerType: "manual",

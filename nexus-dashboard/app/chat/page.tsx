@@ -8,27 +8,42 @@ type PortfolioData = {
   workflows: any[];
 };
 
+const DEFAULT_WELCOME = {
+  sender: "agent",
+  text: "Hello! I am your NexusAgent AI assistant powered by GitHub Models (Llama-3.3-70B). How can I assist with your automated wealth strategy today?",
+};
+
 export default function ChatPage() {
   const wallet = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
-  const [messages, setMessages] = useState([
-    {
-      sender: "agent",
-      text: "Hello! I am your NexusAgent AI assistant powered by GitHub Models (Llama-3.3-70B). How can I assist with your automated wealth strategy today?",
-    },
-  ]);
+  const [messages, setMessages] = useState<Array<{ sender: string; text: string }>>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
 
+  // 1. Load chat history from localStorage & handle pending prompt
   useEffect(() => {
-    // Check for prompt passed via sessionStorage (e.g. from Templates Fork button)
+    const saved = localStorage.getItem("nexus_chat_history");
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+        } else {
+          setMessages([DEFAULT_WELCOME]);
+        }
+      } catch {
+        setMessages([DEFAULT_WELCOME]);
+      }
+    } else {
+      setMessages([DEFAULT_WELCOME]);
+    }
+
     const initialPrompt = sessionStorage.getItem("pending_chat_prompt");
     if (initialPrompt) {
       sessionStorage.removeItem("pending_chat_prompt");
       setInput(initialPrompt);
     }
 
-    // Fetch real live context for the sidebar
     async function loadContext() {
       try {
         const res = await fetch(`/api/portfolio/${wallet}`);
@@ -41,12 +56,21 @@ export default function ChatPage() {
     loadContext();
   }, [wallet]);
 
+  // 2. Persist messages to localStorage whenever they change
+  useEffect(() => {
+    if (messages.length > 0) {
+      localStorage.setItem("nexus_chat_history", JSON.stringify(messages));
+    }
+  }, [messages]);
+
   const handleSend = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (!input.trim() || loading) return;
     const userMsg = input.trim();
     setInput("");
-    setMessages((prev) => [...prev, { sender: "user", text: userMsg }]);
+
+    const newMsgs = [...messages, { sender: "user", text: userMsg }];
+    setMessages(newMsgs);
     setLoading(true);
 
     try {
@@ -56,10 +80,8 @@ export default function ChatPage() {
         body: JSON.stringify({ message: userMsg }),
       });
       const data = await res.json();
-      setMessages((prev) => [
-        ...prev,
-        { sender: "agent", text: data.reply || "Message received and processed." },
-      ]);
+      const replyText = data.reply || "Message received and processed.";
+      setMessages((prev) => [...prev, { sender: "agent", text: replyText }]);
     } catch {
       setMessages((prev) => [
         ...prev,
@@ -73,16 +95,30 @@ export default function ChatPage() {
     }
   };
 
+  const clearHistory = () => {
+    localStorage.removeItem("nexus_chat_history");
+    setMessages([DEFAULT_WELCOME]);
+  };
+
   const hf = portfolio?.healthFactor ?? 99;
   const displayHf = hf > 90 ? "∞" : hf.toFixed(2);
   const hfColor = hf > 1.5 ? "#34d399" : "#fb7185";
-  const activeCount = portfolio?.workflows?.length ?? 1;
+  const activeCount = portfolio?.workflows?.length ?? 0;
+  const lastWorkflow = portfolio?.workflows?.[portfolio.workflows.length - 1];
+  const lastActionText = lastWorkflow 
+    ? `${lastWorkflow.type.toUpperCase()} (${lastWorkflow.amount || 0} USDC)` 
+    : "No active workflows";
 
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 24, height: "calc(100dvh - 120px)" }}>
-      <div className="page-header" style={{ marginBottom: 0 }}>
-        <h1 className="page-title">AI Assistant &amp; Natural Language Payroll</h1>
-        <p className="page-subtitle">Interact with the GitHub Models decision engine or submit natural language commands</p>
+      <div className="page-header" style={{ marginBottom: 0, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+        <div>
+          <h1 className="page-title">AI Assistant &amp; Natural Language Command Center</h1>
+          <p className="page-subtitle">Interact with the GitHub Models decision engine to trigger yield rotations, DCA swaps, or payrolls</p>
+        </div>
+        <button onClick={clearHistory} className="btn" style={{ fontSize: 11, padding: "6px 12px", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
+          Clear History
+        </button>
       </div>
 
       <div className="grid-chat" style={{ flex: 1, minHeight: 0 }}>
@@ -122,7 +158,7 @@ export default function ChatPage() {
               {[
                 { label: "Model",       value: "Llama-3.3-70B",         color: "#818cf8" },
                 { label: "Workflows",   value: `${activeCount} Running`, color: "#34d399" },
-                { label: "Last Action", value: "DCA Swap 100 USDC",     color: "var(--text)" },
+                { label: "Last Action", value: lastActionText,           color: "var(--text)" },
               ].map((row) => (
                 <div key={row.label} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "11px 0", borderBottom: "1px solid var(--border)", fontSize: 12 }}>
                   <span style={{ color: "var(--text-muted)", fontWeight: 600 }}>{row.label}</span>
@@ -134,7 +170,7 @@ export default function ChatPage() {
 
           {/* Tip box */}
           <div style={{ padding: "14px 16px", borderRadius: "var(--radius-sm)", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", fontSize: 12, color: "#818cf8", lineHeight: 1.6 }}>
-            💡 <strong style={{ color: "var(--text)" }}>Tip:</strong> Try asking &quot;Pay 200 USDC to 0x... every Friday&quot; to test PayChain automation.
+            💡 <strong style={{ color: "var(--text)" }}>Tip:</strong> Try asking &quot;Rotate USDC yield to Compound&quot; or &quot;Pay 200 USDC to 0x... every Friday&quot;.
           </div>
         </div>
 
@@ -163,7 +199,7 @@ export default function ChatPage() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="e.g. Pay 200 USDC to 0x89f9... every Friday"
+              placeholder="e.g. Rotate yield to Compound V3 or Pay 200 USDC to 0x..."
               className="chat-input"
             />
             <button type="submit" className="btn btn-primary">
