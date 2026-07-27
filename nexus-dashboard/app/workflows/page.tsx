@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Cpu, RefreshCw, CheckCircle2, Clock, PauseCircle, Trash2, ArrowUpRight } from "lucide-react";
+import { Cpu, RefreshCw, Clock, ExternalLink } from "lucide-react";
 
 type WorkflowItem = {
   id: string;
@@ -14,12 +14,55 @@ type WorkflowItem = {
   createdAt?: string;
 };
 
+/** Convert a 5-field cron expression to a human-readable string */
+function humanCron(cron: string): string {
+  const parts = cron.trim().split(/\s+/);
+  if (parts.length < 5) return cron;
+  const [min, hour, dom, , dow] = parts;
+
+  const pad = (n: string) => n.padStart(2, "0");
+  const timeStr = (h: string, m: string) => {
+    const hNum = parseInt(h, 10);
+    const suffix = hNum >= 12 ? "PM" : "AM";
+    const h12 = hNum === 0 ? 12 : hNum > 12 ? hNum - 12 : hNum;
+    return `${h12}:${pad(m)} ${suffix}`;
+  };
+
+  const DAYS: Record<string, string> = {
+    "0": "Sunday", "1": "Monday", "2": "Tuesday",
+    "3": "Wednesday", "4": "Thursday", "5": "Friday", "6": "Saturday",
+  };
+
+  const time = timeStr(hour, min);
+
+  // Every day
+  if (dow === "*" && dom === "*") return `Every day at ${time}`;
+
+  // Specific weekday
+  if (dow !== "*" && dom === "*") {
+    if (DAYS[dow]) return `Every ${DAYS[dow]} at ${time}`;
+  }
+
+  // Biweekly (e.g. 1,15)
+  if (dom.includes(",")) return `On the ${dom.replace(",", "th & ")}th of each month at ${time}`;
+
+  // Monthly
+  if (dom !== "*" && dow === "*") {
+    const suffix = dom === "1" ? "st" : dom === "2" ? "nd" : dom === "3" ? "rd" : "th";
+    return `On the ${dom}${suffix} of each month at ${time}`;
+  }
+
+  return cron; // fallback
+}
+
 export default function WorkflowsPage() {
   const wallet = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
   const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [spinning, setSpinning] = useState(false);
 
   async function loadWorkflows() {
+    setSpinning(true);
     try {
       const res = await fetch(`/api/portfolio/${wallet}`);
       const data = await res.json();
@@ -30,6 +73,7 @@ export default function WorkflowsPage() {
       console.error("Failed to load active workflows:", err);
     } finally {
       setLoading(false);
+      setSpinning(false);
     }
   }
 
@@ -39,16 +83,39 @@ export default function WorkflowsPage() {
     return () => clearInterval(interval);
   }, [wallet]);
 
+  const typeColors: Record<string, string> = {
+    payroll: "#818cf8",
+    dca:     "#34d399",
+    rotate:  "#f59e0b",
+    default: "#94a3b8",
+  };
+
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
         <div>
           <h1 className="page-title">Active Workflows</h1>
-          <p className="page-subtitle">Real-time registry of autonomous cron schedules &amp; triggers managed by KeeperHub MCP</p>
+          <p className="page-subtitle">Real-time registry of autonomous schedules &amp; triggers managed by KeeperHub MCP</p>
         </div>
-        <button onClick={loadWorkflows} className="btn" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}>
-          <RefreshCw size={14} className={loading ? "spin" : ""} /> Refresh List
-        </button>
+        <div style={{ display: "flex", gap: 10 }}>
+          <a
+            href="https://app.keeperhub.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Sign in to KeeperHub to view your remote workflows"
+            className="btn"
+            style={{ background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.3)", color: "#818cf8", display: "flex", alignItems: "center", gap: 8, textDecoration: "none" }}
+          >
+            <ExternalLink size={14} /> Sign in to KeeperHub
+          </a>
+          <button
+            onClick={loadWorkflows}
+            className="btn"
+            style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 8 }}
+          >
+            <RefreshCw size={14} style={{ animation: spinning ? "spin 0.8s linear infinite" : "none" }} /> Refresh
+          </button>
+        </div>
       </div>
 
       {/* Metrics Row */}
@@ -72,54 +139,87 @@ export default function WorkflowsPage() {
         </div>
       </div>
 
-      {/* Workflows List */}
+      {/* Workflow Cards */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {loading ? (
           <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 40 }}>
-            Fetching active workflows from KeeperHub...
+            Fetching workflows from KeeperHub...
           </div>
         ) : workflows.length === 0 ? (
           <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 40, display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
             <Cpu size={32} color="#818cf8" />
             <div>
               <div style={{ fontSize: 16, fontWeight: 700, color: "var(--text)" }}>No Active Workflows Found</div>
-              <div style={{ fontSize: 13, marginTop: 4 }}>Trigger a command in <strong style={{ color: "#818cf8" }}>AI Chat</strong> or select a template from <strong style={{ color: "#818cf8" }}>Templates Catalog</strong> to deploy a workflow.</div>
+              <div style={{ fontSize: 13, marginTop: 4 }}>
+                Trigger a command in <strong style={{ color: "#818cf8" }}>AI Chat</strong> or select a template from <strong style={{ color: "#818cf8" }}>Templates</strong> to deploy a workflow.
+              </div>
             </div>
           </div>
         ) : (
-          workflows.map((wf) => (
-            <div key={wf.id} className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, padding: "20px 24px" }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-                <div style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", background: "rgba(99,102,241,0.12)", border: "1px solid rgba(99,102,241,0.2)", display: "flex", alignItems: "center", justifyContent: "center", color: "#818cf8", fontWeight: 800, fontSize: 13 }}>
-                  {wf.type.slice(0, 3).toUpperCase()}
-                </div>
-                <div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-                    <span style={{ fontSize: 16, fontWeight: 700, color: "var(--text)", textTransform: "capitalize" }}>
-                      {wf.type} Strategy ({wf.amount} USDC)
-                    </span>
-                    <span className="pill pill-success" style={{ textTransform: "uppercase", fontSize: 10 }}>
-                      {wf.status}
-                    </span>
-                  </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 6, fontSize: 12, color: "var(--text-muted)", fontFamily: "ui-monospace, monospace" }}>
-                    <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                      <Clock size={13} /> Schedule: {wf.cronSchedule}
-                    </span>
-                    {wf.recipientAddress && (
-                      <span>Recipient: {wf.recipientAddress.slice(0, 8)}...{wf.recipientAddress.slice(-6)}</span>
-                    )}
-                  </div>
-                </div>
-              </div>
+          workflows.map((wf) => {
+            const color = typeColors[wf.type] ?? typeColors.default;
+            // Link to Etherscan for recipient (publicly verifiable without login)
+            const verifyUrl = wf.recipientAddress
+              ? `https://sepolia.etherscan.io/address/${wf.recipientAddress}`
+              : `https://sepolia.etherscan.io/`;
 
-              <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span className="pill" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-muted)", fontFamily: "monospace" }}>
-                  ID: {wf.id.slice(0, 8)}...
-                </span>
+            return (
+              <div key={wf.id} className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 16, padding: "20px 24px" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
+                  {/* Type badge */}
+                  <div style={{ width: 44, height: 44, borderRadius: "var(--radius-sm)", background: `${color}18`, border: `1px solid ${color}33`, display: "flex", alignItems: "center", justifyContent: "center", color, fontWeight: 800, fontSize: 12 }}>
+                    {wf.type.slice(0, 3).toUpperCase()}
+                  </div>
+
+                  <div>
+                    <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                      <span style={{ fontSize: 15, fontWeight: 700, color: "var(--text)", textTransform: "capitalize" }}>
+                        {wf.type} Strategy — {wf.amount} USDC
+                      </span>
+                      <span className={`pill ${wf.status === "active" ? "pill-success" : "pill-warn"}`} style={{ fontSize: 10, textTransform: "uppercase" }}>
+                        {wf.status}
+                      </span>
+                    </div>
+
+                    <div style={{ display: "flex", alignItems: "center", gap: 16, marginTop: 6, fontSize: 12, color: "var(--text-muted)", flexWrap: "wrap" }}>
+                      <span style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                        <Clock size={12} />
+                        <strong style={{ color: "var(--text)" }}>{humanCron(wf.cronSchedule)}</strong>
+                      </span>
+                      {wf.recipientAddress && (
+                        <span>
+                          Recipient:{" "}
+                          <a
+                            href={`https://sepolia.etherscan.io/address/${wf.recipientAddress}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ color: "#818cf8", textDecoration: "none", fontFamily: "monospace" }}
+                          >
+                            {wf.recipientAddress.slice(0, 8)}...{wf.recipientAddress.slice(-6)} ↗
+                          </a>
+                        </span>
+                      )}
+                      <span style={{ fontFamily: "monospace", color: "#94a3b8" }}>
+                        ID: {wf.id.slice(0, 8)}...
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Verify recipient on Etherscan (no login required) */}
+                <a
+                  href={verifyUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title="Verify recipient wallet on Sepolia Etherscan (no login required)"
+                  className="btn"
+                  style={{ fontSize: 12, padding: "8px 14px", background: "rgba(52,211,153,0.08)", border: "1px solid rgba(52,211,153,0.25)", color: "#34d399", textDecoration: "none", display: "flex", alignItems: "center", gap: 7, whiteSpace: "nowrap" }}
+                >
+                  Verify on Etherscan <ExternalLink size={12} />
+                </a>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
       </div>
     </div>

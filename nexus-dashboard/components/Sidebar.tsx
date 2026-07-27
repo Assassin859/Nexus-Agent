@@ -10,10 +10,12 @@ import {
   MessageSquare,
   Store,
   Cpu,
+  GitFork,
 } from "lucide-react";
 
 const NAV_ITEMS = [
   { href: "/",            label: "Portfolio",   icon: LayoutDashboard },
+  { href: "/workflows",   label: "Workflows",   icon: GitFork },
   { href: "/feed",        label: "Live Feed",   icon: Activity },
   { href: "/resilience",  label: "Resilience",  icon: ShieldCheck },
   { href: "/alerts",      label: "Alerts",      icon: Bell },
