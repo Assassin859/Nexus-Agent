@@ -30,21 +30,25 @@ const MOCK_FEED = [
 
 export default function FeedPage() {
   return (
-    <div className="flex flex-col gap-8 animate-fade-up">
+    <div className="flex flex-col gap-8 animate-slide-up">
       <div>
-        <h1 className="section-title">Live Execution Feed</h1>
-        <p className="section-subtitle">Real-time audit log of autonomous transactions managed by KeeperHub MCP</p>
+        <h1 className="heading-title">Live Execution Feed</h1>
+        <p className="heading-subtitle">Real-time audit log of autonomous transactions managed by KeeperHub MCP</p>
       </div>
 
       {/* Execution Stepper Bar */}
-      <div className="glass p-6 flex items-center justify-between">
+      <div className="glass-card p-6 flex items-center justify-between">
         {["Triggered", "Simulating", "Broadcasting", "Mined"].map((step, idx) => (
-          <div key={step} className="flex items-center gap-3">
-            <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-xs ${idx <= 2 ? "bg-[var(--color-primary)] text-white" : "bg-white/10 text-[var(--color-text-muted)]"}`}>
+          <div key={step} className="flex items-center gap-4">
+            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black text-sm shadow-md ${
+              idx <= 2 
+                ? "bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-indigo-500/25 border border-indigo-400/30" 
+                : "bg-white/5 text-[var(--color-text-muted)] border border-white/10"
+            }`}>
               {idx + 1}
             </div>
-            <span className={`text-sm font-semibold ${idx <= 2 ? "text-white" : "text-[var(--color-text-muted)]"}`}>{step}</span>
-            {idx < 3 && <div className="w-12 h-0.5 bg-white/10 hidden md:block"></div>}
+            <span className={`text-sm font-bold tracking-wide ${idx <= 2 ? "text-white" : "text-[var(--color-text-muted)]"}`}>{step}</span>
+            {idx < 3 && <div className="w-16 h-0.5 bg-white/10 hidden md:block"></div>}
           </div>
         ))}
       </div>

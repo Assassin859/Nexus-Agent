@@ -10,7 +10,7 @@ const TEMPLATES = [
   },
   {
     icon: Calendar,
-    color: "#22c55e",
+    color: "#10b981",
     title: "USDC → ETH Weekly DCA",
     desc: "Automated weekly token purchase on Uniswap V3 with strict 0.5% MEV slippage cap.",
     tag: "Dollar-Cost Avg",
@@ -47,31 +47,31 @@ const TEMPLATES = [
 
 export default function TemplatesPage() {
   return (
-    <div className="flex flex-col gap-8 animate-fade-up">
+    <div className="flex flex-col gap-8 animate-slide-up">
       <div>
-        <h1 className="section-title">Workflow Template Store</h1>
-        <p className="section-subtitle">Pre-configured KeeperHub automations — Fork and deploy in 60 seconds</p>
+        <h1 className="heading-title">Workflow Template Store</h1>
+        <p className="heading-subtitle">Pre-configured KeeperHub automations — Fork and deploy in 60 seconds</p>
       </div>
 
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
         {TEMPLATES.map((tmpl, index) => {
           const Icon = tmpl.icon;
           return (
-            <div key={index} className="glass glass-hover p-6 flex flex-col justify-between gap-6">
+            <div key={index} className="glass-card glass-card-interactive p-7 flex flex-col justify-between gap-6">
               <div>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="w-12 h-12 rounded-2xl flex items-center justify-center" style={{ background: `${tmpl.color}20`, color: tmpl.color }}>
-                    <Icon size={24} />
+                <div className="flex items-center justify-between mb-5">
+                  <div className="w-13 h-13 rounded-2xl flex items-center justify-center p-3.5 shadow-inner" style={{ background: `${tmpl.color}15`, color: tmpl.color, border: `1px solid ${tmpl.color}30` }}>
+                    <Icon size={26} />
                   </div>
-                  <span className="badge badge-success">Deploy in 60s</span>
+                  <span className="status-pill status-pill-success">Deploy in 60s</span>
                 </div>
-                <h3 className="font-heading font-bold text-lg mb-2">{tmpl.title}</h3>
-                <p className="text-xs text-[var(--color-text-muted)] leading-relaxed">{tmpl.desc}</p>
+                <h3 className="font-heading font-bold text-xl text-white mb-2">{tmpl.title}</h3>
+                <p className="text-xs text-[var(--color-text-muted)] leading-relaxed font-medium">{tmpl.desc}</p>
               </div>
 
-              <div className="flex items-center justify-between pt-4 border-t border-[var(--color-border)]">
-                <span className="text-[10px] font-semibold uppercase tracking-wider text-[var(--color-text-muted)]">{tmpl.tag}</span>
-                <button className="btn-ghost py-1.5 px-3 text-xs">
+              <div className="flex items-center justify-between pt-5 border-t border-white/10">
+                <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">{tmpl.tag}</span>
+                <button className="btn-secondary py-2 px-4 text-xs">
                   <span>Fork Template</span>
                   <ArrowRight size={14} />
                 </button>

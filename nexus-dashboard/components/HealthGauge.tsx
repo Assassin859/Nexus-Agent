@@ -1,6 +1,7 @@
 ﻿"use client";
 
 import clsx from "clsx";
+import { ShieldCheck, AlertTriangle, ShieldAlert } from "lucide-react";
 
 type HealthGaugeProps = {
   value: number;
@@ -8,66 +9,89 @@ type HealthGaugeProps = {
   size?: number;
 };
 
-export default function HealthGauge({ value, label = "Health Factor", size = 220 }: HealthGaugeProps) {
+export default function HealthGauge({ value, label = "Aave V3 Health Factor", size = 240 }: HealthGaugeProps) {
   const minVal = 0.5;
   const maxVal = 3.0;
   const clampedVal = Math.min(Math.max(value, minVal), maxVal);
 
-  const radius = (size - 30) / 2;
-  const circumference = Math.PI * radius; // 180 deg arc
+  const radius = (size - 36) / 2;
+  const circumference = Math.PI * radius;
   const progress = (clampedVal - minVal) / (maxVal - minVal);
   const strokeDashoffset = circumference * (1 - progress);
 
-  let statusColor = "var(--color-success)";
+  let statusColor = "#10b981"; // Emerald
   let statusText = "Safe Position";
+  let StatusIcon = ShieldCheck;
 
   if (value < 1.15) {
-    statusColor = "var(--color-danger)";
+    statusColor = "#f43f5e"; // Rose / Danger
     statusText = "Liquidation Risk";
+    StatusIcon = ShieldAlert;
   } else if (value < 1.40) {
-    statusColor = "var(--color-warning)";
+    statusColor = "#f59e0b"; // Amber / Warning
     statusText = "Warning Zone";
+    StatusIcon = AlertTriangle;
   }
 
   return (
     <div
       className={clsx(
-        "glass flex flex-col items-center justify-center p-6 text-center transition-all duration-300",
-        value < 1.15 && "critical-glow border-red-500/50"
+        "glass-card flex flex-col items-center justify-center p-8 text-center relative overflow-hidden",
+        value < 1.15 && "pulse-critical border-rose-500/50"
       )}
     >
-      <div className="relative flex items-center justify-center" style={{ width: size, height: size / 1.6 }}>
-        <svg width={size} height={size / 2 + 20} className="overflow-visible">
+      {/* Background Radial Glow */}
+      <div
+        className="absolute w-48 h-48 rounded-full blur-3xl opacity-20 pointer-events-none -top-12"
+        style={{ background: statusColor }}
+      />
+
+      <div className="relative flex items-center justify-center" style={{ width: size, height: size / 1.55 }}>
+        <svg width={size} height={size / 2 + 24} className="overflow-visible">
+          {/* Track Arc */}
           <path
-            d={`M 15 ${size / 2 + 10} A ${radius} ${radius} 0 0 1 ${size - 15} ${size / 2 + 10}`}
+            d={`M 18 ${size / 2 + 12} A ${radius} ${radius} 0 0 1 ${size - 18} ${size / 2 + 12}`}
             fill="none"
-            stroke="var(--color-border)"
-            strokeWidth="16"
+            stroke="rgba(255, 255, 255, 0.07)"
+            strokeWidth="18"
             strokeLinecap="round"
           />
+          {/* Progress Arc */}
           <path
-            d={`M 15 ${size / 2 + 10} A ${radius} ${radius} 0 0 1 ${size - 15} ${size / 2 + 10}`}
+            d={`M 18 ${size / 2 + 12} A ${radius} ${radius} 0 0 1 ${size - 18} ${size / 2 + 12}`}
             fill="none"
             stroke={statusColor}
-            strokeWidth="16"
+            strokeWidth="18"
             strokeLinecap="round"
             strokeDasharray={circumference}
             strokeDashoffset={strokeDashoffset}
-            style={{ transition: "stroke-dashoffset 1s ease-in-out, stroke 0.3s ease" }}
+            style={{
+              transition: "stroke-dashoffset 1.2s cubic-bezier(0.16, 1, 0.3, 1), stroke 0.4s ease",
+              filter: `drop-shadow(0 0 8px ${statusColor}80)`
+            }}
           />
         </svg>
 
+        {/* Center Display Value */}
         <div className="absolute bottom-2 flex flex-col items-center">
-          <span className="font-heading font-extrabold text-4xl tracking-tight" style={{ color: statusColor }}>
+          <span className="font-heading font-black text-5xl tracking-tight" style={{ color: statusColor }}>
             {value.toFixed(2)}
           </span>
-          <span className="text-xs text-[var(--color-text-muted)] font-medium mt-1">{label}</span>
+          <span className="text-xs text-[var(--color-text-muted)] font-medium mt-1 uppercase tracking-wider">{label}</span>
         </div>
       </div>
 
-      <div className="mt-4 inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-semibold" style={{ background: `${statusColor}20`, color: statusColor, border: `1px solid ${statusColor}40` }}>
-        <span className="w-2 h-2 rounded-full animate-pulse" style={{ background: statusColor }}></span>
-        {statusText}
+      {/* Status Pill Badge */}
+      <div
+        className="mt-6 inline-flex items-center gap-2 px-4 py-1.5 rounded-full text-xs font-semibold tracking-wide"
+        style={{
+          background: `${statusColor}18`,
+          color: statusColor,
+          border: `1px solid ${statusColor}40`,
+        }}
+      >
+        <StatusIcon size={14} />
+        <span>{statusText}</span>
       </div>
     </div>
   );

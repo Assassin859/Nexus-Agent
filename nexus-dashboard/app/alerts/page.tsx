@@ -29,27 +29,56 @@ const ALERTS = [
 
 export default function AlertsPage() {
   return (
-    <div className="flex flex-col gap-8 animate-fade-up">
+    <div className="flex flex-col gap-8 animate-slide-up">
       <div>
-        <h1 className="section-title">Alerts & System Notifications</h1>
-        <p className="section-subtitle">Automated logging of risk events, limit hits, and execution status</p>
+        <h1 className="heading-title">Alerts & System Notifications</h1>
+        <p className="heading-subtitle">Automated logging of risk events, limit hits, and execution status</p>
       </div>
 
       <div className="flex flex-col gap-4">
         {ALERTS.map((alert, index) => (
-          <div key={index} className="glass p-5 flex items-start gap-4 border-l-4" style={{
-            borderLeftColor: alert.type === "danger" ? "var(--color-danger)" : alert.type === "warning" ? "var(--color-warning)" : "var(--color-primary)"
-          }}>
-            {alert.type === "danger" && <AlertCircle className="text-[var(--color-danger)] shrink-0 mt-0.5" size={20} />}
-            {alert.type === "warning" && <AlertTriangle className="text-[var(--color-warning)] shrink-0 mt-0.5" size={20} />}
-            {alert.type === "info" && <Info className="text-[var(--color-primary)] shrink-0 mt-0.5" size={20} />}
+          <div
+            key={index}
+            className="glass-card p-6 flex items-start gap-5 border-l-4 transition-all duration-200 hover:translate-x-1"
+            style={{
+              borderLeftColor:
+                alert.type === "danger"
+                  ? "var(--color-danger)"
+                  : alert.type === "warning"
+                  ? "var(--color-warning)"
+                  : "var(--color-primary)",
+            }}
+          >
+            <div
+              className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
+              style={{
+                background:
+                  alert.type === "danger"
+                    ? "rgba(244, 63, 94, 0.12)"
+                    : alert.type === "warning"
+                    ? "rgba(245, 158, 11, 0.12)"
+                    : "rgba(99, 102, 241, 0.12)",
+                color:
+                  alert.type === "danger"
+                    ? "#fb7185"
+                    : alert.type === "warning"
+                    ? "#fbbf24"
+                    : "#818cf8",
+              }}
+            >
+              {alert.type === "danger" && <AlertCircle size={20} />}
+              {alert.type === "warning" && <AlertTriangle size={20} />}
+              {alert.type === "info" && <Info size={20} />}
+            </div>
 
             <div className="flex-1">
               <div className="flex items-center justify-between">
-                <h4 className="font-heading font-semibold text-base">{alert.title}</h4>
-                <span className="text-xs text-[var(--color-text-muted)]">{alert.time}</span>
+                <h4 className="font-heading font-bold text-lg text-white">{alert.title}</h4>
+                <span className="text-xs text-[var(--color-text-muted)] font-medium">{alert.time}</span>
               </div>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1 leading-relaxed">{alert.message}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed font-medium">
+                {alert.message}
+              </p>
             </div>
           </div>
         ))}
