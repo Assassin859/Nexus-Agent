@@ -1,10 +1,8 @@
 {
-  "/feed/page": "app/feed/page.js",
   "/chat/page": "app/chat/page.js",
   "/templates/page": "app/templates/page.js",
   "/page": "app/page.js",
-  "/api/portfolio/[wallet]/route": "app/api/portfolio/[wallet]/route.js",
-  "/api/feed/[wallet]/route": "app/api/feed/[wallet]/route.js",
+  "/feed/page": "app/feed/page.js",
   "/alerts/page": "app/alerts/page.js",
-  "/resilience/page": "app/resilience/page.js"
+  "/api/feed/[wallet]/route": "app/api/feed/[wallet]/route.js"
 }

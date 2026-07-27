@@ -77,7 +77,10 @@ export default function ChatPage() {
       const res = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ message: userMsg }),
+        body: JSON.stringify({
+          message: userMsg,
+          conversationHistory: messages,
+        }),
       });
       const data = await res.json();
       const replyText = data.reply || "Message received and processed.";
@@ -114,7 +117,7 @@ export default function ChatPage() {
       <div className="page-header" style={{ marginBottom: 0, display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <h1 className="page-title">AI Assistant &amp; Natural Language Command Center</h1>
-          <p className="page-subtitle">Interact with the GitHub Models decision engine to trigger yield rotations, DCA swaps, or payrolls</p>
+          <p className="page-subtitle">Interact with the GitHub Models decision engine with full conversational memory</p>
         </div>
         <button onClick={clearHistory} className="btn" style={{ fontSize: 11, padding: "6px 12px", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
           Clear History
@@ -170,7 +173,7 @@ export default function ChatPage() {
 
           {/* Tip box */}
           <div style={{ padding: "14px 16px", borderRadius: "var(--radius-sm)", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", fontSize: 12, color: "#818cf8", lineHeight: 1.6 }}>
-            💡 <strong style={{ color: "var(--text)" }}>Tip:</strong> Try asking &quot;Rotate USDC yield to Compound&quot; or &quot;Pay 200 USDC to 0x... every Friday&quot;.
+            💡 <strong style={{ color: "var(--text)" }}>Tip:</strong> Follow up on prompts like &quot;do it anyway&quot; or &quot;add it&quot; and the AI remembers prior context.
           </div>
         </div>
 
@@ -199,7 +202,7 @@ export default function ChatPage() {
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="e.g. Rotate yield to Compound V3 or Pay 200 USDC to 0x..."
+              placeholder="e.g. Pay 200 USDC to 0x... or follow up with 'do it anyway'"
               className="chat-input"
             />
             <button type="submit" className="btn btn-primary">

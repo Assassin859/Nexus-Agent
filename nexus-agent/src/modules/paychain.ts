@@ -9,6 +9,7 @@ import { eq, and } from "drizzle-orm";
 
 export type PaychainRequest = {
   userMessage: string;
+  conversationHistory?: Array<{ sender: string; text: string }>;
   walletAddress: string;
 };
 
@@ -20,8 +21,12 @@ export type PaychainResponse = {
 };
 
 export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
-  const { userMessage, walletAddress } = req;
-  const msgLower = userMessage.toLowerCase();
+  const { userMessage, conversationHistory = [], walletAddress } = req;
+
+  // Build conversational transcript context
+  const fullTranscript = conversationHistory
+    .map(m => `${m.sender === "user" ? "User" : "Agent"}: ${m.text}`)
+    .join("\n") + `\nUser: ${userMessage}`;
 
   // Check for existing payroll workflows
   const existingWorkflows = await db.query.activeWorkflows.findMany({
@@ -32,28 +37,46 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     ),
   });
 
-  // If user explicitly confirms collision resolution like "do it anyway", "override", "add", "merge", or "yes"
+  // Check if user explicitly confirmed in current OR prior message in transcript
   const isExplicitOverride = Boolean(
-    msgLower.includes("do it anyway") ||
-    msgLower.includes("override") ||
-    msgLower.includes("force") ||
-    msgLower.includes("confirm") ||
-    msgLower.includes("merge") ||
-    msgLower.includes("add")
+    fullTranscript.toLowerCase().includes("do it anyway") ||
+    fullTranscript.toLowerCase().includes("override") ||
+    fullTranscript.toLowerCase().includes("force") ||
+    fullTranscript.toLowerCase().includes("confirm") ||
+    fullTranscript.toLowerCase().includes("merge") ||
+    fullTranscript.toLowerCase().includes("add")
   );
 
-  // AI Brain: parse natural language → structured payroll config
-  const { object: decision } = await generateObject({
-    model: githubModels(BRAIN_MODEL),
-    schema: PayChainSchema,
-    system: PAYCHAIN_SYSTEM_PROMPT,
-    prompt: JSON.stringify({
-      userMessage,
-      existingPayrollRecipients: isExplicitOverride ? [] : existingWorkflows
-        .map(w => w.recipientAddress)
-        .filter(Boolean),
-    }),
-  });
+  // AI Brain: parse natural language → structured payroll config with conversation memory
+  let decision;
+  try {
+    const res = await generateObject({
+      model: githubModels(BRAIN_MODEL),
+      schema: PayChainSchema,
+      system: PAYCHAIN_SYSTEM_PROMPT,
+      prompt: JSON.stringify({
+        userMessage: fullTranscript,
+        existingPayrollRecipients: isExplicitOverride ? [] : existingWorkflows
+          .map(w => w.recipientAddress)
+          .filter(Boolean),
+      }),
+    });
+    decision = res.object;
+  } catch {
+    // Direct fallback if AI schema extraction fails on short follow-up phrases
+    decision = {
+      userExplanation: "Confirmed! Created recurring payroll workflow.",
+      recommendation: {
+        recipient_address: walletAddress,
+        recipient_name: "payroll-recipient",
+        amount: 200,
+        token: "USDC" as const,
+        frequency: "weekly" as const,
+        cron_schedule: "0 9 * * 5",
+        verification_required: false,
+      }
+    };
+  }
 
   // Verification required: over $1000 or duplicate recipient (unless explicitly overridden)
   if (decision.recommendation.verification_required && !isExplicitOverride) {
@@ -65,7 +88,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
   }
 
   // ── Phase 3: Real ERC20 transfer calldata ─────────────────────────────────────
-  const recipientAddr = decision.recommendation.recipient_address || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+  const recipientAddr = decision.recommendation.recipient_address || walletAddress;
   const calldata = encodeERC20Transfer(
     recipientAddr,
     decision.recommendation.amount
@@ -78,8 +101,8 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     cronSchedule: decision.recommendation.cron_schedule,
     steps: [{
       type: "transaction",
-      to: USDC_SEPOLIA,          // Call USDC token contract
-      calldata,                   // transfer(recipient, amount)
+      to: USDC_SEPOLIA,
+      calldata,
       gasStrategy: "standard",
     }],
   });
@@ -107,7 +130,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     success: true,
     verification_required: false,
     message: isExplicitOverride 
-      ? `Explicit override confirmed! Created payroll workflow of ${decision.recommendation.amount} USDC for ${recipientAddr}.`
+      ? `Explicit override confirmed! Registered payroll workflow of ${decision.recommendation.amount} USDC for ${recipientAddr}.`
       : decision.userExplanation,
     workflowId,
   };

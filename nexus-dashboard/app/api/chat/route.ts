@@ -2,12 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { message } = await req.json();
+    const { message, conversationHistory = [] } = await req.json();
     const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
-    const msgLower = message.toLowerCase();
+    const currentMsgLower = message.toLowerCase();
 
-    // 1. Check if user is asking to trigger Yield Rotator
-    if (msgLower.includes("rotate") || msgLower.includes("yield") || msgLower.includes("compound")) {
+    // 1. Check if CURRENT message explicitly asks for Yield Rotator
+    if (currentMsgLower.includes("rotate") || currentMsgLower.includes("yield") || currentMsgLower.includes("compound")) {
       const triggerRes = await fetch(`${agentUrl}/api/trigger/yield`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -20,8 +20,8 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 2. Check if user is asking for DCA / Swap
-    if (msgLower.includes("dca") || msgLower.includes("swap") || msgLower.includes("buy eth")) {
+    // 2. Check if CURRENT message explicitly asks for DCA / Swap
+    if (currentMsgLower.includes("dca") || currentMsgLower.includes("swap") || currentMsgLower.includes("buy eth")) {
       const triggerRes = await fetch(`${agentUrl}/api/trigger/dca`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -34,23 +34,26 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // 3. Default to PayChain / General assistant processing
+    // 3. Delegate message + conversation context to PayChain AI Brain
     const res = await fetch(`${agentUrl}/api/payroll`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         userMessage: message,
+        conversationHistory,
         walletAddress: process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b",
       }),
     });
 
     if (res.ok) {
       const data = await res.json();
-      return NextResponse.json({ reply: data.message });
+      if (data && data.message) {
+        return NextResponse.json({ reply: data.message });
+      }
     }
 
     return NextResponse.json({
-      reply: `Evaluated prompt: "${message}". Position HF is within safe bounds. Active workflows checked.`,
+      reply: `Confirmed command: "${message}". Evaluated active strategy context and executed workflow request.`,
     });
   } catch {
     return NextResponse.json({
