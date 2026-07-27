@@ -1,87 +1,105 @@
-﻿import { AlertCircle, AlertTriangle, Info } from "lucide-react";
+"use client";
 
-const ALERTS = [
-  {
-    type: "danger" as const,
-    title: "Liquidation Risk Triggered",
-    message: "Wallet 0x89f9... health factor dropped to 1.12. Guardian module initiated automated repayment of 500 USDC.",
-    time: "45 minutes ago",
-  },
-  {
-    type: "warning" as const,
-    title: "DCA Swap Postponed (Gas Threshold)",
-    message: "Weekly DCA swap of 100 USDC postponed. Gas fee ($8.50) exceeded 5% limit ($5.00 max). Retrying in 60m.",
-    time: "3 hours ago",
-  },
-  {
-    type: "warning" as const,
-    title: "Repayment Cycle Budget Cap Reached",
-    message: "Wallet 0xrisk... attempted repayment of 200 USDC, but only $50 remains in monthly cycle budget limit.",
-    time: "5 hours ago",
-  },
-  {
-    type: "info" as const,
-    title: "Yield Rotation Monitored",
-    message: "Morpho Blue APY is 5.8% vs current Aave V3 APY 4.2%. Rotation pending gas break-even evaluation.",
-    time: "12 hours ago",
-  },
-];
+import { useEffect, useState } from "react";
+import { AlertCircle, AlertTriangle, Info } from "lucide-react";
+
+type LogItem = {
+  action: string;
+  amount: number;
+  status: string;
+  reason?: string;
+  timestamp?: string;
+};
+
+type AlertCardData = {
+  type: "danger" | "warning" | "info";
+  title: string;
+  message: string;
+  time: string;
+};
+
+const COLOR: Record<string, { bg: string; color: string; border: string }> = {
+  danger:  { bg: "rgba(244,63,94,0.10)",  color: "#fb7185", border: "rgba(244,63,94,0.45)" },
+  warning: { bg: "rgba(245,158,11,0.10)", color: "#fbbf24", border: "rgba(245,158,11,0.45)" },
+  info:    { bg: "rgba(99,102,241,0.10)", color: "#818cf8", border: "rgba(99,102,241,0.45)" },
+};
 
 export default function AlertsPage() {
+  const wallet = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+  const [alerts, setAlerts] = useState<AlertCardData[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadAlerts() {
+      try {
+        const res = await fetch(`/api/feed/${wallet}`);
+        const data: LogItem[] = await res.json();
+        if (Array.isArray(data)) {
+          const parsed: AlertCardData[] = data.map((item) => {
+            const isDanger = item.status === "reverted_chain" || item.action === "repay";
+            const isWarning = item.status === "reverted_simulation" || item.action === "block_transaction";
+            return {
+              type: isDanger ? "danger" : isWarning ? "warning" : "info",
+              title: `${item.action.toUpperCase()} Execution Logged (${item.status})`,
+              message: item.reason || `Action ${item.action} with amount ${item.amount} USDC processed.`,
+              time: item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : "Recent",
+            };
+          });
+          setAlerts(parsed);
+        }
+      } catch (err) {
+        console.error("Failed to load alerts:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadAlerts();
+  }, [wallet]);
+
   return (
-    <div className="flex flex-col gap-8 animate-slide-up">
-      <div>
-        <h1 className="heading-title">Alerts & System Notifications</h1>
-        <p className="heading-subtitle">Automated logging of risk events, limit hits, and execution status</p>
+    <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+      <div className="page-header">
+        <h1 className="page-title">Alerts &amp; Notifications</h1>
+        <p className="page-subtitle">Automated logging of risk events, limit hits, and execution status</p>
       </div>
 
-      <div className="flex flex-col gap-4">
-        {ALERTS.map((alert, index) => (
-          <div
-            key={index}
-            className="glass-card p-6 flex items-start gap-5 border-l-4 transition-all duration-200 hover:translate-x-1"
-            style={{
-              borderLeftColor:
-                alert.type === "danger"
-                  ? "var(--color-danger)"
-                  : alert.type === "warning"
-                  ? "var(--color-warning)"
-                  : "var(--color-primary)",
-            }}
-          >
-            <div
-              className="w-10 h-10 rounded-2xl flex items-center justify-center shrink-0"
-              style={{
-                background:
-                  alert.type === "danger"
-                    ? "rgba(244, 63, 94, 0.12)"
-                    : alert.type === "warning"
-                    ? "rgba(245, 158, 11, 0.12)"
-                    : "rgba(99, 102, 241, 0.12)",
-                color:
-                  alert.type === "danger"
-                    ? "#fb7185"
-                    : alert.type === "warning"
-                    ? "#fbbf24"
-                    : "#818cf8",
-              }}
-            >
-              {alert.type === "danger" && <AlertCircle size={20} />}
-              {alert.type === "warning" && <AlertTriangle size={20} />}
-              {alert.type === "info" && <Info size={20} />}
-            </div>
-
-            <div className="flex-1">
-              <div className="flex items-center justify-between">
-                <h4 className="font-heading font-bold text-lg text-white">{alert.title}</h4>
-                <span className="text-xs text-[var(--color-text-muted)] font-medium">{alert.time}</span>
-              </div>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1.5 leading-relaxed font-medium">
-                {alert.message}
-              </p>
-            </div>
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {loading ? (
+          <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
+            Loading alert notifications...
           </div>
-        ))}
+        ) : alerts.length === 0 ? (
+          <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
+            No alert notifications logged. The system is operating normally.
+          </div>
+        ) : (
+          alerts.map((alert, i) => {
+            const c = COLOR[alert.type] || COLOR.info;
+            return (
+              <div
+                key={i}
+                className="alert-card"
+                style={{ borderLeftColor: c.border, borderLeftWidth: 3 }}
+              >
+                <div
+                  className="alert-icon"
+                  style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}
+                >
+                  {alert.type === "danger"  && <AlertCircle size={20} />}
+                  {alert.type === "warning" && <AlertTriangle size={20} />}
+                  {alert.type === "info"    && <Info size={20} />}
+                </div>
+                <div style={{ flex: 1 }}>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                    <div className="alert-title">{alert.title}</div>
+                    <span className="alert-time">{alert.time}</span>
+                  </div>
+                  <p className="alert-msg">{alert.message}</p>
+                </div>
+              </div>
+            );
+          })
+        )}
       </div>
     </div>
   );

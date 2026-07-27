@@ -1,4 +1,4 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
@@ -20,7 +20,7 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json({
-      reply: `Evaluated prompt: "${message}". Position HF is 1.87 (Safe Zone). Active workflows: Guardian, DCA, Payroll.`,
+      reply: `Evaluated prompt: "${message}". Position HF is within safe bounds. Active workflows checked.`,
     });
   } catch {
     return NextResponse.json({

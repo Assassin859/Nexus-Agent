@@ -1,8 +1,8 @@
-﻿import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock } from "lucide-react";
+import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock } from "lucide-react";
 
 export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending";
 
-type TransactionCardProps = {
+type Props = {
   action: string;
   amount: number;
   asset?: string;
@@ -12,79 +12,62 @@ type TransactionCardProps = {
   reason?: string;
 };
 
-export default function TransactionCard({
-  action,
-  amount,
-  asset = "USDC",
-  status,
-  timestamp,
-  txHash,
-  reason,
-}: TransactionCardProps) {
-  const getBadge = () => {
-    switch (status) {
-      case "success":
-        return (
-          <span className="status-pill status-pill-success">
-            <CheckCircle2 size={13} /> Executed
-          </span>
-        );
-      case "reverted_simulation":
-        return (
-          <span className="status-pill status-pill-warning">
-            <AlertTriangle size={13} /> Caught Revert (Gas Saved)
-          </span>
-        );
-      case "reverted_chain":
-        return (
-          <span className="status-pill status-pill-danger">
-            <XCircle size={13} /> Chain Revert
-          </span>
-        );
-      default:
-        return (
-          <span className="status-pill status-pill-info">
-            <Clock size={13} className="animate-spin" /> Pending
-          </span>
-        );
-    }
-  };
+export default function TransactionCard({ action, amount, asset = "USDC", status, timestamp, txHash, reason }: Props) {
+  const badge = {
+    success:              <span className="pill pill-success"><CheckCircle2 size={12} /> Executed</span>,
+    reverted_simulation:  <span className="pill pill-warning"><AlertTriangle size={12} /> Caught Revert</span>,
+    reverted_chain:       <span className="pill pill-danger"><XCircle size={12} /> Chain Revert</span>,
+    pending:              <span className="pill pill-cyan"><Clock size={12} /> Pending</span>,
+  }[status];
 
   return (
-    <div className="glass-card glass-card-interactive p-6 flex flex-col gap-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-4">
-          <div className="w-11 h-11 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 flex items-center justify-center font-extrabold text-sm text-indigo-400">
+    <div className="card card-interactive" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+      {/* Top row */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <div style={{
+            width: 44, height: 44, borderRadius: 12, flexShrink: 0,
+            background: "rgba(99,102,241,0.10)",
+            border: "1px solid rgba(99,102,241,0.2)",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontWeight: 900, fontSize: 12, color: "#818cf8", letterSpacing: "0.04em"
+          }}>
             {action.slice(0, 3).toUpperCase()}
           </div>
           <div>
-            <h4 className="font-heading font-bold text-lg capitalize text-white">{action} Action</h4>
-            <p className="text-xs text-[var(--color-text-muted)] font-medium mt-0.5">
+            <div style={{ fontFamily: "var(--font-space-grotesk), sans-serif", fontWeight: 800, fontSize: 15, color: "var(--text)", textTransform: "capitalize" }}>
+              {action} Action
+            </div>
+            <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, fontWeight: 500 }}>
               {amount > 0 ? `${amount} ${asset}` : "Simulation Run"}
-            </p>
+            </div>
           </div>
         </div>
-        {getBadge()}
+        {badge}
       </div>
 
+      {/* Reason block */}
       {reason && (
-        <div className="text-xs p-3.5 rounded-xl bg-white/[0.03] border border-white/10 text-slate-300 font-mono leading-relaxed">
-          <span className="font-bold text-amber-400">Reason: </span>
-          {reason}
+        <div style={{
+          fontSize: 12, padding: "12px 14px", borderRadius: "var(--radius-sm)",
+          background: "rgba(255,255,255,0.03)", border: "1px solid var(--border)",
+          color: "var(--text-2)", fontFamily: "ui-monospace, monospace", lineHeight: 1.65
+        }}>
+          <span style={{ fontWeight: 700, color: "#fbbf24" }}>Reason: </span>{reason}
         </div>
       )}
 
-      <div className="flex items-center justify-between text-xs text-[var(--color-text-muted)] pt-3 border-t border-white/5 font-medium">
+      {/* Footer */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
         <span>{timestamp ? new Date(timestamp).toLocaleString() : "Just now"}</span>
         {txHash && (
           <a
             href={`https://sepolia.etherscan.io/tx/${txHash}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1.5 text-indigo-400 hover:text-indigo-300 font-semibold transition-colors"
+            style={{ display: "flex", alignItems: "center", gap: 5, color: "#818cf8", fontWeight: 600, transition: "color 0.15s ease" }}
           >
-            <span>View on Etherscan</span>
-            <ExternalLink size={13} />
+            View on Etherscan <ExternalLink size={12} />
           </a>
         )}
       </div>

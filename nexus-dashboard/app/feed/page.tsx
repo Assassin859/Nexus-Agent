@@ -1,63 +1,77 @@
-﻿"use client";
+"use client";
 
+import { useEffect, useState } from "react";
 import TransactionCard from "@/components/TransactionCard";
 
-const MOCK_FEED = [
-  {
-    action: "repay",
-    amount: 500,
-    asset: "USDC",
-    status: "success" as const,
-    timestamp: new Date(Date.now() - 1000 * 60 * 45).toISOString(),
-    txHash: "0x1111111111111111111111111111111111111111111111111111111111111111",
-  },
-  {
-    action: "swap",
-    amount: 100,
-    asset: "USDC",
-    status: "reverted_simulation" as const,
-    timestamp: new Date(Date.now() - 1000 * 60 * 180).toISOString(),
-    reason: "Gas fee of $8.50 exceeds 5% threshold of purchase value ($5.00 limit). Swap delayed by 60 minutes.",
-  },
-  {
-    action: "dca",
-    amount: 100,
-    asset: "USDC",
-    status: "pending" as const,
-    timestamp: new Date().toISOString(),
-  },
-];
+type FeedItem = {
+  action: string;
+  amount: number;
+  asset?: string;
+  status: "success" | "reverted_simulation" | "reverted_chain" | "pending";
+  timestamp?: string;
+  txHash?: string;
+  reason?: string;
+};
+
+const STEPS = ["Triggered", "Simulating", "Broadcasting", "Mined"];
 
 export default function FeedPage() {
+  const wallet = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+  const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadFeed() {
+      try {
+        const res = await fetch(`/api/feed/${wallet}`);
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setFeed(data);
+        }
+      } catch (err) {
+        console.error("Failed to load feed:", err);
+      } finally {
+        setLoading(false);
+      }
+    }
+    loadFeed();
+    const interval = setInterval(loadFeed, 5000);
+    return () => clearInterval(interval);
+  }, [wallet]);
+
   return (
-    <div className="flex flex-col gap-8 animate-slide-up">
-      <div>
-        <h1 className="heading-title">Live Execution Feed</h1>
-        <p className="heading-subtitle">Real-time audit log of autonomous transactions managed by KeeperHub MCP</p>
+    <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+      <div className="page-header">
+        <h1 className="page-title">Live Execution Feed</h1>
+        <p className="page-subtitle">Real-time audit log of autonomous transactions managed by KeeperHub MCP</p>
       </div>
 
-      {/* Execution Stepper Bar */}
-      <div className="glass-card p-6 flex items-center justify-between">
-        {["Triggered", "Simulating", "Broadcasting", "Mined"].map((step, idx) => (
-          <div key={step} className="flex items-center gap-4">
-            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center font-black text-sm shadow-md ${
-              idx <= 2 
-                ? "bg-gradient-to-br from-indigo-500 to-indigo-600 text-white shadow-indigo-500/25 border border-indigo-400/30" 
-                : "bg-white/5 text-[var(--color-text-muted)] border border-white/10"
-            }`}>
-              {idx + 1}
-            </div>
-            <span className={`text-sm font-bold tracking-wide ${idx <= 2 ? "text-white" : "text-[var(--color-text-muted)]"}`}>{step}</span>
-            {idx < 3 && <div className="w-16 h-0.5 bg-white/10 hidden md:block"></div>}
+      {/* Stepper */}
+      <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+        {STEPS.map((step, idx) => (
+          <div key={step} style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div className={`step-num ${idx <= 2 ? "step-active" : "step-inactive"}`}>{idx + 1}</div>
+            <span className="step-label" style={{ color: idx <= 2 ? "var(--text)" : "var(--text-muted)" }}>{step}</span>
+            {idx < 3 && <div className="step-connector" />}
           </div>
         ))}
       </div>
 
-      {/* Activity List */}
-      <div className="flex flex-col gap-4">
-        {MOCK_FEED.map((item, index) => (
-          <TransactionCard key={index} {...item} />
-        ))}
+      {/* Feed list */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {loading ? (
+          <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
+            Loading live execution feed...
+          </div>
+        ) : feed.length === 0 ? (
+          <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
+            No executions logged yet for wallet <span style={{ fontFamily: "monospace", color: "#818cf8" }}>{wallet.slice(0, 8)}...</span>. Trigger a workflow in AI Chat or Templates to see live events.
+          </div>
+        ) : (
+          feed.map((item, i) => (
+            <TransactionCard key={i} {...item} />
+          ))
+        )}
       </div>
     </div>
   );

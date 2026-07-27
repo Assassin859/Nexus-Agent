@@ -1,20 +1,36 @@
-﻿import { generateObject } from "ai";
+import { generateObject } from "ai";
 import { githubModels, BRAIN_MODEL } from "../brain/provider.js";
 import { GuardianDecisionSchema, GUARDIAN_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { db } from "../db/client.js";
 import { repaymentCycles, executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow } from "../lib/mcp-client.js";
+import { getAavePosition } from "../lib/aave.js";
+import {
+  encodeAaveRepay,
+  encodeAaveSupply,
+  AAVE_V3_POOL,
+  USDC_SEPOLIA,
+  WETH_SEPOLIA,
+} from "../lib/calldata.js";
 import { eq, and } from "drizzle-orm";
 
-const AAVE_V3_POOL_SEPOLIA = "0x6Ae43d3271ff68408378a467C62b15264c8d77e4";
+const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || "0x0000000000000000000000000000000000000000";
 
 export async function run(userWallet: string): Promise<void> {
   console.log(`[GUARDIAN] Running evaluation for wallet: ${userWallet}`);
 
-  const healthFactor = 1.12; // Stub HF (Critical) for demo evaluation
-  const walletBalance = 500; // Stub available USDC balance
+  // ── Phase 2: Real Aave V3 data read ──────────────────────────────────────────
+  const position = await getAavePosition(userWallet);
+  const { healthFactor, usdcWalletBalance, collateralUSD, debtUSD } = position;
 
+  // If no Aave position exists, nothing to protect
+  if (collateralUSD === 0 && debtUSD === 0) {
+    console.log("[GUARDIAN] No Aave position found — skipping.");
+    return;
+  }
+
+  // ── DB: read current cycle state ──────────────────────────────────────────────
   const cycle = await db.query.repaymentCycles.findFirst({
     where: eq(repaymentCycles.userWallet, userWallet),
   });
@@ -28,13 +44,16 @@ export async function run(userWallet: string): Promise<void> {
 
   const cycleRemaining = (cycle?.cycleLimitUSD ?? 1000) - (cycle?.totalRepaidThisCycleUSD ?? 0);
 
+  // ── AI Brain: real inputs, real decision ──────────────────────────────────────
   const { object: decision } = await generateObject({
     model: githubModels(BRAIN_MODEL),
     schema: GuardianDecisionSchema,
     system: GUARDIAN_SYSTEM_PROMPT,
     prompt: JSON.stringify({
       healthFactor,
-      walletBalance,
+      walletBalance: usdcWalletBalance,
+      collateralValueUSD: collateralUSD,
+      debtValueUSD: debtUSD,
       cycleRemainingBudget: cycleRemaining,
       executionHistory: pendingTx ? ["pending_transaction_exists"] : [],
       priceTrend: "stable",
@@ -43,7 +62,11 @@ export async function run(userWallet: string): Promise<void> {
 
   console.log(`[GUARDIAN] Brain decision: ${decision.recommendation.action} — ${decision.userExplanation}`);
 
-  if (decision.recommendation.action === "hold" || decision.recommendation.action === "block_transaction") {
+  // ── Log hold/block without executing ─────────────────────────────────────────
+  if (
+    decision.recommendation.action === "hold" ||
+    decision.recommendation.action === "block_transaction"
+  ) {
     await db.insert(executionsLog).values({
       userWallet,
       action: decision.recommendation.action,
@@ -54,28 +77,46 @@ export async function run(userWallet: string): Promise<void> {
     return;
   }
 
-  const calldata = "0x"; // Stub calldata for pool repay
+  // ── Phase 3: Real calldata ────────────────────────────────────────────────────
+  const amount = decision.recommendation.amount;
+  let calldata: string;
+  let targetContract: string;
 
+  if (decision.recommendation.action === "repay") {
+    calldata = encodeAaveRepay(USDC_SEPOLIA, amount, AGENTIC_WALLET);
+    targetContract = AAVE_V3_POOL;
+  } else {
+    // supply_collateral — supply WETH as extra collateral
+    calldata = encodeAaveSupply(WETH_SEPOLIA, amount, AGENTIC_WALLET);
+    targetContract = AAVE_V3_POOL;
+  }
+
+  // ── Pre-flight simulation ─────────────────────────────────────────────────────
   const sim = await simulate(
-    { from: process.env.AGENTIC_WALLET_ADDRESS || "0x0000000000000000000000000000000000000000", to: AAVE_V3_POOL_SEPOLIA, data: calldata },
+    { from: AGENTIC_WALLET, to: targetContract, data: calldata },
     userWallet
   );
-  if (sim.wouldRevert) return;
+  if (sim.wouldRevert) {
+    console.warn(`[GUARDIAN] Simulation caught revert — aborting to save gas.`);
+    return;
+  }
 
+  // ── KeeperHub execution ───────────────────────────────────────────────────────
   const { workflowId } = await createWorkflow({
     name: `guardian-${userWallet.slice(0, 8)}-${Date.now()}`,
     triggerType: "manual",
-    steps: [{ type: "transaction", to: AAVE_V3_POOL_SEPOLIA, calldata, gasStrategy: "standard" }],
+    steps: [{ type: "transaction", to: targetContract, calldata, gasStrategy: "standard" }],
   });
   const { executionId } = await executeWorkflow(workflowId);
 
+  // ── Write to DB ───────────────────────────────────────────────────────────────
   await db.insert(executionsLog).values({
     userWallet,
     action: decision.recommendation.action,
-    amount: decision.recommendation.amount,
+    amount,
     status: "success",
     reason: decision.userExplanation,
   });
 
-  console.log(`[GUARDIAN] Executed. KeeperHub executionId: ${executionId}`);
+  console.log(`[GUARDIAN] Executed ${decision.recommendation.action} $${amount} USDC. KeeperHub executionId: ${executionId}`);
 }

@@ -1,82 +1,133 @@
-﻿import { CheckCircle2, Clock, ShieldX } from "lucide-react";
+"use client";
+
+import { useEffect, useState } from "react";
+import { CheckCircle2, Clock, ShieldX } from "lucide-react";
+
+type LogItem = {
+  action: string;
+  amount: number;
+  status: string;
+  reason?: string;
+};
+
+type ScenarioCard = {
+  icon: any;
+  title: string;
+  pill: { label: string; cls: string };
+  desc: string;
+  code: { text: string; color: string; bg: string; border: string };
+  accent: { color: string; bg: string; border: string };
+  side: string;
+};
+
+const INITIAL_SCENARIOS: ScenarioCard[] = [
+  {
+    icon: CheckCircle2,
+    title: "Happy Path Run",
+    pill: { label: "Broadcast & Mined", cls: "pill-success" },
+    desc: "Transactions passing pre-flight simulation are broadcast to Sepolia and mined with zero errors.",
+    code: { text: "Status: WAITING FOR RUN\nNo successful executions recorded yet.", color: "#34d399", bg: "rgba(16,185,129,0.09)", border: "rgba(16,185,129,0.25)" },
+    accent: { color: "#34d399", bg: "rgba(16,185,129,0.10)", border: "rgba(16,185,129,0.3)" },
+    side: "#10b981",
+  },
+  {
+    icon: Clock,
+    title: "Gas Adjusted Path",
+    pill: { label: "Delayed Execution", cls: "pill-warning" },
+    desc: "Actions (e.g. DCA swaps) where estimated gas exceeds safety thresholds are paused to prevent gas loss.",
+    code: { text: "Status: WAITING FOR RUN\nNo gas-adjusted pauses recorded.", color: "#fbbf24", bg: "rgba(245,158,11,0.09)", border: "rgba(245,158,11,0.25)" },
+    accent: { color: "#fbbf24", bg: "rgba(245,158,11,0.10)", border: "rgba(245,158,11,0.3)" },
+    side: "#f59e0b",
+  },
+  {
+    icon: ShieldX,
+    title: "Caught Revert",
+    pill: { label: "Pre-Flight Intercept", cls: "pill-danger" },
+    desc: "Simulation engine detects contract reverts or missing allowances and aborts execution before broadcasting.",
+    code: { text: "Status: WAITING FOR RUN\nNo caught reverts recorded.", color: "#fb7185", bg: "rgba(244,63,94,0.09)", border: "rgba(244,63,94,0.25)" },
+    accent: { color: "#fb7185", bg: "rgba(244,63,94,0.10)", border: "rgba(244,63,94,0.3)" },
+    side: "#f43f5e",
+  },
+];
 
 export default function ResiliencePage() {
+  const wallet = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+  const [scenarios, setScenarios] = useState(INITIAL_SCENARIOS);
+
+  useEffect(() => {
+    async function loadResilience() {
+      try {
+        const res = await fetch(`/api/feed/${wallet}`);
+        const data: LogItem[] = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const happy = data.find(d => d.status === "success");
+          const paused = data.find(d => d.status === "pending" || d.reason?.includes("Gas"));
+          const revert = data.find(d => d.status === "reverted_simulation" || d.status === "reverted_chain");
+
+          const updated = [...INITIAL_SCENARIOS];
+          if (happy) {
+            updated[0].desc = `Action ${happy.action.toUpperCase()} executed successfully for amount $${happy.amount}.`;
+            updated[0].code.text = `Status: SUCCESS (200 OK)\nReason: ${happy.reason || "Mined on Sepolia"}`;
+          }
+          if (paused) {
+            updated[1].desc = `Action ${paused.action.toUpperCase()} evaluated. Gas or cycle limit rules applied.`;
+            updated[1].code.text = `Status: PAUSED\nReason: ${paused.reason || "Gas limit rule active"}`;
+          }
+          if (revert) {
+            updated[2].desc = `Simulation intercepted revert before broadcasting to Sepolia chain.`;
+            updated[2].code.text = `Status: ABORTED (Sim Revert)\nReason: ${revert.reason || "Revert caught, 0 gas wasted"}`;
+          }
+          setScenarios(updated);
+        }
+      } catch (err) {
+        console.error("Resilience fetch error:", err);
+      }
+    }
+    loadResilience();
+  }, [wallet]);
+
   return (
-    <div className="flex flex-col gap-8 animate-slide-up">
-      <div>
-        <h1 className="heading-title">Resilience & Simulation Log</h1>
-        <p className="heading-subtitle">Every action is simulated prior to broadcast. Zero gas wasted on reverts.</p>
+    <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+      <div className="page-header">
+        <h1 className="page-title">Resilience &amp; Simulation Log</h1>
+        <p className="page-subtitle">Every action is simulated prior to broadcast. Zero gas wasted on reverts.</p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        {/* Column 1: Happy Path */}
-        <div className="glass-card p-6 flex flex-col justify-between gap-6 border-l-4 border-l-emerald-500">
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-2xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center text-emerald-400">
-                <CheckCircle2 size={22} />
+      <div className="grid-3">
+        {scenarios.map((s) => {
+          const Icon = s.icon;
+          return (
+            <div
+              key={s.title}
+              className="card"
+              style={{ display: "flex", flexDirection: "column", gap: 20, borderLeft: `3px solid ${s.side}` }}
+            >
+              <div className="res-header">
+                <div
+                  className="res-icon"
+                  style={{ background: s.accent.bg, color: s.accent.color, border: `1px solid ${s.accent.border}` }}
+                >
+                  <Icon size={22} />
+                </div>
+                <div>
+                  <div style={{ fontFamily: "var(--font-space-grotesk), sans-serif", fontWeight: 800, fontSize: 15, color: "var(--text)", marginBottom: 6 }}>
+                    {s.title}
+                  </div>
+                  <span className={`pill ${s.pill.cls}`}>{s.pill.label}</span>
+                </div>
               </div>
-              <div>
-                <h3 className="font-heading font-bold text-lg text-white">Happy Path Run</h3>
-                <span className="status-pill status-pill-success mt-1">Broadcast & Mined</span>
-              </div>
-            </div>
-            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed font-medium">
-              Health Factor dropped to 1.12. Agent executed partial repayment of 500 USDC within physical wallet balance limits.
-            </p>
-          </div>
-          <div className="p-4 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-400 font-mono font-medium">
-            Status: SUCCESS (200 OK)
-            <br />
-            Gas Spent: $1.42
-          </div>
-        </div>
-
-        {/* Column 2: Gas Adjusted Path */}
-        <div className="glass-card p-6 flex flex-col justify-between gap-6 border-l-4 border-l-amber-500">
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-2xl bg-amber-500/10 border border-amber-500/20 flex items-center justify-center text-amber-400">
-                <Clock size={22} />
-              </div>
-              <div>
-                <h3 className="font-heading font-bold text-lg text-white">Gas Adjusted Path</h3>
-                <span className="status-pill status-pill-warning mt-1">Delayed Execution</span>
+              <p style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.65, fontWeight: 500 }}>{s.desc}</p>
+              <div
+                className="res-code"
+                style={{ background: s.code.bg, border: `1px solid ${s.code.border}`, color: s.code.color }}
+              >
+                {s.code.text.split("\n").map((line, i) => (
+                  <div key={i}>{line}</div>
+                ))}
               </div>
             </div>
-            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed font-medium">
-              DCA swap requested ($100 USDC). Gas estimate ($8.50) exceeded 5% safety threshold. Delayed for 60 minutes.
-            </p>
-          </div>
-          <div className="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 text-xs text-amber-400 font-mono font-medium">
-            Status: PAUSED (Gas Cap)
-            <br />
-            Next Check: In 60m
-          </div>
-        </div>
-
-        {/* Column 3: Caught Revert */}
-        <div className="glass-card p-6 flex flex-col justify-between gap-6 border-l-4 border-l-rose-500">
-          <div>
-            <div className="flex items-center gap-3 mb-4">
-              <div className="w-10 h-10 rounded-2xl bg-rose-500/10 border border-rose-500/20 flex items-center justify-center text-rose-400">
-                <ShieldX size={22} />
-              </div>
-              <div>
-                <h3 className="font-heading font-bold text-lg text-white">Caught Revert</h3>
-                <span className="status-pill status-pill-danger mt-1">Pre-Flight Intercept</span>
-              </div>
-            </div>
-            <p className="text-xs text-[var(--color-text-muted)] leading-relaxed font-medium">
-              Payroll action simulated onchain. Simulation engine detected missing token allowance. Action aborted before broadcast.
-            </p>
-          </div>
-          <div className="p-4 rounded-xl bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400 font-mono font-medium">
-            Status: ABORTED (Sim Revert)
-            <br />
-            Gas Wasted: $0.00
-          </div>
-        </div>
+          );
+        })}
       </div>
     </div>
   );

@@ -1,46 +1,43 @@
-﻿"use client";
+"use client";
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { 
-  LayoutDashboard, 
-  Activity, 
-  ShieldCheck, 
-  Bell, 
-  MessageSquare, 
+import {
+  LayoutDashboard,
+  Activity,
+  ShieldCheck,
+  Bell,
+  MessageSquare,
   Store,
-  Cpu
+  Cpu,
 } from "lucide-react";
-import clsx from "clsx";
 
 const NAV_ITEMS = [
-  { href: "/", label: "Portfolio", icon: LayoutDashboard },
-  { href: "/feed", label: "Live Feed", icon: Activity },
-  { href: "/resilience", label: "Resilience", icon: ShieldCheck },
-  { href: "/alerts", label: "Alerts", icon: Bell },
-  { href: "/chat", label: "AI Chat", icon: MessageSquare },
-  { href: "/templates", label: "Templates", icon: Store },
+  { href: "/",            label: "Portfolio",   icon: LayoutDashboard },
+  { href: "/feed",        label: "Live Feed",   icon: Activity },
+  { href: "/resilience",  label: "Resilience",  icon: ShieldCheck },
+  { href: "/alerts",      label: "Alerts",      icon: Bell },
+  { href: "/chat",        label: "AI Chat",     icon: MessageSquare },
+  { href: "/templates",   label: "Templates",   icon: Store },
 ];
 
 export default function Sidebar() {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 border-r border-[var(--color-border)] bg-[var(--color-surface)] p-6 flex flex-col justify-between shrink-0 min-h-screen">
+    <aside className="sidebar">
       <div>
-        {/* Brand Monogram */}
-        <div className="flex items-center gap-3 mb-10 px-2">
-          <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-indigo-500 via-indigo-600 to-cyan-500 flex items-center justify-center font-extrabold text-white text-lg shadow-lg shadow-indigo-500/25 border border-indigo-400/30">
-            NX
-          </div>
+        {/* Brand */}
+        <div className="sidebar-brand">
+          <div className="sidebar-logo">NX</div>
           <div>
-            <h1 className="font-heading font-black text-xl leading-none text-white tracking-tight">NexusAgent</h1>
-            <p className="text-xs text-cyan-400 mt-1 font-semibold tracking-wide">KeeperHub Agent</p>
+            <div className="sidebar-name">NexusAgent</div>
+            <div className="sidebar-tag">KeeperHub Agent</div>
           </div>
         </div>
 
-        {/* Navigation Links */}
-        <nav className="flex flex-col gap-1.5">
+        {/* Nav */}
+        <nav className="sidebar-nav">
           {NAV_ITEMS.map((item) => {
             const Icon = item.icon;
             const isActive = pathname === item.href;
@@ -48,14 +45,9 @@ export default function Sidebar() {
               <Link
                 key={item.href}
                 href={item.href}
-                className={clsx(
-                  "flex items-center gap-3 px-4 py-3 rounded-xl font-medium text-sm transition-all duration-200",
-                  isActive
-                    ? "bg-indigo-500/15 text-indigo-400 font-semibold border-l-4 border-indigo-500 shadow-sm"
-                    : "text-[var(--color-text-muted)] hover:text-white hover:bg-white/5"
-                )}
+                className={`nav-item${isActive ? " active" : ""}`}
               >
-                <Icon size={18} className={isActive ? "text-indigo-400" : "text-slate-400"} />
+                <Icon size={17} />
                 <span>{item.label}</span>
               </Link>
             );
@@ -63,16 +55,16 @@ export default function Sidebar() {
         </nav>
       </div>
 
-      {/* Network Status Badge */}
-      <div className="kh-card p-4 rounded-xl text-xs text-[var(--color-text-muted)] flex flex-col gap-2 border border-white/5 bg-white/[0.02]">
-        <div className="flex items-center gap-2">
-          <Cpu size={15} className="text-cyan-400" />
-          <span className="font-bold text-white">KeeperHub MCP</span>
+      {/* Footer status */}
+      <div className="sidebar-footer">
+        <div className="sidebar-footer-title">
+          <Cpu size={14} color="var(--cyan)" />
+          KeeperHub MCP
         </div>
-        <div className="flex items-center justify-between text-[11px] pt-1.5 border-t border-white/5">
+        <div className="sidebar-footer-row">
           <span>Sepolia Testnet</span>
-          <span className="flex items-center gap-1.5 text-emerald-400 font-semibold">
-            <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+          <span style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--success)", fontWeight: 700 }}>
+            <span className="status-dot" />
             Active
           </span>
         </div>
