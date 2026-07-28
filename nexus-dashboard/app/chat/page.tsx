@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Send, Bot, User, Sparkles, Cpu } from "lucide-react";
+import { useWallet } from "@/context/WalletContext";
 
 type PortfolioData = {
   healthFactor: number;
@@ -14,7 +15,7 @@ const DEFAULT_WELCOME = {
 };
 
 export default function ChatPage() {
-  const walletAddress = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+  const { walletAddress } = useWallet();
 
   const [messages, setMessages] = useState<Array<{ sender: string; text: string; intents?: any[] }>>(() => {
     if (typeof window !== "undefined") {
@@ -71,6 +72,7 @@ export default function ChatPage() {
         body: JSON.stringify({
           message: userText,
           conversationHistory,
+          walletAddress,
         }),
       });
 

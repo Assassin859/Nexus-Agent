@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(req: NextRequest) {
   try {
-    const { message, conversationHistory = [] } = await req.json();
+    const { message, conversationHistory = [], walletAddress } = await req.json();
     const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
-    const walletAddress = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+    const resolvedWallet = walletAddress || process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
 
     const res = await fetch(`${agentUrl}/api/chat`, {
       method: "POST",
@@ -12,7 +12,7 @@ export async function POST(req: NextRequest) {
       body: JSON.stringify({
         userMessage: message,
         conversationHistory,
-        walletAddress,
+        walletAddress: resolvedWallet,
       }),
     });
 

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { AlertCircle, AlertTriangle, Info } from "lucide-react";
+import { useWallet } from "@/context/WalletContext";
 
 type LogItem = {
   action: string;
@@ -25,7 +26,7 @@ const COLOR: Record<string, { bg: string; color: string; border: string }> = {
 };
 
 export default function AlertsPage() {
-  const wallet = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+  const { walletAddress: wallet } = useWallet();
   const [alerts, setAlerts] = useState<AlertCardData[]>([]);
   const [loading, setLoading] = useState(true);
 

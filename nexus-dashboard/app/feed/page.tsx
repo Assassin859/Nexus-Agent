@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useWallet } from "@/context/WalletContext";
 import TransactionCard from "@/components/TransactionCard";
 
 type FeedItem = {
@@ -16,14 +17,14 @@ type FeedItem = {
 const STEPS = ["Triggered", "Simulating", "Broadcasting", "Mined"];
 
 export default function FeedPage() {
-  const wallet = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+  const { walletAddress } = useWallet();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadFeed() {
       try {
-        const res = await fetch(`/api/feed/${wallet}`);
+        const res = await fetch(`/api/feed/${walletAddress}`);
         const data = await res.json();
         if (Array.isArray(data)) {
           setFeed(data);
@@ -37,7 +38,7 @@ export default function FeedPage() {
     loadFeed();
     const interval = setInterval(loadFeed, 5000);
     return () => clearInterval(interval);
-  }, [wallet]);
+  }, [walletAddress]);
 
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
@@ -65,7 +66,7 @@ export default function FeedPage() {
           </div>
         ) : feed.length === 0 ? (
           <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
-            No executions logged yet for wallet <span style={{ fontFamily: "monospace", color: "#818cf8" }}>{wallet.slice(0, 8)}...</span>. Trigger a workflow in AI Chat or Templates to see live events.
+            No executions logged yet for wallet <span style={{ fontFamily: "monospace", color: "#818cf8" }}>{walletAddress.slice(0, 8)}...</span>. Trigger a workflow in AI Chat or Templates to see live events.
           </div>
         ) : (
           feed.map((item, i) => (

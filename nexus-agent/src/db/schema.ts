@@ -52,3 +52,20 @@ export const userSettings = pgTable("user_settings", {
   keeperhubApiKey: varchar("keeperhub_api_key", { length: 255 }),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
+
+// 5. Payees Directory Table: Manages single payees, named team members, and vault pools
+export const payees = pgTable("payees", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userWallet: varchar("user_wallet", { length: 42 }).notNull(),
+  name: varchar("name").notNull(),                      // e.g. "dev team" or "Alice"
+  type: varchar("type").notNull(),                      // 'single' | 'team'
+  payoutMode: varchar("payout_mode").default("direct"),  // 'direct' | 'vault_pool'
+  vaultPoolAddress: varchar("vault_pool_address", { length: 42 }),
+  recipientAddresses: jsonb("recipient_addresses").notNull(), // Array of { name: string, address: string }
+  memberCount: integer("member_count").default(1),
+  parentTeamId: uuid("parent_team_id"),
+  createdAt: timestamp("created_at").defaultNow(),
+}, (table) => ({
+  payeesUserWalletIdx: index("payees_user_wallet_idx").on(table.userWallet),
+}));
+

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { Cpu, RefreshCw, Clock, ExternalLink } from "lucide-react";
+import { useWallet } from "@/context/WalletContext";
 
 type WorkflowItem = {
   id: string;
@@ -56,7 +57,7 @@ function humanCron(cron: string): string {
 }
 
 export default function WorkflowsPage() {
-  const wallet = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+  const { walletAddress: wallet } = useWallet();
   const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [spinning, setSpinning] = useState(false);

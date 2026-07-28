@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Shield, RefreshCw, Layers, ArrowUpRight, CheckCircle2, TrendingUp, AlertCircle, Wallet } from "lucide-react";
+import { useWallet } from "@/context/WalletContext";
 
 type PortfolioData = {
   walletAddress: string;
@@ -18,41 +19,20 @@ type PortfolioData = {
 };
 
 export default function PortfolioPage() {
-  const [wallet, setWallet] = useState<string>("0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b");
-  const [isConnected, setIsConnected] = useState<boolean>(false);
-  const [data, setData] = useState<PortfolioData | null>(null);
-  const [loading, setLoading] = useState(true);
+  const { walletAddress: wallet, isConnected, setWalletAddress } = useWallet();
 
-  // Check if Web3 / MetaMask is available
-  useEffect(() => {
-    if (typeof window !== "undefined" && (window as any).ethereum) {
-      (window as any).ethereum
-        .request({ method: "eth_accounts" })
-        .then((accounts: string[]) => {
-          if (accounts && accounts.length > 0) {
-            setWallet(accounts[0].toLowerCase());
-            setIsConnected(true);
-          }
-        })
-        .catch(() => {});
-    }
-  }, []);
-
-  const connectWallet = async () => {
+  async function connectWallet() {
     if (typeof window !== "undefined" && (window as any).ethereum) {
       try {
-        const accounts = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
-        if (accounts && accounts.length > 0) {
-          setWallet(accounts[0].toLowerCase());
-          setIsConnected(true);
-        }
-      } catch (err) {
-        console.error("User rejected wallet connection:", err);
-      }
+        const accounts: string[] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
+        if (accounts.length > 0) setWalletAddress(accounts[0]);
+      } catch {}
     } else {
-      alert("MetaMask or Web3 wallet extension not detected in browser. Using demo Sepolia wallet.");
+      alert("MetaMask not detected.");
     }
-  };
+  }
+  const [data, setData] = useState<PortfolioData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadPortfolio() {

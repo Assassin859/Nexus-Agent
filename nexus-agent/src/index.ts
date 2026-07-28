@@ -15,8 +15,8 @@ import { handle as handlePaychain } from "./modules/paychain.js";
 import { syncKeeperHubState } from "./lib/keeperhub-sync.js";
 import { getAavePosition } from "./lib/aave.js";
 import { db } from "./db/client.js";
-import { activeWorkflows, executionsLog, userSettings } from "./db/schema.js";
-import { eq, desc } from "drizzle-orm";
+import { activeWorkflows, executionsLog, userSettings, payees } from "./db/schema.js";
+import { eq, desc, and } from "drizzle-orm";
 
 const app = express();
 app.use(cors());
@@ -30,7 +30,91 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "nexus-agent", ts: new Date().toISOString() });
 });
 
-// ── 1-Click SIWE Signature Challenge & Authentication ────────────────────────
+// ── Payees Directory API Endpoints ─────────────────────────────────────────────
+app.get("/api/payees/:walletAddress", async (req, res) => {
+  try {
+    const wallet = req.params.walletAddress.toLowerCase();
+    const list = await db.query.payees.findMany({
+      where: eq(payees.userWallet, wallet),
+      orderBy: [desc(payees.createdAt)],
+    });
+    res.json(list);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Fetch payees failed" });
+  }
+});
+
+app.post("/api/payees", async (req, res) => {
+  try {
+    const {
+      userWallet,
+      name,
+      type, // 'single' | 'team'
+      payoutMode = "direct", // 'direct' | 'vault_pool'
+      vaultPoolAddress,
+      members = [], // Array of { name: string, address: string }
+    } = req.body;
+
+    if (!userWallet || !name || !type) {
+      return res.status(400).json({ error: "userWallet, name, and type are required" });
+    }
+
+    const wallet = userWallet.toLowerCase();
+
+    // 1. Insert Team / Primary Payee Record
+    const primary = await db.insert(payees).values({
+      userWallet: wallet,
+      name,
+      type,
+      payoutMode,
+      vaultPoolAddress,
+      recipientAddresses: members,
+      memberCount: members.length || 1,
+    }).returning();
+
+    // 2. Auto-create Standalone Payee Entries for named members if type is team
+    if (type === "team" && members.length > 0) {
+      for (const m of members) {
+        if (!m.address) continue;
+        const memberName = m.name || `Member (${m.address.slice(0, 6)})`;
+        const existing = await db.query.payees.findFirst({
+          where: and(
+            eq(payees.userWallet, wallet),
+            eq(payees.name, memberName)
+          ),
+        });
+
+        if (!existing) {
+          await db.insert(payees).values({
+            userWallet: wallet,
+            name: memberName,
+            type: "single",
+            payoutMode: "direct",
+            recipientAddresses: [{ name: memberName, address: m.address }],
+            memberCount: 1,
+            parentTeamId: primary[0].id,
+          });
+        }
+      }
+    }
+
+    res.json({ success: true, payee: primary[0] });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Create payee failed" });
+  }
+});
+
+app.delete("/api/payees/:id", async (req, res) => {
+  try {
+    const { id } = req.params;
+    await db.delete(payees).where(eq(payees.id, id));
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Delete payee failed" });
+  }
+});
+
+// ── SIWE Authentication & Challenge ─────────────────────────────────────────
 app.get("/api/auth/challenge", (req, res) => {
   const wallet = (req.query.wallet as string || DEMO_WALLET).toLowerCase();
   const timestamp = new Date().toISOString();
@@ -52,7 +136,6 @@ app.post("/api/auth/verify", async (req, res) => {
       return res.status(401).json({ error: "Cryptographic signature verification failed" });
     }
 
-    // Provision or update authenticated session key for wallet in Postgres
     const key = process.env.KEEPERHUB_API_KEY || `kh_auth_${Date.now()}`;
     await db.insert(userSettings).values({
       userWallet: expectedAddress,
@@ -63,7 +146,6 @@ app.post("/api/auth/verify", async (req, res) => {
       set: { keeperhubApiKey: key, updatedAt: new Date() },
     });
 
-    // Trigger immediate background sync of KeeperHub workflows and logs
     syncKeeperHubState(expectedAddress).catch(console.error);
 
     res.json({
@@ -76,7 +158,6 @@ app.post("/api/auth/verify", async (req, res) => {
   }
 });
 
-// ── KeeperHub Sync Endpoint ───────────────────────────────────────────────────
 app.post("/api/keeperhub/sync", async (req, res) => {
   try {
     const { walletAddress = DEMO_WALLET } = req.body;
@@ -87,7 +168,6 @@ app.post("/api/keeperhub/sync", async (req, res) => {
   }
 });
 
-// ── User Settings API Endpoints ───────────────────────────────────────────────
 app.get("/api/user/settings/:walletAddress", async (req, res) => {
   try {
     const wallet = req.params.walletAddress.toLowerCase();

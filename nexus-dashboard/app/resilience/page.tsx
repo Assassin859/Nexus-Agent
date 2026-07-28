@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { CheckCircle2, Clock, ShieldX } from "lucide-react";
+import { useWallet } from "@/context/WalletContext";
 
 type LogItem = {
   action: string;
@@ -51,7 +52,7 @@ const INITIAL_SCENARIOS: ScenarioCard[] = [
 ];
 
 export default function ResiliencePage() {
-  const wallet = process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
+  const { walletAddress: wallet } = useWallet();
   const [scenarios, setScenarios] = useState(INITIAL_SCENARIOS);
 
   useEffect(() => {
