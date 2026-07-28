@@ -45,3 +45,10 @@ export const executionsLog = pgTable("executions_log", {
 }, (table) => ({
   userWalletIdx: index("executions_log_user_wallet_idx").on(table.userWallet),
 }));
+
+// 4. User Settings Table: Stores per-user KeeperHub credentials in Postgres for production
+export const userSettings = pgTable("user_settings", {
+  userWallet: varchar("user_wallet", { length: 42 }).primaryKey(),
+  keeperhubApiKey: varchar("keeperhub_api_key", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});

@@ -4,6 +4,7 @@ dotenv.config({ path: "../.env", override: true });
 import express from "express";
 import cors from "cors";
 import cron from "node-cron";
+import { verifyMessage } from "ethers";
 import { generateObject } from "ai";
 import { githubModels, BRAIN_MODEL } from "./brain/provider.js";
 import { IntentSchema, INTENT_PARSER_SYSTEM_PROMPT } from "./brain/intent-parser.js";
@@ -11,9 +12,10 @@ import { run as runGuardian } from "./modules/guardian.js";
 import { run as runYieldRotator } from "./modules/yield-rotator.js";
 import { run as runDCA } from "./modules/dca.js";
 import { handle as handlePaychain } from "./modules/paychain.js";
+import { syncKeeperHubState } from "./lib/keeperhub-sync.js";
 import { getAavePosition } from "./lib/aave.js";
 import { db } from "./db/client.js";
-import { activeWorkflows, executionsLog } from "./db/schema.js";
+import { activeWorkflows, executionsLog, userSettings } from "./db/schema.js";
 import { eq, desc } from "drizzle-orm";
 
 const app = express();
@@ -26,6 +28,105 @@ const DEMO_WALLET = (
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "nexus-agent", ts: new Date().toISOString() });
+});
+
+// ── 1-Click SIWE Signature Challenge & Authentication ────────────────────────
+app.get("/api/auth/challenge", (req, res) => {
+  const wallet = (req.query.wallet as string || DEMO_WALLET).toLowerCase();
+  const timestamp = new Date().toISOString();
+  const challenge = `Sign in to NexusAgent\n\nWallet: ${wallet}\nTimestamp: ${timestamp}\n\nAuthorize automated wealth management & sync KeeperHub workflows.`;
+  res.json({ challenge, timestamp });
+});
+
+app.post("/api/auth/verify", async (req, res) => {
+  try {
+    const { walletAddress, signature, challenge } = req.body;
+    if (!walletAddress || !signature || !challenge) {
+      return res.status(400).json({ error: "walletAddress, signature, and challenge are required" });
+    }
+
+    const recoveredAddress = verifyMessage(challenge, signature).toLowerCase();
+    const expectedAddress = walletAddress.toLowerCase();
+
+    if (recoveredAddress !== expectedAddress) {
+      return res.status(401).json({ error: "Cryptographic signature verification failed" });
+    }
+
+    // Provision or update authenticated session key for wallet in Postgres
+    const key = process.env.KEEPERHUB_API_KEY || `kh_auth_${Date.now()}`;
+    await db.insert(userSettings).values({
+      userWallet: expectedAddress,
+      keeperhubApiKey: key,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: userSettings.userWallet,
+      set: { keeperhubApiKey: key, updatedAt: new Date() },
+    });
+
+    // Trigger immediate background sync of KeeperHub workflows and logs
+    syncKeeperHubState(expectedAddress).catch(console.error);
+
+    res.json({
+      success: true,
+      walletAddress: expectedAddress,
+      message: "Signature verified! KeeperHub session connected.",
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Authentication failed" });
+  }
+});
+
+// ── KeeperHub Sync Endpoint ───────────────────────────────────────────────────
+app.post("/api/keeperhub/sync", async (req, res) => {
+  try {
+    const { walletAddress = DEMO_WALLET } = req.body;
+    const result = await syncKeeperHubState(walletAddress);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Sync failed" });
+  }
+});
+
+// ── User Settings API Endpoints ───────────────────────────────────────────────
+app.get("/api/user/settings/:walletAddress", async (req, res) => {
+  try {
+    const wallet = req.params.walletAddress.toLowerCase();
+    const settings = await db.query.userSettings.findFirst({
+      where: eq(userSettings.userWallet, wallet),
+    });
+    if (settings && settings.keeperhubApiKey) {
+      const key = settings.keeperhubApiKey;
+      const masked = key.length > 8 ? `${key.slice(0, 4)}...${key.slice(-4)}` : "kh_***";
+      return res.json({ hasKey: true, keyMasked: masked });
+    }
+    res.json({ hasKey: false, keyMasked: null });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Fetch settings failed" });
+  }
+});
+
+app.post("/api/user/settings", async (req, res) => {
+  try {
+    const { walletAddress, keeperhubApiKey } = req.body;
+    if (!walletAddress || !keeperhubApiKey) {
+      return res.status(400).json({ error: "walletAddress and keeperhubApiKey are required" });
+    }
+    const wallet = walletAddress.toLowerCase();
+    await db.insert(userSettings).values({
+      userWallet: wallet,
+      keeperhubApiKey,
+      updatedAt: new Date(),
+    }).onConflictDoUpdate({
+      target: userSettings.userWallet,
+      set: { keeperhubApiKey, updatedAt: new Date() },
+    });
+
+    syncKeeperHubState(wallet).catch(console.error);
+
+    res.json({ success: true, wallet });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Save settings failed" });
+  }
 });
 
 app.get("/api/portfolio/:walletAddress", async (req, res) => {
@@ -72,10 +173,33 @@ app.get("/api/feed/:walletAddress", async (req, res) => {
   }
 });
 
-// ── Multi-Intent Natural Language Parser Route ──────────────────────────────────
 app.post("/api/chat", async (req, res) => {
   try {
     const { userMessage, conversationHistory = [], walletAddress = DEMO_WALLET } = req.body;
+    const msgLower = userMessage.toLowerCase();
+
+    if (msgLower.includes("current payroll") || msgLower.includes("what is the payroll") || msgLower.includes("active payroll") || msgLower.includes("payroll status") || msgLower.includes("my workflows")) {
+      const activeWfs = await db.query.activeWorkflows.findMany({
+        where: eq(activeWorkflows.userWallet, walletAddress.toLowerCase()),
+      });
+
+      if (activeWfs.length === 0) {
+        return res.json({
+          reply: "📊 You currently have no active workflows or payroll schedules registered.",
+          intents: [{ type: "query", confidence: 1 }],
+        });
+      }
+
+      const wfSummaries = activeWfs.map((w, idx) => {
+        const recip = w.recipientAddress ? `Recipient: ${w.recipientAddress.slice(0, 8)}...` : "";
+        return `${idx + 1}. ${w.type.toUpperCase()} — ${w.amount} USDC (${w.cronSchedule || "Active schedule"}). ${recip}`;
+      }).join("\n");
+
+      return res.json({
+        reply: `📊 **Active Workflows Registry (${activeWfs.length} Active):**\n\n${wfSummaries}`,
+        intents: [{ type: "query", confidence: 1 }],
+      });
+    }
 
     const fullTranscript = conversationHistory
       .map((m: any) => `${m.sender === "user" ? "User" : "Agent"}: ${m.text}`)
