@@ -1,4 +1,4 @@
-﻿import { pgTable, uuid, varchar, integer, timestamp, uniqueIndex, index } from "drizzle-orm/pg-core";
+import { pgTable, uuid, varchar, integer, timestamp, uniqueIndex, index, jsonb } from "drizzle-orm/pg-core";
 
 // 1. Repayment Cycles Table: Enforces spending limits per cycle per wallet
 export const repaymentCycles = pgTable("repayment_cycles", {
@@ -38,7 +38,8 @@ export const executionsLog = pgTable("executions_log", {
   action: varchar("action").notNull(), // 'repay' | 'swap' | 'rotate' | 'payroll' | 'simulation'
   amount: integer("amount").notNull(),
   status: varchar("status").notNull(), // 'success' | 'reverted_simulation' | 'reverted_chain' | 'pending'
-  reason: varchar("reason"), // Descriptive error message
+  reason: varchar("reason"), // AI userExplanation (short summary)
+  aiAnalysis: jsonb("ai_analysis"), // Full structured AI analysis object from Zod schema
   txHash: varchar("tx_hash", { length: 66 }),
   timestamp: timestamp("timestamp").defaultNow(),
 }, (table) => ({

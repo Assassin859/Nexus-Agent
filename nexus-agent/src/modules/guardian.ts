@@ -73,6 +73,7 @@ export async function run(userWallet: string): Promise<void> {
       amount: 0,
       status: "success",
       reason: decision.userExplanation,
+      aiAnalysis: decision.analysis,
     });
     return;
   }
@@ -86,7 +87,6 @@ export async function run(userWallet: string): Promise<void> {
     calldata = encodeAaveRepay(USDC_SEPOLIA, amount, AGENTIC_WALLET);
     targetContract = AAVE_V3_POOL;
   } else {
-    // supply_collateral — supply WETH as extra collateral
     calldata = encodeAaveSupply(WETH_SEPOLIA, amount, AGENTIC_WALLET);
     targetContract = AAVE_V3_POOL;
   }
@@ -116,6 +116,7 @@ export async function run(userWallet: string): Promise<void> {
     amount,
     status: "success",
     reason: decision.userExplanation,
+    aiAnalysis: decision.analysis,
   });
 
   console.log(`[GUARDIAN] Executed ${decision.recommendation.action} $${amount} USDC. KeeperHub executionId: ${executionId}`);

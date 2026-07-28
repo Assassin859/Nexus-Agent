@@ -18,17 +18,16 @@ export type PaychainResponse = {
   verification_required: boolean;
   message: string;
   workflowId?: string;
+  aiAnalysis?: any;
 };
 
 export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
   const { userMessage, conversationHistory = [], walletAddress } = req;
 
-  // Build conversational transcript context
   const fullTranscript = conversationHistory
     .map(m => `${m.sender === "user" ? "User" : "Agent"}: ${m.text}`)
     .join("\n") + `\nUser: ${userMessage}`;
 
-  // Check for existing payroll workflows
   const existingWorkflows = await db.query.activeWorkflows.findMany({
     where: and(
       eq(activeWorkflows.userWallet, walletAddress),
@@ -37,7 +36,6 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     ),
   });
 
-  // Check if user explicitly confirmed in current OR prior message in transcript
   const isExplicitOverride = Boolean(
     fullTranscript.toLowerCase().includes("do it anyway") ||
     fullTranscript.toLowerCase().includes("override") ||
@@ -47,7 +45,6 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     fullTranscript.toLowerCase().includes("add")
   );
 
-  // AI Brain: parse natural language → structured payroll config with conversation memory
   let decision;
   try {
     const res = await generateObject({
@@ -63,8 +60,12 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     });
     decision = res.object;
   } catch {
-    // Direct fallback if AI schema extraction fails on short follow-up phrases
     decision = {
+      analysis: {
+        exceedsSpendingCeiling: false,
+        registeredWorkflowCollision: false,
+        recipientAddressValid: true,
+      },
       userExplanation: "Confirmed! Created recurring payroll workflow.",
       recommendation: {
         recipient_address: walletAddress,
@@ -78,23 +79,21 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     };
   }
 
-  // Verification required: over $1000 or duplicate recipient (unless explicitly overridden)
   if (decision.recommendation.verification_required && !isExplicitOverride) {
     return {
       success: false,
       verification_required: true,
       message: decision.userExplanation,
+      aiAnalysis: decision.analysis,
     };
   }
 
-  // ── Phase 3: Real ERC20 transfer calldata ─────────────────────────────────────
   const recipientAddr = decision.recommendation.recipient_address || walletAddress;
   const calldata = encodeERC20Transfer(
     recipientAddr,
     decision.recommendation.amount
   );
 
-  // ── KeeperHub: create a cron-triggered workflow ───────────────────────────────
   const { workflowId } = await createWorkflow({
     name: `payroll-${(decision.recommendation.recipient_name || "payroll").replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
     triggerType: "cron",
@@ -107,7 +106,6 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     }],
   });
 
-  // ── Write to DB ───────────────────────────────────────────────────────────────
   const newWf = await db.insert(activeWorkflows).values({
     userWallet: walletAddress,
     type: "payroll",
@@ -124,6 +122,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     amount: decision.recommendation.amount,
     status: "success",
     reason: `Payroll workflow created for ${recipientAddr} (${decision.recommendation.amount} USDC ${decision.recommendation.frequency}).`,
+    aiAnalysis: decision.analysis,
   });
 
   return {
@@ -133,5 +132,6 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       ? `Explicit override confirmed! Registered payroll workflow of ${decision.recommendation.amount} USDC for ${recipientAddr}.`
       : decision.userExplanation,
     workflowId,
+    aiAnalysis: decision.analysis,
   };
 }

@@ -1,4 +1,7 @@
-import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock } from "lucide-react";
+"use client";
+
+import { useState } from "react";
+import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp, Cpu } from "lucide-react";
 
 export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending";
 
@@ -10,14 +13,26 @@ type Props = {
   timestamp?: string;
   txHash?: string;
   reason?: string;
+  aiAnalysis?: Record<string, any>;
 };
 
-export default function TransactionCard({ action, amount, asset = "USDC", status, timestamp, txHash, reason }: Props) {
+export default function TransactionCard({
+  action,
+  amount,
+  asset = "USDC",
+  status,
+  timestamp,
+  txHash,
+  reason,
+  aiAnalysis,
+}: Props) {
+  const [expanded, setExpanded] = useState(false);
+
   const badge = {
-    success:              <span className="pill pill-success"><CheckCircle2 size={12} /> Executed</span>,
-    reverted_simulation:  <span className="pill pill-warning"><AlertTriangle size={12} /> Caught Revert</span>,
-    reverted_chain:       <span className="pill pill-danger"><XCircle size={12} /> Chain Revert</span>,
-    pending:              <span className="pill pill-cyan"><Clock size={12} /> Pending</span>,
+    success:             <span className="pill pill-success"><CheckCircle2 size={12} /> Executed</span>,
+    reverted_simulation: <span className="pill pill-warning"><AlertTriangle size={12} /> Caught Revert</span>,
+    reverted_chain:      <span className="pill pill-danger"><XCircle size={12} /> Chain Revert</span>,
+    pending:             <span className="pill pill-cyan"><Clock size={12} /> Pending</span>,
   }[status];
 
   return (
@@ -54,6 +69,39 @@ export default function TransactionCard({ action, amount, asset = "USDC", status
           color: "var(--text-2)", fontFamily: "ui-monospace, monospace", lineHeight: 1.65
         }}>
           <span style={{ fontWeight: 700, color: "#fbbf24" }}>Reason: </span>{reason}
+        </div>
+      )}
+
+      {/* AI Reasoning Panel toggle & container */}
+      {aiAnalysis && Object.keys(aiAnalysis).length > 0 && (
+        <div style={{ borderTop: "1px dashed var(--border)", paddingTop: 10 }}>
+          <button
+            onClick={() => setExpanded(!expanded)}
+            style={{
+              background: "transparent", border: "none", color: "#818cf8",
+              fontSize: 12, fontWeight: 600, cursor: "pointer", display: "flex",
+              alignItems: "center", gap: 6, padding: 0
+            }}
+          >
+            <Cpu size={14} /> 🧠 AI Reasoning &amp; Decision Breakdown {expanded ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
+
+          {expanded && (
+            <div className="animate-in" style={{
+              marginTop: 10, padding: 12, borderRadius: 8,
+              background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.15)",
+              fontSize: 12, fontFamily: "monospace", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8
+            }}>
+              {Object.entries(aiAnalysis).map(([key, val]) => (
+                <div key={key} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <span style={{ color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>{key.replace(/([A-Z])/g, " $1")}</span>
+                  <span style={{ color: typeof val === "boolean" ? (val ? "#34d399" : "#f87171") : "var(--text)", fontWeight: 700 }}>
+                    {typeof val === "object" ? JSON.stringify(val) : String(val)}
+                  </span>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
       )}
 

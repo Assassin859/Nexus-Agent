@@ -11,10 +11,9 @@ import { eq, and } from "drizzle-orm";
 import { formatEther } from "ethers";
 
 const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || "0x0000000000000000000000000000000000000000";
-const ETH_PRICE_USD  = 3500; // Approximate — in production fetch from price oracle
+const ETH_PRICE_USD  = 3500;
 
 export async function run(userWallet: string): Promise<void> {
-  // Check if DCA workflow is active for this wallet
   const workflow = await db.query.activeWorkflows.findFirst({
     where: and(
       eq(activeWorkflows.userWallet, userWallet),
@@ -28,13 +27,11 @@ export async function run(userWallet: string): Promise<void> {
     return;
   }
 
-  // ── Phase 2: Real gas price from RPC ─────────────────────────────────────────
-  let estimatedGasUSD = 6; // Safe fallback
+  let estimatedGasUSD = 6;
   try {
     const provider = await getProvider();
     const feeData = await provider.getFeeData();
     const gasPriceWei = feeData.gasPrice ?? 0n;
-    // Estimate gas units for a typical swap (~150k)
     const estimatedGasUnits = 150_000n;
     const gasCostEth = Number(formatEther(gasPriceWei * estimatedGasUnits));
     estimatedGasUSD = gasCostEth * ETH_PRICE_USD;
@@ -43,7 +40,6 @@ export async function run(userWallet: string): Promise<void> {
     console.warn("[DCA] Failed to fetch real gas price, using fallback:", err instanceof Error ? err.message : err);
   }
 
-  // ── AI Brain: real gas input → real decision ──────────────────────────────────
   const { object: decision } = await generateObject({
     model: githubModels(BRAIN_MODEL),
     schema: DCASchema,
@@ -56,7 +52,6 @@ export async function run(userWallet: string): Promise<void> {
     }),
   });
 
-  // ── Gas threshold check: delay if too expensive ───────────────────────────────
   if (!decision.recommendation.execute_swap) {
     console.log(`[DCA] Swap delayed ${decision.recommendation.delay_minutes}min: ${decision.userExplanation}`);
     await db.insert(executionsLog).values({
@@ -65,14 +60,13 @@ export async function run(userWallet: string): Promise<void> {
       amount: workflow.amount,
       status: "reverted_simulation",
       reason: `Gas threshold exceeded ($${estimatedGasUSD.toFixed(2)}): ${decision.userExplanation}`,
+      aiAnalysis: decision.analysis,
     });
     return;
   }
 
-  // ── Phase 3: Real Uniswap V3 swap calldata ────────────────────────────────────
   const calldata = encodeUniswapSwap(workflow.amount, AGENTIC_WALLET);
 
-  // ── Pre-flight simulation ─────────────────────────────────────────────────────
   const sim = await simulate(
     { from: AGENTIC_WALLET, to: UNISWAP_V3_ROUTER, data: calldata },
     userWallet
@@ -82,7 +76,6 @@ export async function run(userWallet: string): Promise<void> {
     return;
   }
 
-  // ── KeeperHub execution ───────────────────────────────────────────────────────
   const { workflowId } = await createWorkflow({
     name: `dca-${userWallet.slice(0, 8)}-${Date.now()}`,
     triggerType: "manual",
@@ -90,13 +83,13 @@ export async function run(userWallet: string): Promise<void> {
   });
   const { executionId } = await executeWorkflow(workflowId);
 
-  // ── Write success to DB ───────────────────────────────────────────────────────
   await db.insert(executionsLog).values({
     userWallet,
     action: "swap",
     amount: workflow.amount,
     status: "success",
     reason: `DCA: ${workflow.amount} USDC → ETH via Uniswap V3. ${decision.userExplanation}`,
+    aiAnalysis: decision.analysis,
   });
 
   console.log(`[DCA] Swap executed. executionId: ${executionId}`);

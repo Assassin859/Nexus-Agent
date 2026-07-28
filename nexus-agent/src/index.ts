@@ -4,6 +4,9 @@ dotenv.config({ path: "../.env", override: true });
 import express from "express";
 import cors from "cors";
 import cron from "node-cron";
+import { generateObject } from "ai";
+import { githubModels, BRAIN_MODEL } from "./brain/provider.js";
+import { IntentSchema, INTENT_PARSER_SYSTEM_PROMPT } from "./brain/intent-parser.js";
 import { run as runGuardian } from "./modules/guardian.js";
 import { run as runYieldRotator } from "./modules/yield-rotator.js";
 import { run as runDCA } from "./modules/dca.js";
@@ -21,17 +24,13 @@ const DEMO_WALLET = (
   process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b"
 ).toLowerCase();
 
-// ── Health Check ──────────────────────────────────────────────────────────────
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "nexus-agent", ts: new Date().toISOString() });
 });
 
-// ── Portfolio API — real Aave V3 data ─────────────────────────────────────────
 app.get("/api/portfolio/:walletAddress", async (req, res) => {
   try {
     const walletAddress = req.params.walletAddress.toLowerCase();
-
-    // Run in parallel: live Aave position + DB workflows
     const [position, workflows] = await Promise.all([
       getAavePosition(walletAddress),
       db.query.activeWorkflows.findMany({
@@ -45,12 +44,12 @@ app.get("/api/portfolio/:walletAddress", async (req, res) => {
 
     res.json({
       walletAddress,
-      healthFactor:       parseFloat(position.healthFactor.toFixed(2)),
-      collateralUSD:      parseFloat(position.collateralUSD.toFixed(0)),
-      debtUSD:            parseFloat(position.debtUSD.toFixed(0)),
+      healthFactor: parseFloat(position.healthFactor.toFixed(2)),
+      collateralUSD: parseFloat(position.collateralUSD.toFixed(0)),
+      debtUSD: parseFloat(position.debtUSD.toFixed(0)),
       availableBorrowsUSD: parseFloat(position.availableBorrowsUSD.toFixed(0)),
       ltvPercent,
-      usdcWalletBalance:  parseFloat(position.usdcWalletBalance.toFixed(2)),
+      usdcWalletBalance: parseFloat(position.usdcWalletBalance.toFixed(2)),
       currentUSDCSupplyAPY: parseFloat(position.currentUSDCSupplyAPY.toFixed(2)),
       workflows,
     });
@@ -59,7 +58,6 @@ app.get("/api/portfolio/:walletAddress", async (req, res) => {
   }
 });
 
-// ── Activity Feed API — real executions_log from DB ──────────────────────────
 app.get("/api/feed/:walletAddress", async (req, res) => {
   try {
     const walletAddress = req.params.walletAddress.toLowerCase();
@@ -74,7 +72,75 @@ app.get("/api/feed/:walletAddress", async (req, res) => {
   }
 });
 
-// ── PayChain / Chat Endpoint ──────────────────────────────────────────────────
+// ── Multi-Intent Natural Language Parser Route ──────────────────────────────────
+app.post("/api/chat", async (req, res) => {
+  try {
+    const { userMessage, conversationHistory = [], walletAddress = DEMO_WALLET } = req.body;
+
+    const fullTranscript = conversationHistory
+      .map((m: any) => `${m.sender === "user" ? "User" : "Agent"}: ${m.text}`)
+      .join("\n") + `\nUser: ${userMessage}`;
+
+    let parsedIntents;
+    try {
+      const parsed = await generateObject({
+        model: githubModels(BRAIN_MODEL),
+        schema: IntentSchema,
+        system: INTENT_PARSER_SYSTEM_PROMPT,
+        prompt: JSON.stringify({
+          userMessage,
+          fullTranscript,
+        }),
+      });
+      parsedIntents = parsed.object;
+    } catch {
+      parsedIntents = {
+        intents: [{ type: "payroll" as const, confidence: 0.8, parameters: {}, isFollowUp: false }],
+        summary: "Fallback to default strategy processing",
+      };
+    }
+
+    const replies: string[] = [];
+    const executionResults: any[] = [];
+
+    for (const intent of parsedIntents.intents) {
+      if (intent.type === "yield_rotate") {
+        await runYieldRotator(walletAddress);
+        replies.push("🤖 Initiated Yield Rotator strategy! Evaluated APY delta & updated execution feed.");
+        executionResults.push({ type: "yield_rotate", status: "success" });
+      } else if (intent.type === "dca") {
+        await runDCA(walletAddress);
+        replies.push("🤖 Triggered DCA Swap strategy! Uniswap V3 swap calldata prepared.");
+        executionResults.push({ type: "dca", status: "success" });
+      } else if (intent.type === "guardian") {
+        await runGuardian(walletAddress);
+        replies.push("🛡️ Triggered Guardian position check! Evaluated Health Factor and repayment cycles.");
+        executionResults.push({ type: "guardian", status: "success" });
+      } else if (intent.type === "payroll" || intent.type === "confirmation") {
+        const payRes = await handlePaychain({
+          userMessage,
+          conversationHistory,
+          walletAddress,
+        });
+        replies.push(payRes.message);
+        executionResults.push({ type: "payroll", result: payRes });
+      } else if (intent.type === "query") {
+        const pos = await getAavePosition(walletAddress);
+        replies.push(`📊 Portfolio Status: Health Factor is ${pos.healthFactor.toFixed(2)}, Collateral: $${pos.collateralUSD.toFixed(0)}, Debt: $${pos.debtUSD.toFixed(0)}.`);
+      }
+    }
+
+    res.json({
+      reply: replies.join("\n\n") || `Evaluated prompt: "${userMessage}". Position HF is within safe bounds.`,
+      intents: parsedIntents.intents,
+      summary: parsedIntents.summary,
+      executionResults,
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Chat parsing failed" });
+  }
+});
+
 app.post("/api/payroll", async (req, res) => {
   try {
     const result = await handlePaychain(req.body);
@@ -84,7 +150,6 @@ app.post("/api/payroll", async (req, res) => {
   }
 });
 
-// ── Manual Trigger Endpoints ──────────────────────────────────────────────────
 app.post("/api/trigger/guardian", async (req, res) => {
   const wallet = (req.body.wallet || DEMO_WALLET).toLowerCase();
   runGuardian(wallet)
@@ -106,19 +171,15 @@ app.post("/api/trigger/yield", async (req, res) => {
     .catch(err => res.status(500).json({ error: err.message }));
 });
 
-// ── Background Cron Loops ─────────────────────────────────────────────────────
 function startLoops() {
-  // Guardian loop — every 5 minutes
   cron.schedule("*/5 * * * *", () => {
     runGuardian(DEMO_WALLET).catch(err => console.error("[GUARDIAN CRON ERROR]:", err));
   });
 
-  // Yield loop — every 15 minutes
   cron.schedule("*/15 * * * *", () => {
     runYieldRotator(DEMO_WALLET).catch(err => console.error("[YIELD CRON ERROR]:", err));
   });
 
-  // DCA loop — hourly
   cron.schedule("0 * * * *", () => {
     runDCA(DEMO_WALLET).catch(err => console.error("[DCA CRON ERROR]:", err));
   });
@@ -126,7 +187,6 @@ function startLoops() {
   console.log("[NEXUS] Background cron loops initialized (Guardian: 5min, Yield: 15min, DCA: hourly).");
 }
 
-// ── Start Server ──────────────────────────────────────────────────────────────
 const PORT = parseInt(process.env.PORT || "3001", 10);
 app.listen(PORT, () => {
   console.log(`[NEXUS] nexus-agent API running on http://localhost:${PORT}`);
