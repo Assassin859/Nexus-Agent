@@ -73,19 +73,17 @@ export async function getAavePosition(walletAddress: string): Promise<AavePositi
       usdcWalletBalance,
       currentUSDCSupplyAPY,
     };
-  } catch (error) {
-    // If wallet has no Aave position (no deposits), contract returns zeros — not an error
-    const msg = error instanceof Error ? error.message : String(error);
-    console.warn(`[AAVE] getUserAccountData failed for ${walletAddress}: ${msg}`);
-    // Return safe defaults so agent doesn't crash if wallet has no Aave position
+  } catch {
+    // Wallet has no Aave position — contract returns empty data (0x). This is normal.
+    // Guardian will log "No Aave position found — skipping." which is sufficient.
     return {
       collateralUSD: 0,
       debtUSD: 0,
       availableBorrowsUSD: 0,
       ltv: 0,
-      healthFactor: 99, // Treat as completely safe — no position to liquidate
+      healthFactor: 99,
       usdcWalletBalance: 0,
-      currentUSDCSupplyAPY: 4.2, // Fallback APY
+      currentUSDCSupplyAPY: 4.2,
     };
   }
 }
