@@ -16,7 +16,10 @@ import { getProvider } from "../lib/rpc.js";
 import { Contract } from "ethers";
 import { getAavePosition } from "../lib/aave.js";
 
-const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || "0x0D81e4c01a4507Bdd8b6a075Cb8f1e0A0270A442";
+const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || (() => {
+  console.warn("[YIELD] WARNING: AGENTIC_WALLET_ADDRESS is not set. Yield rotation transactions may fail. Set it in .env.");
+  return "";
+})();
 
 const COMPOUND_ABI = [
   "function supplyRatePerSecond() view returns (uint256)",

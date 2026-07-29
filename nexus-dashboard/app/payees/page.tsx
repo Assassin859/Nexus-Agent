@@ -31,8 +31,8 @@ export default function PayeesPage() {
   const [payoutMode, setPayoutMode] = useState<"direct" | "vault_pool">("direct");
   const [vaultPoolAddress, setVaultPoolAddress] = useState("");
   const [members, setMembers] = useState<PayeeMember[]>([
-    { name: "Alice", address: "" },
-    { name: "Bob", address: "" },
+    { name: "", address: "" },
+    { name: "", address: "" },
   ]);
   const [saving, setSaving] = useState(false);
 
@@ -52,10 +52,12 @@ export default function PayeesPage() {
 
   useEffect(() => {
     loadPayees();
+    const interval = setInterval(loadPayees, 3000);
+    return () => clearInterval(interval);
   }, [wallet]);
 
   function handleAddMember() {
-    setMembers([...members, { name: `Member #${members.length + 1}`, address: "" }]);
+    setMembers([...members, { name: "", address: "" }]);
   }
 
   function handleRemoveMember(idx: number) {
@@ -73,26 +75,29 @@ export default function PayeesPage() {
     setSaving(true);
     try {
       const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
+      const validMembers = members.filter(m => m.name.trim() || m.address.trim());
+
       const res = await fetch(`${agentUrl}/api/payees`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           userWallet: wallet,
-          name,
+          name: name.trim(),
           type,
-          payoutMode,
-          vaultPoolAddress,
-          members: type === "single" ? [{ name, address: members[0]?.address || "" }] : members,
+          payoutMode: type === "single" ? "direct" : payoutMode,
+          vaultPoolAddress: (type === "team" && payoutMode === "vault_pool") ? vaultPoolAddress.trim() : null,
+          members: type === "single" ? [{ name: name.trim(), address: members[0]?.address?.trim() || "" }] : validMembers,
         }),
       });
 
       if (res.ok) {
         setName("");
+        setVaultPoolAddress("");
         setMembers([
-          { name: "Alice", address: "" },
-          { name: "Bob", address: "" },
+          { name: "", address: "" },
+          { name: "", address: "" },
         ]);
-        loadPayees();
+        await loadPayees();
       }
     } catch (err) {
       console.error("Failed to create payee:", err);
@@ -105,7 +110,7 @@ export default function PayeesPage() {
     try {
       const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
       await fetch(`${agentUrl}/api/payees/${id}`, { method: "DELETE" });
-      loadPayees();
+      await loadPayees();
     } catch (err) {
       console.error("Failed to delete payee:", err);
     }
@@ -113,9 +118,17 @@ export default function PayeesPage() {
 
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
-      <div className="page-header">
-        <h1 className="page-title">Payees &amp; Team Directory</h1>
-        <p className="page-subtitle">Manage single recipients, named team members, and shared team vault pools</p>
+      <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
+        <div>
+          <h1 className="page-title">Payees &amp; Team Directory</h1>
+          <p className="page-subtitle">Manage single recipients, named team members, and shared team vault pools</p>
+        </div>
+        <div style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ color: "var(--text-muted)" }}>Directory for:</span>
+          <span style={{ fontFamily: "monospace", color: "#818cf8", fontWeight: 700 }}>
+            {wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : "Disconnected"}
+          </span>
+        </div>
       </div>
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 24, alignItems: "start" }}>

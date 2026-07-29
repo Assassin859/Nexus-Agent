@@ -1,1 +1,5 @@
-{}
+{
+  "/payees/page": "app/payees/page.js",
+  "/api/payees/[wallet]/route": "app/api/payees/[wallet]/route.js",
+  "/page": "app/page.js"
+}

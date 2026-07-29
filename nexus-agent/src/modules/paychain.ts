@@ -7,6 +7,26 @@ import { createWorkflow } from "../lib/mcp-client.js";
 import { encodeERC20Transfer, USDC_SEPOLIA } from "../lib/calldata.js";
 import { eq, and, ilike } from "drizzle-orm";
 
+// ── Cron Parser: derive schedule from natural language message ───────────────
+function parseCronFromMessage(msg: string): string {
+  const m = msg.toLowerCase();
+  // Specific day of week
+  if (/\bevery\s+sunday\b|\bsundays\b/.test(m))    return "0 9 * * 0";
+  if (/\bevery\s+monday\b|\bmondays\b/.test(m))    return "0 9 * * 1";
+  if (/\bevery\s+tuesday\b|\btuesdays\b/.test(m))  return "0 9 * * 2";
+  if (/\bevery\s+wednesday\b|\bwednesdays\b/.test(m)) return "0 9 * * 3";
+  if (/\bevery\s+thursday\b|\bthursdays\b/.test(m)) return "0 9 * * 4";
+  if (/\bevery\s+friday\b|\bfridays\b/.test(m))    return "0 9 * * 5";
+  if (/\bevery\s+saturday\b|\bsaturdays\b/.test(m)) return "0 9 * * 6";
+  // Frequency keywords
+  if (/\bbiweekly\b|\bbi-weekly\b|\btwice.{0,10}month\b/.test(m)) return "0 9 1,15 * *";
+  if (/\bmonthly\b|\bevery\s+month\b|\bonce.{0,10}month\b/.test(m)) return "0 9 1 * *";
+  if (/\bdaily\b|\bevery\s+day\b/.test(m))          return "0 9 * * *";
+  // Default: weekly Monday 9am
+  return "0 9 * * 1";
+}
+
+
 export type PaychainRequest = {
   userMessage: string;
   conversationHistory?: Array<{ sender: string; text: string }>;
@@ -46,7 +66,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       const { workflowId } = await createWorkflow({
         name: `payroll-vault-${matchedPayee.name.replace(/\s+/g, "-")}-${Date.now()}`,
         triggerType: "cron",
-        cronSchedule: "0 9 * * 1",
+        cronSchedule: parseCronFromMessage(userMessage),
         steps: [{ type: "transaction", to: USDC_SEPOLIA, calldata, gasStrategy: "standard" }],
       });
 
@@ -55,8 +75,11 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         type: "payroll",
         recipientAddress: poolAddr,
         amount,
-        cronSchedule: "0 9 * * 1",
+        cronSchedule: parseCronFromMessage(userMessage),
         status: "active",
+      }).onConflictDoUpdate({
+        target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
+        set: { amount, updatedAt: new Date() },
       });
 
       await db.insert(executionsLog).values({
@@ -64,7 +87,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         action: "payroll",
         amount,
         status: "success",
-        reason: `Deposited ${amount} USDC into '${matchedPayee.name}' Shared Vault Pool (${poolAddr.slice(0, 8)}...).`,
+        reason: `Deposited ${amount} USDC into '${matchedPayee.name}' Shared Vault Pool (${poolAddr.slice(0, 8)}...). Schedule: ${parseCronFromMessage(userMessage)}.`,
         aiAnalysis: { matchedPayee: matchedPayee.name, payoutMode: "vault_pool", memberCount: matchedPayee.memberCount },
       });
 
@@ -91,7 +114,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       const { workflowId } = await createWorkflow({
         name: `payroll-${(memberName || "member").replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
         triggerType: "cron",
-        cronSchedule: "0 9 * * 1",
+        cronSchedule: parseCronFromMessage(userMessage),
         steps: [{ type: "transaction", to: USDC_SEPOLIA, calldata, gasStrategy: "standard" }],
       });
 
@@ -100,8 +123,11 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         type: "payroll",
         recipientAddress: targetAddr,
         amount,
-        cronSchedule: "0 9 * * 1",
+        cronSchedule: parseCronFromMessage(userMessage),
         status: "active",
+      }).onConflictDoUpdate({
+        target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
+        set: { amount, updatedAt: new Date() },
       });
 
       await db.insert(executionsLog).values({

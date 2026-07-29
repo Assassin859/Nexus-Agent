@@ -42,7 +42,7 @@ export async function run(userWallet: string): Promise<void> {
     ),
   });
 
-  const cycleRemaining = (cycle?.cycleLimitUSD ?? 1000) - (cycle?.totalRepaidThisCycleUSD ?? 0);
+  const cycleRemaining = (cycle?.cycleLimitUSD ?? 0) - (cycle?.totalRepaidThisCycleUSD ?? 0);
 
   // ── AI Brain: real inputs, real decision ──────────────────────────────────────
   const { object: decision } = await generateObject({

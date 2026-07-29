@@ -66,31 +66,34 @@ app.post("/api/payees", async (req, res) => {
       userWallet: wallet,
       name,
       type,
-      payoutMode,
-      vaultPoolAddress,
+      payoutMode: type === "single" ? "direct" : payoutMode,
+      vaultPoolAddress: (type === "team" && payoutMode === "vault_pool") ? vaultPoolAddress : null,
       recipientAddresses: members,
       memberCount: members.length || 1,
     }).returning();
 
     // 2. Auto-create Standalone Payee Entries for named members if type is team
-    if (type === "team" && members.length > 0) {
+    if (type === "team" && Array.isArray(members) && members.length > 0) {
       for (const m of members) {
-        if (!m.address) continue;
-        const memberName = m.name || `Member (${m.address.slice(0, 6)})`;
+        const memberAddress = m.address ? m.address.trim() : "";
+        const memberName = m.name ? m.name.trim() : "";
+        if (!memberName && !memberAddress) continue;
+
+        const displayName = memberName || `Member (${memberAddress.slice(0, 6)})`;
         const existing = await db.query.payees.findFirst({
           where: and(
             eq(payees.userWallet, wallet),
-            eq(payees.name, memberName)
+            eq(payees.name, displayName)
           ),
         });
 
         if (!existing) {
           await db.insert(payees).values({
             userWallet: wallet,
-            name: memberName,
+            name: displayName,
             type: "single",
             payoutMode: "direct",
-            recipientAddresses: [{ name: memberName, address: m.address }],
+            recipientAddresses: [{ name: displayName, address: memberAddress }],
             memberCount: 1,
             parentTeamId: primary[0].id,
           });

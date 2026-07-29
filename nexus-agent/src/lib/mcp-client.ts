@@ -156,12 +156,16 @@ export async function sendKeeperNotification(channel: "telegram" | "discord" | "
 
 // 10. Query RPC Failover Endpoint
 export async function getFailoverRPC(): Promise<string> {
+  const envRpc = process.env.ALCHEMY_RPC_URL;
+  if (!envRpc) {
+    console.warn("[RPC] WARNING: ALCHEMY_RPC_URL is not set. RPC calls may fail. Set it in .env.");
+  }
   const client = await tryGetMcpClient();
-  if (!client) return process.env.ALCHEMY_RPC_URL || "https://eth-sepolia.g.alchemy.com/v2/demo";
+  if (!client) return envRpc || "";
   try {
     const result = await client.callTool({ name: "get_failover_rpc", arguments: {} });
-    return (result.content as any).rpcUrl;
+    return (result.content as any).rpcUrl || envRpc || "";
   } catch {
-    return process.env.ALCHEMY_RPC_URL || "https://eth-sepolia.g.alchemy.com/v2/demo";
+    return envRpc || "";
   }
 }
