@@ -38,7 +38,8 @@ export default function PayeesPage() {
 
   async function loadPayees() {
     try {
-      const res = await fetch(`/api/payees/${wallet}`);
+      const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
+      const res = await fetch(`${agentUrl}/api/payees/${wallet}?t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) setPayeesList(data);
@@ -116,6 +117,17 @@ export default function PayeesPage() {
     }
   }
 
+  async function handleClearAllPayees() {
+    if (!confirm("Are you sure you want to delete all payees for this wallet?")) return;
+    try {
+      const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
+      await fetch(`${agentUrl}/api/payees/all/${wallet}`, { method: "DELETE" });
+      await loadPayees();
+    } catch (err) {
+      console.error("Failed to clear payees:", err);
+    }
+  }
+
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: 16 }}>
@@ -123,11 +135,22 @@ export default function PayeesPage() {
           <h1 className="page-title">Payees &amp; Team Directory</h1>
           <p className="page-subtitle">Manage single recipients, named team members, and shared team vault pools</p>
         </div>
-        <div style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
-          <span style={{ color: "var(--text-muted)" }}>Directory for:</span>
-          <span style={{ fontFamily: "monospace", color: "#818cf8", fontWeight: 700 }}>
-            {wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : "Disconnected"}
-          </span>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          {payeesList.length > 0 && (
+            <button
+              onClick={handleClearAllPayees}
+              className="btn btn-outline"
+              style={{ padding: "6px 12px", fontSize: 12, color: "#f87171", borderColor: "rgba(248,113,113,0.3)" }}
+            >
+              Clear All Payees
+            </button>
+          )}
+          <div style={{ padding: "8px 14px", borderRadius: 8, background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.25)", fontSize: 12, display: "flex", alignItems: "center", gap: 8 }}>
+            <span style={{ color: "var(--text-muted)" }}>Directory for:</span>
+            <span style={{ fontFamily: "monospace", color: "#818cf8", fontWeight: 700 }}>
+              {wallet ? `${wallet.slice(0, 6)}...${wallet.slice(-4)}` : "Disconnected"}
+            </span>
+          </div>
         </div>
       </div>
 

@@ -1,5 +1,9 @@
 {
+  "/chat/page": "app/chat/page.js",
+  "/workflows/page": "app/workflows/page.js",
+  "/resilience/page": "app/resilience/page.js",
   "/payees/page": "app/payees/page.js",
-  "/api/payees/[wallet]/route": "app/api/payees/[wallet]/route.js",
-  "/page": "app/page.js"
+  "/page": "app/page.js",
+  "/api/chat/route": "app/api/chat/route.js",
+  "/api/portfolio/[wallet]/route": "app/api/portfolio/[wallet]/route.js"
 }

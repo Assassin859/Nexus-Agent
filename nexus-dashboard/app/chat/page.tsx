@@ -17,25 +17,28 @@ const DEFAULT_WELCOME = {
 export default function ChatPage() {
   const { walletAddress } = useWallet();
 
-  const [messages, setMessages] = useState<Array<{ sender: string; text: string; intents?: any[] }>>(() => {
+  const [messages, setMessages] = useState<Array<{ sender: string; text: string; intents?: any[] }>>([DEFAULT_WELCOME]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
+
+  // Load chat history on client mount safely to prevent SSR hydration mismatch
+  useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("nexus_chat_history");
       if (saved) {
         try {
           const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setMessages(parsed);
+          }
         } catch {}
       }
     }
-    return [DEFAULT_WELCOME];
-  });
-
-  const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
+  }, []);
 
   useEffect(() => {
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && messages.length > 0) {
       localStorage.setItem("nexus_chat_history", JSON.stringify(messages));
     }
   }, [messages]);

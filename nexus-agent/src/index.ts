@@ -5,9 +5,9 @@ import express from "express";
 import cors from "cors";
 import cron from "node-cron";
 import { verifyMessage } from "ethers";
-import { generateObject } from "ai";
+import { generateText } from "ai";
 import { githubModels, BRAIN_MODEL } from "./brain/provider.js";
-import { IntentSchema, INTENT_PARSER_SYSTEM_PROMPT } from "./brain/intent-parser.js";
+import { translateIntent } from "./brain/nlu-translator.js";
 import { run as runGuardian } from "./modules/guardian.js";
 import { run as runYieldRotator } from "./modules/yield-rotator.js";
 import { run as runDCA } from "./modules/dca.js";
@@ -104,6 +104,16 @@ app.post("/api/payees", async (req, res) => {
     res.json({ success: true, payee: primary[0] });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Create payee failed" });
+  }
+});
+
+app.delete("/api/payees/all/:walletAddress", async (req, res) => {
+  try {
+    const wallet = req.params.walletAddress.toLowerCase();
+    await db.delete(payees).where(eq(payees.userWallet, wallet));
+    res.json({ success: true, message: `Cleared all payees for wallet ${wallet}` });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Clear payees failed" });
   }
 });
 
@@ -259,92 +269,183 @@ app.get("/api/feed/:walletAddress", async (req, res) => {
 app.post("/api/chat", async (req, res) => {
   try {
     const { userMessage, conversationHistory = [], walletAddress = DEMO_WALLET } = req.body;
-    const msgLower = userMessage.toLowerCase();
+    const wallet = walletAddress.toLowerCase();
 
-    if (msgLower.includes("current payroll") || msgLower.includes("what is the payroll") || msgLower.includes("active payroll") || msgLower.includes("payroll status") || msgLower.includes("my workflows")) {
-      const activeWfs = await db.query.activeWorkflows.findMany({
-        where: eq(activeWorkflows.userWallet, walletAddress.toLowerCase()),
-      });
+    // ── Stage 1: NLU Translation ─────────────────────────────────────────────
+    // Convert raw user input → clean canonical action + normalizedPrompt.
+    // No keyword shortcuts. The LLM handles everything.
+    const nlu = await translateIntent(userMessage, conversationHistory, wallet);
 
-      if (activeWfs.length === 0) {
-        return res.json({
-          reply: "📊 You currently have no active workflows or payroll schedules registered.",
-          intents: [{ type: "query", confidence: 1 }],
-        });
-      }
+    console.log(`[NLU] action=${nlu.action} confidence=${nlu.confidence.toFixed(2)} prompt="${nlu.normalizedPrompt}"`);
 
-      const wfSummaries = activeWfs.map((w, idx) => {
-        const recip = w.recipientAddress ? `Recipient: ${w.recipientAddress.slice(0, 8)}...` : "";
-        return `${idx + 1}. ${w.type.toUpperCase()} — ${w.amount} USDC (${w.cronSchedule || "Active schedule"}). ${recip}`;
-      }).join("\n");
-
+    // If NLU is uncertain, ask for clarification
+    if (nlu.requiresClarification && nlu.clarificationQuestion) {
       return res.json({
-        reply: `📊 **Active Workflows Registry (${activeWfs.length} Active):**\n\n${wfSummaries}`,
-        intents: [{ type: "query", confidence: 1 }],
+        reply: `🤔 ${nlu.clarificationQuestion}`,
+        nlu,
+        executionResults: [],
       });
     }
 
+    // ── Stage 2: Execution Router ─────────────────────────────────────────────
+    // Route purely on nlu.action — pass normalizedPrompt to all executors.
     const fullTranscript = conversationHistory
       .map((m: any) => `${m.sender === "user" ? "User" : "Agent"}: ${m.text}`)
       .join("\n") + `\nUser: ${userMessage}`;
 
-    let parsedIntents;
-    try {
-      const parsed = await generateObject({
-        model: githubModels(BRAIN_MODEL),
-        schema: IntentSchema,
-        system: INTENT_PARSER_SYSTEM_PROMPT,
-        prompt: JSON.stringify({
-          userMessage,
-          fullTranscript,
-        }),
-      });
-      parsedIntents = parsed.object;
-    } catch {
-      parsedIntents = {
-        intents: [{ type: "payroll" as const, confidence: 0.8, parameters: {}, isFollowUp: false }],
-        summary: "Fallback to default strategy processing",
-      };
-    }
+    let reply = "";
+    let executionResults: any[] = [];
 
-    const replies: string[] = [];
-    const executionResults: any[] = [];
+    switch (nlu.action) {
 
-    for (const intent of parsedIntents.intents) {
-      if (intent.type === "yield_rotate") {
-        await runYieldRotator(walletAddress);
-        replies.push("🤖 Initiated Yield Rotator strategy! Evaluated APY delta & updated execution feed.");
-        executionResults.push({ type: "yield_rotate", status: "success" });
-      } else if (intent.type === "dca") {
-        await runDCA(walletAddress);
-        replies.push("🤖 Triggered DCA Swap strategy! Uniswap V3 swap calldata prepared.");
-        executionResults.push({ type: "dca", status: "success" });
-      } else if (intent.type === "guardian") {
-        await runGuardian(walletAddress);
-        replies.push("🛡️ Triggered Guardian position check! Evaluated Health Factor and repayment cycles.");
-        executionResults.push({ type: "guardian", status: "success" });
-      } else if (intent.type === "payroll" || intent.type === "confirmation") {
+      // ── Payroll Scheduling ──────────────────────────────────────────────────
+      case "schedule_payroll": {
         const payRes = await handlePaychain({
-          userMessage,
+          userMessage: nlu.normalizedPrompt,
           conversationHistory,
-          walletAddress,
+          walletAddress: wallet,
         });
-        replies.push(payRes.message);
+        reply = payRes.message;
         executionResults.push({ type: "payroll", result: payRes });
-      } else if (intent.type === "query") {
-        const pos = await getAavePosition(walletAddress);
-        replies.push(`📊 Portfolio Status: Health Factor is ${pos.healthFactor.toFixed(2)}, Collateral: $${pos.collateralUSD.toFixed(0)}, Debt: $${pos.debtUSD.toFixed(0)}.`);
+        break;
+      }
+
+      // ── Confirmation / Override ─────────────────────────────────────────────
+      case "confirm_action": {
+        const payRes = await handlePaychain({
+          userMessage: nlu.parameters.isOverride
+            ? `OVERRIDE_CONFIRMED: ${fullTranscript}`
+            : fullTranscript,
+          conversationHistory,
+          walletAddress: wallet,
+        });
+        reply = payRes.message;
+        executionResults.push({ type: "confirmation", result: payRes });
+        break;
+      }
+
+      // ── Cancel All Payrolls ─────────────────────────────────────────────────
+      case "cancel_payroll": {
+        const cancelled = await db.update(activeWorkflows)
+          .set({ status: "cancelled", updatedAt: new Date() })
+          .where(and(
+            eq(activeWorkflows.userWallet, wallet),
+            eq(activeWorkflows.type, "payroll")
+          ))
+          .returning();
+
+        await db.insert(executionsLog).values({
+          userWallet: wallet,
+          action: "payroll",
+          amount: 0,
+          status: "success",
+          reason: `Cancelled all active payroll workflows. NLU: "${nlu.normalizedPrompt}"`,
+        });
+
+        reply = cancelled.length > 0
+          ? `🛑 **Cancelled ${cancelled.length} active payroll workflow(s).** No further scheduled payouts will execute.`
+          : "ℹ️ No active payroll workflows found to cancel.";
+        executionResults.push({ type: "cancel_payroll", cancelled: cancelled.length });
+        break;
+      }
+
+      // ── List Payees ─────────────────────────────────────────────────────────
+      case "list_payees": {
+        const userPayees = await db.query.payees.findMany({
+          where: eq(payees.userWallet, wallet),
+          orderBy: [desc(payees.createdAt)],
+        });
+
+        if (userPayees.length === 0) {
+          reply = "👥 You have no payees registered yet. Visit the **Payees page** to add recipients or team vault pools.";
+        } else {
+          const payeeList = userPayees.map((p, idx) => {
+            const badge = p.type === "team"
+              ? `👥 Team (${p.payoutMode === "vault_pool" ? "Vault Pool" : "Direct"})`
+              : "👤 Single";
+            return `${idx + 1}. **${p.name}** — ${badge}`;
+          }).join("\n");
+          reply = `👥 **Registered Payees (${userPayees.length}):**\n\n${payeeList}`;
+        }
+        executionResults.push({ type: "list_payees", count: userPayees.length });
+        break;
+      }
+
+      // ── List Active Workflows ───────────────────────────────────────────────
+      case "list_workflows": {
+        const activeWfs = await db.query.activeWorkflows.findMany({
+          where: eq(activeWorkflows.userWallet, wallet),
+          orderBy: [desc(activeWorkflows.createdAt)],
+        });
+
+        if (activeWfs.length === 0) {
+          reply = "📊 You have no active workflows or payroll schedules registered.";
+        } else {
+          const wfSummaries = activeWfs.map((w, idx) => {
+            const recip = w.recipientAddress ? `→ ${w.recipientAddress.slice(0, 10)}...` : "";
+            const statusBadge = w.status === "active" ? "🟢" : "🔴";
+            return `${idx + 1}. ${statusBadge} ${w.type.toUpperCase()} — **${w.amount} USDC** (${w.cronSchedule || "Manual"}) ${recip}`;
+          }).join("\n");
+          reply = `📊 **Active Workflows Registry (${activeWfs.length}):**\n\n${wfSummaries}`;
+        }
+        executionResults.push({ type: "list_workflows", count: activeWfs.length });
+        break;
+      }
+
+      // ── Query Portfolio (Aave) ──────────────────────────────────────────────
+      case "query_portfolio": {
+        const pos = await getAavePosition(wallet);
+        reply = `📊 **Portfolio Status:**\n\n• Health Factor: **${pos.healthFactor.toFixed(2)}** ${pos.healthFactor < 1.2 ? "⚠️ Low!" : "✅ Safe"}\n• Collateral: **$${pos.collateralUSD.toFixed(0)}**\n• Debt: **$${pos.debtUSD.toFixed(0)}**`;
+        executionResults.push({ type: "query_portfolio", healthFactor: pos.healthFactor });
+        break;
+      }
+
+      // ── DCA Strategy ───────────────────────────────────────────────────────
+      case "trigger_dca": {
+        await runDCA(wallet);
+        reply = "🤖 **DCA Strategy Triggered!** Uniswap V3 swap calldata has been prepared and submitted.";
+        executionResults.push({ type: "dca", status: "success" });
+        break;
+      }
+
+      // ── Guardian Check ──────────────────────────────────────────────────────
+      case "trigger_guardian": {
+        await runGuardian(wallet);
+        reply = "🛡️ **Guardian Position Check Triggered!** Evaluated Health Factor and repayment safety.";
+        executionResults.push({ type: "guardian", status: "success" });
+        break;
+      }
+
+      // ── Yield Rotator ───────────────────────────────────────────────────────
+      case "trigger_yield_rotate": {
+        await runYieldRotator(wallet);
+        reply = "🤖 **Yield Rotator Triggered!** APY delta evaluated and execution feed updated.";
+        executionResults.push({ type: "yield_rotate", status: "success" });
+        break;
+      }
+
+      // ── Unknown / Generic ───────────────────────────────────────────────────
+      case "unknown":
+      default: {
+        const { text } = await generateText({
+          model: githubModels(BRAIN_MODEL),
+          system: "You are NexusAgent, an autonomous DeFi wealth management assistant. Be concise and helpful. Guide users towards actionable commands: scheduling payrolls, checking portfolios, running DCA/yield strategies.",
+          prompt: `User said: "${userMessage}"\n\nConversation context:\n${fullTranscript}`,
+        });
+        reply = text;
+        executionResults.push({ type: "unknown" });
+        break;
       }
     }
 
     res.json({
-      reply: replies.join("\n\n") || `Evaluated prompt: "${userMessage}". Position HF is within safe bounds.`,
-      intents: parsedIntents.intents,
-      summary: parsedIntents.summary,
+      reply,
+      nlu: { action: nlu.action, confidence: nlu.confidence, normalizedPrompt: nlu.normalizedPrompt },
       executionResults,
     });
   } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Chat parsing failed" });
+    console.error("[CHAT ERROR]", err);
+    res.status(500).json({ error: err instanceof Error ? err.message : "Chat processing failed" });
   }
 });
 
