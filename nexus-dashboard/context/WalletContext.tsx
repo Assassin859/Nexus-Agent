@@ -8,6 +8,12 @@ type WalletContextType = {
   setWalletAddress: (addr: string) => void;
   isConnected: boolean;
   authToken: string | null;
+  // KeeperHub OAuth session
+  khSessionToken: string | null;
+  khEmail: string | null;
+  signInWithKeeperHub: () => void;
+  handleKeeperHubCallback: (token: string, email?: string) => void;
+  signOutKeeperHub: () => void;
   signInWithEthereum: () => Promise<{ success: boolean; token?: string; error?: string }>;
   disconnectWallet: () => void;
 };
@@ -21,6 +27,11 @@ const WalletContext = createContext<WalletContextType>({
   setWalletAddress: () => {},
   isConnected: false,
   authToken: null,
+  khSessionToken: null,
+  khEmail: null,
+  signInWithKeeperHub: () => {},
+  handleKeeperHubCallback: () => {},
+  signOutKeeperHub: () => {},
   signInWithEthereum: async () => ({ success: false, error: "Not initialized" }),
   disconnectWallet: () => {},
 });
@@ -29,17 +40,23 @@ export function WalletProvider({ children }: { children: ReactNode }) {
   const [walletAddress, setWalletAddressState] = useState<string>(DEFAULT_WALLET);
   const [isConnected, setIsConnected] = useState<boolean>(false);
   const [authToken, setAuthToken] = useState<string | null>(null);
+  const [khSessionToken, setKhSessionToken] = useState<string | null>(null);
+  const [khEmail, setKhEmail] = useState<string | null>(null);
 
-  // Load saved token & wallet on client mount
+  // Load saved token, wallet, and KeeperHub session on client mount
   useEffect(() => {
     if (typeof window !== "undefined") {
       const savedToken = localStorage.getItem("nexus_auth_token");
       const savedWallet = localStorage.getItem("nexus_wallet_address");
+      const savedKhToken = localStorage.getItem("nexus_kh_session_token");
+      const savedKhEmail = localStorage.getItem("nexus_kh_email");
       if (savedToken) setAuthToken(savedToken);
       if (savedWallet) {
         setWalletAddressState(savedWallet.toLowerCase());
         setIsConnected(true);
       }
+      if (savedKhToken) setKhSessionToken(savedKhToken);
+      if (savedKhEmail) setKhEmail(savedKhEmail);
     }
   }, []);
 
@@ -83,6 +100,33 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     clearAuthSession();
     setIsConnected(false);
     setWalletAddressState(DEFAULT_WALLET);
+  }
+
+  /**
+   * KeeperHub OAuth: redirect user to KeeperHub website to authenticate.
+   * On return, KeeperHub redirects to /auth/keeperhub/callback?token=...&email=...
+   * which calls handleKeeperHubCallback() to store the session.
+   */
+  function signInWithKeeperHub() {
+    const callbackUrl = encodeURIComponent(`${window.location.origin}/auth/keeperhub/callback`);
+    window.location.href = `https://app.keeperhub.com/auth/authorize?redirect_uri=${callbackUrl}&client=nexusagent`;
+  }
+
+  function handleKeeperHubCallback(token: string, email?: string) {
+    setKhSessionToken(token);
+    if (email) setKhEmail(email);
+    localStorage.setItem("nexus_kh_session_token", token);
+    if (email) localStorage.setItem("nexus_kh_email", email);
+    // Also mark as KH-connected for Sidebar status check
+    localStorage.setItem(`nexus_kh_key_${walletAddress}`, "kh_oauth_connected");
+  }
+
+  function signOutKeeperHub() {
+    setKhSessionToken(null);
+    setKhEmail(null);
+    localStorage.removeItem("nexus_kh_session_token");
+    localStorage.removeItem("nexus_kh_email");
+    localStorage.removeItem(`nexus_kh_key_${walletAddress}`);
   }
 
   function setWalletAddress(addr: string) {
@@ -159,6 +203,11 @@ export function WalletProvider({ children }: { children: ReactNode }) {
         setWalletAddress,
         isConnected,
         authToken,
+        khSessionToken,
+        khEmail,
+        signInWithKeeperHub,
+        handleKeeperHubCallback,
+        signOutKeeperHub,
         signInWithEthereum,
         disconnectWallet,
       }}

@@ -36,8 +36,8 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { walletAddress, isConnected, authToken, signInWithEthereum, disconnectWallet } = useWallet();
-  const [khConnected, setKhConnected] = useState(false);
+  const { walletAddress, isConnected, authToken, khSessionToken, khEmail, signOutKeeperHub, signInWithEthereum, disconnectWallet } = useWallet();
+  const khConnected = !!khSessionToken || !!localStorage?.getItem?.(`nexus_kh_key_${walletAddress}`);
   const [modalOpen, setModalOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
 
@@ -149,31 +149,56 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* KeeperHub Key Settings */}
+        {/* KeeperHub Connection Status */}
         <div style={{ paddingTop: 16, borderTop: "1px solid var(--border)" }}>
-          <button
-            onClick={() => setModalOpen(true)}
-            style={{
-              width: "100%", padding: "10px 12px", borderRadius: 8,
-              background: khConnected ? "rgba(52,211,153,0.06)" : "rgba(245,158,11,0.06)",
-              border: `1px solid ${khConnected ? "rgba(52,211,153,0.2)" : "rgba(245,158,11,0.2)"}`,
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              cursor: "pointer",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Cpu size={14} color={khConnected ? "#34d399" : "#f59e0b"} />
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: khConnected ? "#34d399" : "#f59e0b" }}>
-                  KeeperHub {khConnected ? "Key Active" : "Key Settings"}
-                </span>
-                <span style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                  {khConnected ? "Custom API Key" : "Configure Custom Key"}
-                </span>
+          {khSessionToken || khEmail ? (
+            // OAuth connected — show email + sign out
+            <div style={{
+              padding: "10px 12px", borderRadius: 8,
+              background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.2)",
+              display: "flex", flexDirection: "column", gap: 4
+            }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Cpu size={13} color="#34d399" />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#34d399" }}>KeeperHub Connected</span>
+                </div>
+                <CheckCircle2 size={11} color="#34d399" />
               </div>
+              {khEmail && (
+                <span style={{ fontSize: 9, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {khEmail}
+                </span>
+              )}
+              <button
+                onClick={signOutKeeperHub}
+                style={{ marginTop: 4, background: "none", border: "none", color: "#f87171", fontSize: 9, cursor: "pointer", textAlign: "left", padding: 0 }}
+              >
+                Sign out
+              </button>
             </div>
-            {khConnected ? <CheckCircle2 size={12} color="#34d399" /> : <AlertCircle size={12} color="#f59e0b" />}
-          </button>
+          ) : (
+            // Not connected — prompt to sign in
+            <button
+              onClick={() => setModalOpen(true)}
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 8,
+                background: "rgba(245,158,11,0.06)",
+                border: "1px solid rgba(245,158,11,0.2)",
+                display: "flex", alignItems: "center", justifyContent: "space-between",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Cpu size={14} color="#f59e0b" />
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b" }}>KeeperHub Unlinked</span>
+                  <span style={{ fontSize: 9, color: "var(--text-muted)" }}>Click to sign in</span>
+                </div>
+              </div>
+              <AlertCircle size={12} color="#f59e0b" />
+            </button>
+          )}
         </div>
       </aside>
 
