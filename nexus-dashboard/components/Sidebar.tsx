@@ -38,7 +38,15 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { walletAddress, isConnected, authToken, khSessionToken, khEmail, signOutKeeperHub, signInWithEthereum, disconnectWallet } = useWallet();
   const [khServerKey, setKhServerKey] = useState(false);
-  const khConnected = !!khSessionToken || khServerKey || !!localStorage?.getItem?.(`nexus_kh_key_${walletAddress}`);
+  const [hasLocalKey, setHasLocalKey] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined" && walletAddress) {
+      setHasLocalKey(!!localStorage.getItem(`nexus_kh_key_${walletAddress}`));
+    }
+  }, [walletAddress]);
+
+  const khConnected = !!khSessionToken || khServerKey || hasLocalKey;
   const [modalOpen, setModalOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
 

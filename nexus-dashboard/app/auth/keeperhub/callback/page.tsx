@@ -4,7 +4,9 @@ import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useWallet } from "@/context/WalletContext";
 
-export default function KeeperHubCallbackPage() {
+import { Suspense } from "react";
+
+function CallbackInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const { handleKeeperHubCallback } = useWallet();
@@ -28,7 +30,7 @@ export default function KeeperHubCallbackPage() {
     } else {
       setStatus("error");
     }
-  }, []);
+  }, [searchParams, handleKeeperHubCallback, router]);
 
   return (
     <div style={{
@@ -58,5 +60,17 @@ export default function KeeperHubCallbackPage() {
         </>
       )}
     </div>
+  );
+}
+
+export default function KeeperHubCallbackPage() {
+  return (
+    <Suspense fallback={
+      <div style={{ minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <p style={{ color: "var(--text-muted)" }}>Loading...</p>
+      </div>
+    }>
+      <CallbackInner />
+    </Suspense>
   );
 }
