@@ -422,6 +422,9 @@
     --tw-tracking: var(--tracking-wider);
     letter-spacing: var(--tracking-wider);
   }
+  .break-all {
+    word-break: break-all;
+  }
   .text-\[var\(--color-text-muted\)\] {
     color: var(--color-text-muted);
   }

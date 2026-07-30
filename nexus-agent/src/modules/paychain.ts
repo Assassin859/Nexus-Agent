@@ -53,6 +53,21 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
   // Check if user prompt matches a registered payee or team name
   const matchedPayee = savedPayees.find((p) => msgLower.includes(p.name.toLowerCase()));
 
+  // If user mentioned a named entity without a 0x address and no matching payee was found
+  const has0xAddress = /0x[a-fA-F0-9]{40}/.test(userMessage);
+  const mentionsNamedTeam = /\b(team|salary|payee|dev|marketing|design)\b/i.test(userMessage);
+
+  const isOverrideCmd = msgLower.includes("override") || msgLower.includes("do it anyway") || msgLower.includes("confirm");
+
+  if (!matchedPayee && !has0xAddress && mentionsNamedTeam && savedPayees.length > 0 && !isOverrideCmd) {
+    const payeeNames = savedPayees.map(p => `**${p.name}**`).join(", ");
+    return {
+      success: false,
+      verification_required: true,
+      message: `⚠️ Could not find a registered payee matching your request in your Payees directory.\n\nYour registered payees are: ${payeeNames}.\n\nPlease specify a valid 0x wallet address, or select from your saved payees.`,
+    };
+  }
+
   if (matchedPayee) {
     // Extract numeric amount from prompt (e.g. "pay dev team 20 usdc" -> 20)
     const amountMatch = userMessage.match(/(\d+)\s*(usdc|usdt|weth|\$)/i) || userMessage.match(/\$\s*(\d+)/);
@@ -233,6 +248,28 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     }],
   });
 
+  // ── Auto-register Payee in DB if not already present ───────────────────────
+  const recipientName = decision.recommendation.recipient_name || "Payee";
+  const existingPayee = await db.query.payees.findFirst({
+    where: and(
+      eq(payees.userWallet, walletAddress.toLowerCase()),
+      ilike(payees.name, recipientName)
+    ),
+  });
+
+  if (!existingPayee) {
+    const isTeam = /\b(team|squad|group|dept|devs|dev)\b/i.test(recipientName);
+    await db.insert(payees).values({
+      userWallet: walletAddress.toLowerCase(),
+      name: recipientName,
+      type: isTeam ? "team" : "single",
+      payoutMode: isTeam ? "vault_pool" : "direct",
+      vaultPoolAddress: recipientAddr,
+      recipientAddresses: [{ name: recipientName, address: recipientAddr }],
+      memberCount: 1,
+    });
+  }
+
   const newWf = await db.insert(activeWorkflows).values({
     userWallet: walletAddress,
     type: "payroll",
@@ -240,6 +277,9 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     amount: decision.recommendation.amount,
     cronSchedule: decision.recommendation.cron_schedule,
     status: "active",
+  }).onConflictDoUpdate({
+    target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
+    set: { amount: decision.recommendation.amount, cronSchedule: decision.recommendation.cron_schedule, updatedAt: new Date() },
   }).returning();
 
   await db.insert(executionsLog).values({

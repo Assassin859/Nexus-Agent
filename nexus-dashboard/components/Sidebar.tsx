@@ -34,7 +34,7 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { walletAddress, setWalletAddress, isConnected } = useWallet();
+  const { walletAddress, setWalletAddress, isConnected, googleEmail, signOutGoogle } = useWallet();
   const [khConnected, setKhConnected] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
   const [connecting, setConnecting] = useState(false);
@@ -43,7 +43,7 @@ export default function Sidebar() {
     async function checkKeeperHubStatus() {
       if (!walletAddress) return;
       const localKey = localStorage.getItem(`nexus_kh_key_${walletAddress.toLowerCase()}`);
-      if (localKey) {
+      if (localKey || googleEmail) {
         setKhConnected(true);
         return;
       }
@@ -57,7 +57,7 @@ export default function Sidebar() {
       } catch {}
     }
     checkKeeperHubStatus();
-  }, [walletAddress]);
+  }, [walletAddress, googleEmail]);
 
   async function handleConnectWallet() {
     if (connecting) return;
@@ -69,10 +69,10 @@ export default function Sidebar() {
         });
         if (accounts.length > 0) {
           setWalletAddress(accounts[0]);
-          setKhConnected(false); // reset KH status for new wallet
+          setKhConnected(false);
         }
       } else {
-        alert("MetaMask not detected. Please install MetaMask to connect a wallet.");
+        alert("MetaMask not detected. Click 'KeeperHub Connected' to sign in with Google.");
       }
     } catch (err: any) {
       console.error("Wallet connection failed:", err.message);
@@ -89,7 +89,7 @@ export default function Sidebar() {
     <>
       <aside className="sidebar">
         {/* Brand Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 32 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
           <div style={{
             width: 36, height: 36, borderRadius: "var(--radius-sm)",
             background: "linear-gradient(135deg, var(--primary), var(--secondary))",
@@ -108,30 +108,49 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Wallet Connect Button */}
-        <button
-          onClick={handleConnectWallet}
-          style={{
-            width: "100%", padding: "10px 12px", borderRadius: 8, marginBottom: 20,
-            background: isConnected ? "rgba(52,211,153,0.06)" : "rgba(99,102,241,0.12)",
-            border: `1px solid ${isConnected ? "rgba(52,211,153,0.25)" : "rgba(99,102,241,0.3)"}`,
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            cursor: "pointer",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-            <Wallet size={14} color={isConnected ? "#34d399" : "#818cf8"} />
-            <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-              <span style={{ fontSize: 11, fontWeight: 700, color: isConnected ? "#34d399" : "#818cf8" }}>
-                {connecting ? "Connecting..." : isConnected ? shortAddr : "Connect Wallet"}
-              </span>
-              <span style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                {isConnected ? "MetaMask Connected" : "Click to connect MetaMask"}
-              </span>
+        {/* Account / Google Account Status */}
+        {googleEmail ? (
+          <div style={{
+            padding: "12px", borderRadius: 8, marginBottom: 18,
+            background: "rgba(66,133,244,0.1)", border: "1px solid rgba(66,133,244,0.25)",
+            display: "flex", flexDirection: "column", gap: 4
+          }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+              <span style={{ fontSize: 10, color: "#93c5fd", fontWeight: 700, textTransform: "uppercase" }}>Google Account Connected</span>
+              <button onClick={signOutGoogle} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 10 }}>Sign Out</button>
+            </div>
+            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis" }}>
+              {googleEmail}
+            </div>
+            <div style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)" }}>
+              MPC: {shortAddr}
             </div>
           </div>
-          {isConnected && <ChevronDown size={12} color="#34d399" />}
-        </button>
+        ) : (
+          <button
+            onClick={handleConnectWallet}
+            style={{
+              width: "100%", padding: "10px 12px", borderRadius: 8, marginBottom: 18,
+              background: isConnected ? "rgba(52,211,153,0.06)" : "rgba(99,102,241,0.12)",
+              border: `1px solid ${isConnected ? "rgba(52,211,153,0.25)" : "rgba(99,102,241,0.3)"}`,
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              cursor: "pointer",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <Wallet size={14} color={isConnected ? "#34d399" : "#818cf8"} />
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
+                <span style={{ fontSize: 11, fontWeight: 700, color: isConnected ? "#34d399" : "#818cf8" }}>
+                  {connecting ? "Connecting..." : isConnected ? shortAddr : "Connect Wallet"}
+                </span>
+                <span style={{ fontSize: 9, color: "var(--text-muted)" }}>
+                  {isConnected ? "Turnkey MPC Active" : "MetaMask / Web3"}
+                </span>
+              </div>
+            </div>
+            {isConnected && <ChevronDown size={12} color="#34d399" />}
+          </button>
+        )}
 
         {/* Nav Links */}
         <nav style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
@@ -169,7 +188,7 @@ export default function Sidebar() {
                   KeeperHub {khConnected ? "Connected" : "Unlinked"}
                 </span>
                 <span style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                  {khConnected ? "API Key Active" : "Click to Link Account"}
+                  {khConnected ? (googleEmail ? "Google MPC Sync" : "API Key Active") : "Sign in with Google"}
                 </span>
               </div>
             </div>

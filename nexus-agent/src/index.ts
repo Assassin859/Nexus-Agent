@@ -266,185 +266,62 @@ app.get("/api/feed/:walletAddress", async (req, res) => {
   }
 });
 
+import { createAgentTools } from "./brain/agent-tools.js";
+
 app.post("/api/chat", async (req, res) => {
   try {
     const { userMessage, conversationHistory = [], walletAddress = DEMO_WALLET } = req.body;
     const wallet = walletAddress.toLowerCase();
 
-    // ── Stage 1: NLU Translation ─────────────────────────────────────────────
-    // Convert raw user input → clean canonical action + normalizedPrompt.
-    // No keyword shortcuts. The LLM handles everything.
-    const nlu = await translateIntent(userMessage, conversationHistory, wallet);
+    // Format conversation history for AI SDK generateText
+    const messages = [
+      ...conversationHistory.map((m: any) => ({
+        role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
+        content: m.text || "",
+      })),
+      { role: "user" as const, content: userMessage },
+    ];
 
-    console.log(`[NLU] action=${nlu.action} confidence=${nlu.confidence.toFixed(2)} prompt="${nlu.normalizedPrompt}"`);
+    // Instantiate native tools for this user wallet
+    const tools = createAgentTools(wallet, conversationHistory);
 
-    // If NLU is uncertain, ask for clarification
-    if (nlu.requiresClarification && nlu.clarificationQuestion) {
-      return res.json({
-        reply: `🤔 ${nlu.clarificationQuestion}`,
-        nlu,
-        executionResults: [],
-      });
-    }
+    // Call GPT-4o / Claude with Native Tool Calling (Agent Loop)
+    const result = await generateText({
+      model: githubModels(BRAIN_MODEL),
+      system: `You are NexusAgent, an intelligent, autonomous DeFi and automated payroll manager powered by KeeperHub MPC.
+You talk naturally like ChatGPT or Claude. You are smart, conversational, helpful, and understand informal language, typos, slang, and complex instructions.
 
-    // ── Stage 2: Execution Router ─────────────────────────────────────────────
-    // Route purely on nlu.action — pass normalizedPrompt to all executors.
-    const fullTranscript = conversationHistory
-      .map((m: any) => `${m.sender === "user" ? "User" : "Agent"}: ${m.text}`)
-      .join("\n") + `\nUser: ${userMessage}`;
+Your Capabilities & Tools:
+1. 'schedulePayroll': Use when the user wants to set up a recurring payment, salary, or transfer to an address, team, or payee name (e.g. 'pay 0x123... 10 USDC every friday', 'send 50 bucks to dev team weekly'). If user says 'do it anyway', 'confirm', 'override', set isExplicitOverride: true.
+2. 'cancelPayrolls': Use when the user wants to cancel, stop, or pause active payrolls or workflows (e.g. 'stop all payrolls', 'cancle all', 'pause my payments').
+3. 'listWorkflows': Use when the user asks about their active workflows, registered payrolls, or triggers (e.g. 'what are my workflows', 'my workflow', 'active payments').
+4. 'listPayees': Use when the user asks about saved payees, team members, or vault pools (e.g. 'show my payees', 'who are my team members').
+5. 'queryPortfolio': Use when the user asks about their Aave position, loan, health factor, or debt.
+6. 'triggerStrategy': Use when the user wants to trigger DCA, Guardian position check, or Yield Rotator immediately.
+7. 'getLiveTransactions': Use when the user asks for live transactions, recent execution logs, or Sepolia Etherscan links (e.g. 'show live tx', 'recent transactions', 'etherscan links').
 
-    let reply = "";
-    let executionResults: any[] = [];
+Formatting Rules:
+- DO NOT use markdown tables (e.g. '| col | col |'). Chat bubbles wrap tables poorly.
+- Always format lists (active workflows, payees, history) as clean, numbered or bulleted markdown lists with emojis (e.g. '1. 🟢 **PAYROLL** — 20 USDC (Every Thursday) → 0x1234...').
+- If no tool is needed (e.g. greetings, general DeFi questions), answer naturally in conversational English.
+- Never mention internal technical tool names to the user.`,
+      messages,
+      tools,
+      maxSteps: 5, // Allows autonomous Tool Call -> Execution -> Final Natural Language Response
+    });
 
-    switch (nlu.action) {
-
-      // ── Payroll Scheduling ──────────────────────────────────────────────────
-      case "schedule_payroll": {
-        const payRes = await handlePaychain({
-          userMessage: nlu.normalizedPrompt,
-          conversationHistory,
-          walletAddress: wallet,
-        });
-        reply = payRes.message;
-        executionResults.push({ type: "payroll", result: payRes });
-        break;
-      }
-
-      // ── Confirmation / Override ─────────────────────────────────────────────
-      case "confirm_action": {
-        const payRes = await handlePaychain({
-          userMessage: nlu.parameters.isOverride
-            ? `OVERRIDE_CONFIRMED: ${fullTranscript}`
-            : fullTranscript,
-          conversationHistory,
-          walletAddress: wallet,
-        });
-        reply = payRes.message;
-        executionResults.push({ type: "confirmation", result: payRes });
-        break;
-      }
-
-      // ── Cancel All Payrolls ─────────────────────────────────────────────────
-      case "cancel_payroll": {
-        const cancelled = await db.update(activeWorkflows)
-          .set({ status: "cancelled", updatedAt: new Date() })
-          .where(and(
-            eq(activeWorkflows.userWallet, wallet),
-            eq(activeWorkflows.type, "payroll")
-          ))
-          .returning();
-
-        await db.insert(executionsLog).values({
-          userWallet: wallet,
-          action: "payroll",
-          amount: 0,
-          status: "success",
-          reason: `Cancelled all active payroll workflows. NLU: "${nlu.normalizedPrompt}"`,
-        });
-
-        reply = cancelled.length > 0
-          ? `🛑 **Cancelled ${cancelled.length} active payroll workflow(s).** No further scheduled payouts will execute.`
-          : "ℹ️ No active payroll workflows found to cancel.";
-        executionResults.push({ type: "cancel_payroll", cancelled: cancelled.length });
-        break;
-      }
-
-      // ── List Payees ─────────────────────────────────────────────────────────
-      case "list_payees": {
-        const userPayees = await db.query.payees.findMany({
-          where: eq(payees.userWallet, wallet),
-          orderBy: [desc(payees.createdAt)],
-        });
-
-        if (userPayees.length === 0) {
-          reply = "👥 You have no payees registered yet. Visit the **Payees page** to add recipients or team vault pools.";
-        } else {
-          const payeeList = userPayees.map((p, idx) => {
-            const badge = p.type === "team"
-              ? `👥 Team (${p.payoutMode === "vault_pool" ? "Vault Pool" : "Direct"})`
-              : "👤 Single";
-            return `${idx + 1}. **${p.name}** — ${badge}`;
-          }).join("\n");
-          reply = `👥 **Registered Payees (${userPayees.length}):**\n\n${payeeList}`;
-        }
-        executionResults.push({ type: "list_payees", count: userPayees.length });
-        break;
-      }
-
-      // ── List Active Workflows ───────────────────────────────────────────────
-      case "list_workflows": {
-        const activeWfs = await db.query.activeWorkflows.findMany({
-          where: eq(activeWorkflows.userWallet, wallet),
-          orderBy: [desc(activeWorkflows.createdAt)],
-        });
-
-        if (activeWfs.length === 0) {
-          reply = "📊 You have no active workflows or payroll schedules registered.";
-        } else {
-          const wfSummaries = activeWfs.map((w, idx) => {
-            const recip = w.recipientAddress ? `→ ${w.recipientAddress.slice(0, 10)}...` : "";
-            const statusBadge = w.status === "active" ? "🟢" : "🔴";
-            return `${idx + 1}. ${statusBadge} ${w.type.toUpperCase()} — **${w.amount} USDC** (${w.cronSchedule || "Manual"}) ${recip}`;
-          }).join("\n");
-          reply = `📊 **Active Workflows Registry (${activeWfs.length}):**\n\n${wfSummaries}`;
-        }
-        executionResults.push({ type: "list_workflows", count: activeWfs.length });
-        break;
-      }
-
-      // ── Query Portfolio (Aave) ──────────────────────────────────────────────
-      case "query_portfolio": {
-        const pos = await getAavePosition(wallet);
-        reply = `📊 **Portfolio Status:**\n\n• Health Factor: **${pos.healthFactor.toFixed(2)}** ${pos.healthFactor < 1.2 ? "⚠️ Low!" : "✅ Safe"}\n• Collateral: **$${pos.collateralUSD.toFixed(0)}**\n• Debt: **$${pos.debtUSD.toFixed(0)}**`;
-        executionResults.push({ type: "query_portfolio", healthFactor: pos.healthFactor });
-        break;
-      }
-
-      // ── DCA Strategy ───────────────────────────────────────────────────────
-      case "trigger_dca": {
-        await runDCA(wallet);
-        reply = "🤖 **DCA Strategy Triggered!** Uniswap V3 swap calldata has been prepared and submitted.";
-        executionResults.push({ type: "dca", status: "success" });
-        break;
-      }
-
-      // ── Guardian Check ──────────────────────────────────────────────────────
-      case "trigger_guardian": {
-        await runGuardian(wallet);
-        reply = "🛡️ **Guardian Position Check Triggered!** Evaluated Health Factor and repayment safety.";
-        executionResults.push({ type: "guardian", status: "success" });
-        break;
-      }
-
-      // ── Yield Rotator ───────────────────────────────────────────────────────
-      case "trigger_yield_rotate": {
-        await runYieldRotator(wallet);
-        reply = "🤖 **Yield Rotator Triggered!** APY delta evaluated and execution feed updated.";
-        executionResults.push({ type: "yield_rotate", status: "success" });
-        break;
-      }
-
-      // ── Unknown / Generic ───────────────────────────────────────────────────
-      case "unknown":
-      default: {
-        const { text } = await generateText({
-          model: githubModels(BRAIN_MODEL),
-          system: "You are NexusAgent, an autonomous DeFi wealth management assistant. Be concise and helpful. Guide users towards actionable commands: scheduling payrolls, checking portfolios, running DCA/yield strategies.",
-          prompt: `User said: "${userMessage}"\n\nConversation context:\n${fullTranscript}`,
-        });
-        reply = text;
-        executionResults.push({ type: "unknown" });
-        break;
-      }
-    }
+    // Extract tool calls and execution results for audit feed
+    const toolCalls = result.toolCalls || [];
+    const toolResults = result.toolResults || [];
 
     res.json({
-      reply,
-      nlu: { action: nlu.action, confidence: nlu.confidence, normalizedPrompt: nlu.normalizedPrompt },
-      executionResults,
+      reply: result.text,
+      toolCalls,
+      toolResults,
+      executionResults: toolResults,
     });
   } catch (err) {
-    console.error("[CHAT ERROR]", err);
+    console.error("[CHAT AGENT ERROR]", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Chat processing failed" });
   }
 });

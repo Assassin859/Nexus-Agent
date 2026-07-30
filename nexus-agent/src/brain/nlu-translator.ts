@@ -51,17 +51,17 @@ You are Stage 1 of a two-stage pipeline. You do NOT execute anything — you onl
   - Examples: "pay alice 50 USDC every friday", "send 0x123... 20 every monday", "set up payroll for dev team"
 
 "cancel_payroll":
-  - Keywords: stop, cancel, pause, disable, delete, kill, remove
-  - Context: related to payments, payroll, workflows, schedules
-  - Examples: "stop all payrolls", "cancel the payment", "pause everything", "kill all scheduled payments"
+  - Keywords: stop, cancel, cancle, cancal, stopp, pause, disable, delete, kill, remove
+  - Context: related to payments, payroll, workflows, schedules, or general cancellation ("cancle all", "stop all", "cancel")
+  - Examples: "stop all payrolls", "cancel the payment", "pause everything", "kill all scheduled payments", "cancle all", "cancel all"
 
 "list_payees":
   - Keywords: payees, team members, who can I pay, recipients, my contacts
   - Examples: "show me my payees", "who are my team members", "list payees"
 
 "list_workflows":
-  - Keywords: workflows, active payrolls, schedules, what's running, active payments
-  - Examples: "what are my workflows", "show active payrolls", "current payroll status"
+  - Keywords: workflow, workflows, active payrolls, schedules, what's running, active payments, my workflows, my workflow
+  - Examples: "what are my workflows", "what are my workflow", "show active payrolls", "current payroll status", "show workflows"
 
 "query_portfolio":
   - Keywords: health factor, debt, collateral, position, aave, balance, how much

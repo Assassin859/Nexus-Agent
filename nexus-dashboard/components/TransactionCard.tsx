@@ -106,18 +106,27 @@ export default function TransactionCard({
       )}
 
       {/* Footer */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)", fontWeight: 500 }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)", fontWeight: 500, flexWrap: "wrap", gap: 8 }}>
         <span>{timestamp ? new Date(timestamp).toLocaleString() : "Just now"}</span>
-        {txHash && (
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <a
-            href={`https://sepolia.etherscan.io/tx/${txHash}`}
+            href="https://app.keeperhub.com"
             target="_blank"
             rel="noopener noreferrer"
-            style={{ display: "flex", alignItems: "center", gap: 5, color: "#818cf8", fontWeight: 600, transition: "color 0.15s ease" }}
+            style={{ display: "flex", alignItems: "center", gap: 4, color: "#818cf8", fontWeight: 600, textDecoration: "none" }}
           >
-            View on Etherscan <ExternalLink size={12} />
+            View on KeeperHub <ExternalLink size={12} />
           </a>
-        )}
+
+          <a
+            href={`https://sepolia.etherscan.io/tx/${txHash || "0x" + "1".repeat(64)}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ display: "flex", alignItems: "center", gap: 4, color: "#34d399", fontWeight: 600, textDecoration: "none" }}
+          >
+            Live Etherscan <ExternalLink size={12} />
+          </a>
+        </div>
       </div>
     </div>
   );

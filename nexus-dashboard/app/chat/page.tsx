@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Send, Bot, User, Sparkles, Cpu } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 
@@ -21,8 +21,9 @@ export default function ChatPage() {
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
+  const isLoadedRef = useRef(false);
 
-  // Load chat history on client mount safely to prevent SSR hydration mismatch
+  // 1. Load chat history on client mount safely
   useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("nexus_chat_history");
@@ -34,11 +35,13 @@ export default function ChatPage() {
           }
         } catch {}
       }
+      isLoadedRef.current = true;
     }
   }, []);
 
+  // 2. Save chat history ONLY after initial mount load completes
   useEffect(() => {
-    if (typeof window !== "undefined" && messages.length > 0) {
+    if (typeof window !== "undefined" && isLoadedRef.current && messages.length > 0) {
       localStorage.setItem("nexus_chat_history", JSON.stringify(messages));
     }
   }, [messages]);
