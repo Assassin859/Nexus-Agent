@@ -13,31 +13,33 @@ export async function syncKeeperHubState(walletAddress: string): Promise<{ workf
 
   const apiKey = settings?.keeperhubApiKey || process.env.KEEPERHUB_API_KEY;
 
-  // 2. Fetch execution logs for the user's workflow via MCP
-  const logs = await getExecutionLogs("exec-all", apiKey);
-  let logsSynced = 0;
-
-  for (const log of logs) {
-    // Check if log already exists to prevent duplicate inserts
-    const existing = await db.query.executionsLog.findFirst({
-      where: eq(executionsLog.userWallet, wallet),
-    });
-
-    if (!existing) {
-      await db.insert(executionsLog).values({
-        userWallet: wallet,
-        action: "synced_keeperhub",
-        amount: 0,
-        status: "success",
-        reason: log.message,
-      });
-      logsSynced++;
-    }
-  }
-
-  const existingWorkflows = await db.query.activeWorkflows.findMany({
+  const userWfs = await db.query.activeWorkflows.findMany({
     where: eq(activeWorkflows.userWallet, wallet),
   });
 
-  return { workflowsSynced: existingWorkflows.length, logsSynced };
+  let logsSynced = 0;
+
+  for (const wf of userWfs) {
+    if (!wf.id) continue;
+    const logs = await getExecutionLogs(wf.id, apiKey);
+    for (const log of logs) {
+      const existing = await db.query.executionsLog.findFirst({
+        where: eq(executionsLog.reason, log.message),
+      });
+
+      if (!existing) {
+        await db.insert(executionsLog).values({
+          userWallet: wallet,
+          workflowId: wf.id,
+          action: "synced_keeperhub",
+          amount: wf.amount ?? 0,
+          status: "success",
+          reason: log.message,
+        });
+        logsSynced++;
+      }
+    }
+  }
+
+  return { workflowsSynced: userWfs.length, logsSynced };
 }

@@ -37,7 +37,8 @@ const NAV_ITEMS = [
 export default function Sidebar() {
   const pathname = usePathname();
   const { walletAddress, isConnected, authToken, khSessionToken, khEmail, signOutKeeperHub, signInWithEthereum, disconnectWallet } = useWallet();
-  const khConnected = !!khSessionToken || !!localStorage?.getItem?.(`nexus_kh_key_${walletAddress}`);
+  const [khServerKey, setKhServerKey] = useState(false);
+  const khConnected = !!khSessionToken || khServerKey || !!localStorage?.getItem?.(`nexus_kh_key_${walletAddress}`);
   const [modalOpen, setModalOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
 
@@ -48,7 +49,7 @@ export default function Sidebar() {
         const res = await agentFetch(`/api/user/settings/${walletAddress}`, {}, authToken);
         if (res.ok) {
           const data = await res.json();
-          if (data.hasKey) setKhConnected(true);
+          if (data.hasKey) setKhServerKey(true);
         }
       } catch {}
     }
@@ -61,7 +62,7 @@ export default function Sidebar() {
     try {
       const res = await signInWithEthereum();
       if (res.success) {
-        setKhConnected(true);
+        setKhServerKey(true);
       } else if (res.error) {
         alert(res.error);
       }
@@ -206,7 +207,7 @@ export default function Sidebar() {
         isOpen={modalOpen}
         onClose={() => setModalOpen(false)}
         walletAddress={walletAddress}
-        onKeySaved={() => setKhConnected(true)}
+        onKeySaved={() => setKhServerKey(true)}
       />
     </>
   );

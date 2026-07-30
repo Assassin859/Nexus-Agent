@@ -6,13 +6,18 @@ export async function POST(req: NextRequest) {
     const authHeader = req.headers.get("authorization");
     const body = await req.json();
 
+    const normalizedBody = {
+      ...body,
+      userMessage: body.message ?? body.userMessage,
+    };
+
     const res = await fetch(`${agentUrl}/api/chat`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
         ...(authHeader ? { Authorization: authHeader } : {}),
       },
-      body: JSON.stringify(body),
+      body: JSON.stringify(normalizedBody),
     });
 
     if (res.status === 401) {

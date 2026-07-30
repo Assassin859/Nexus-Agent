@@ -10,32 +10,40 @@
 
 We will execute the audit fixes sequentially, step-by-step:
 
-### Phase 1: P0 Critical Calldata, Math & Database Integrity
-- [ ] **Task 1.1:** Add `encodeAaveWithdraw()` to `calldata.ts` and update `yield-rotator.ts` to call `encodeAaveWithdraw()` instead of `encodeAaveRepay()`.
-- [ ] **Task 1.2:** Update `encodeAaveSupply()` in `calldata.ts` and `guardian.ts` to handle token-specific decimals (18 decimals for WETH, 6 for USDC).
-- [ ] **Task 1.3:** Add `updatedAt` column to `activeWorkflows` in `schema.ts` and generate/apply updated Drizzle migrations.
-- [ ] **Task 1.4:** Update `paychain.ts` `onConflictDoUpdate` targets and remove dangerous 200 USDC fallback auto-creation.
-- [ ] **Task 1.5:** Distinguish MCP stub/simulated mode from real executions (`status: "simulated_stub"`) across all modules.
-- [ ] **Task 1.6:** Wire `/templates` "Use Template" button to pre-fill prompt input on `/chat` page via `sessionStorage`.
+## Production Audit Remediation Roadmap (New Audit Remediation Plan)
 
-### Phase 2: P1 Trust, Safety & Logic Correctness
-- [ ] **Task 2.1:** Fix `cancelPayrolls` to cancel target workflow ID or recipient and sync cancellation with KeeperHub MCP.
-- [ ] **Task 2.2:** Update background cron loops in `index.ts` to iterate through all active monitored wallets in database.
-- [ ] **Task 2.3:** Normalize monitored wallet vs signing agentic wallet across simulation, execution, and UI reads.
-- [ ] **Task 2.4:** Fix Aave APY compounding formula in `aave.ts` and handle RPC errors cleanly (`isError: true` instead of `healthFactor: 99`).
-- [ ] **Task 2.5:** Enforce repayment cycle budget limits in code during Guardian execution.
-- [ ] **Task 2.6:** Add configurable slippage tolerance to Uniswap DCA swaps in `calldata.ts`.
+### Phase 6: P0 Critical Fixes (Broken / Unsafe Core Logic)
+- [x] **Task 6.1: Chat API Field Mismatch** — Update Next.js proxy `app/api/chat/route.ts` and agent `index.ts` to map `message` / `userMessage` so chat works seamlessly from dashboard.
+- [x] **Task 6.2: Guardian `onBehalfOf` Account Scoping** — Update `guardian.ts` calldata calls to use `userWallet` as `onBehalfOf` for Aave `repay` and `supply`.
+- [x] **Task 6.3: Yield Rotator `onBehalfOf` Account Scoping** — Update `yield-rotator.ts` calldata calls to use `userWallet` as `onBehalfOf` for Aave `withdraw`.
+- [x] **Task 6.4: Cron Loop Wallet Discovery** — Update `index.ts` background crons to union monitored wallets from `userSettings`, `activeWorkflows`, and `repaymentCycles`.
+- [x] **Task 6.5: Wallet Semantics Normalization** — Normalize monitored account vs signing `AGENTIC_WALLET` across all 4 execution modules.
 
-### Phase 3: P2 API Security & Multi-Tenant Isolation
-- [ ] **Task 3.1:** Add authentication middleware to agent API endpoints (`index.ts`).
-- [ ] **Task 3.2:** Wire per-user KeeperHub API keys saved in user settings into `mcp-client.ts`.
-- [ ] **Task 3.3:** Restrict CORS configuration on Express backend.
-- [ ] **Task 3.4:** Implement real SIWE challenge/signature verification.
+### Phase 7: P1 Logic & Data Integrity Fixes
+- [x] **Task 7.1: `keeperhub-sync.ts` Log Sync** — Fix `getExecutionLogs("exec-all")` non-functional call and per-wallet dedup logic.
+- [ ] **Task 7.2: Execution `txHash` Persistence** — Update module execution handlers to query real status & persist real `txHash` to `executions_log`.
+- [ ] **Task 7.3: Repayment Cycle Expiry Enforcement** — Enforce `cycleEnd` checking and auto-rollover logic in `guardian.ts`.
+- [x] **Task 7.4: DCA Gas Delay Status** — Log DCA gas threshold delays as `delayed` instead of `reverted_simulation`.
+- [x] **Task 7.5: Paychain Default Amount Removal** — Remove silent `20 USDC` fallback when amount is omitted in natural language payroll.
+- [x] **Task 7.6: Portfolio Tool `isSafe` Flag Correction** — Fix `queryPortfolio` in `agent-tools.ts` to not mark "No Active Loan" as `isSafe: true`.
+- [x] **Task 7.7: Compound APY Compounding Formula** — Use proper compound interest formula in `yield-rotator.ts` instead of linear simple interest approximation.
+- [ ] **Task 7.8: Simulation Log Clean-up** — Prevent duplicate or generic simulation log entries in `simulate.ts`.
 
-### Phase 4: P3 UI Integrity, UX Polish & DevOps Hygiene
-- [ ] **Task 4.1:** Clean up fake `0x1111...1111` transaction hashes in UI components.
-- [ ] **Task 4.2:** Replace static protocol APYs on portfolio page with dynamic live data.
-- [ ] **Task 4.3:** Update `.gitignore` to exclude `.next/`, build outputs, and `env` directory.
+### Phase 8: P2 Security, Auth & UX Polish
+- [ ] **Task 8.1: Production JWT Secret Guard** — Require JWT secret in all environments or enforce secure default guard.
+- [ ] **Task 8.2: SIWE Challenge Timestamp Validation** — Strictly validate SIWE challenge expiration even if timestamp parsing fails.
+- [ ] **Task 8.3: CORS Origin Strictness** — Enforce strict origin checking in `index.ts`.
+- [ ] **Task 8.4: Dashboard Auth Guarding** — Guard dashboard API calls on unauthenticated state with a clear sign-in banner.
+- [ ] **Task 8.5: Portfolio Error Handling** — Differentiate network failures from Aave RPC degraded states in API proxies.
+- [ ] **Task 8.6: Alerts Page Event Classification** — Fix `page.tsx` on `/alerts` to not mark normal `repay` actions as danger.
+- [ ] **Task 8.7: KeeperHub Key Save Flow** — Check auth status before allowing KeeperHub API key save.
+
+### Phase 9: P3 Hygiene, Ops & Cleanup
+- [ ] **Task 9.1: Dead Code Removal** — Clean up deprecated `nlu-translator.ts` and `intent-parser.ts`.
+- [ ] **Task 9.2: Dynamic APYs for Compound & Morpho** — Fetch live APY data for Compound & Morpho on portfolio dashboard.
+- [ ] **Task 9.3: Seed Data Hex Address Validation** — Clean up hex character errors in demo seed data (`walletC`).
+- [ ] **Task 9.4: Env Path Robustness** — Use absolute path resolving for `dotenv.config()` in `index.ts`.
+- [ ] **Task 9.5: UI Metric Polish** — Fix active workflows count fallback and clean up unused `tailwind.config.ts`.
 
 ---
 

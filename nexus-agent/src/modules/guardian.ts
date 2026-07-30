@@ -166,10 +166,10 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   let targetContract: string;
 
   if (decision.recommendation.action === "repay") {
-    calldata = encodeAaveRepay(USDC_SEPOLIA, clampedAmount, AGENTIC_WALLET);
+    calldata = encodeAaveRepay(USDC_SEPOLIA, clampedAmount, userWallet);
     targetContract = AAVE_V3_POOL;
   } else {
-    calldata = encodeAaveSupply(USDC_SEPOLIA, clampedAmount, AGENTIC_WALLET, 6);
+    calldata = encodeAaveSupply(USDC_SEPOLIA, clampedAmount, userWallet, 6);
     targetContract = AAVE_V3_POOL;
   }
 

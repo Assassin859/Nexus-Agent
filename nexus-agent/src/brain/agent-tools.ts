@@ -225,7 +225,7 @@ export function createAgentTools(
             healthFactor: null,
             collateralUSD: pos.collateralUSD,
             debtUSD: pos.debtUSD,
-            isSafe: true,
+            isSafe: null,
             status: "No Active Loan",
           };
         }

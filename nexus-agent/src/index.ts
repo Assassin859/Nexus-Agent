@@ -433,7 +433,8 @@ app.post("/api/chat", requireAuth, async (req: express.Request, res: express.Res
   try {
     const authedReq = req as AuthedRequest;
     const wallet = authedReq.userWallet;
-    const { userMessage, conversationHistory = [] } = req.body;
+    const userMessage = req.body.userMessage ?? req.body.message ?? "";
+    const conversationHistory = req.body.conversationHistory ?? [];
 
     const apiKey = await resolveKeeperHubApiKey(wallet);
     const messages = [
@@ -540,14 +541,26 @@ app.post("/api/trigger/yield", requireAuth, async (req: express.Request, res: ex
   }
 });
 
+async function getMonitoredWallets(): Promise<string[]> {
+  const [cycleRows, workflowRows, settingsRows] = await Promise.all([
+    db.selectDistinct({ wallet: repaymentCycles.userWallet }).from(repaymentCycles),
+    db.selectDistinct({ wallet: activeWorkflows.userWallet }).from(activeWorkflows),
+    db.selectDistinct({ wallet: userSettings.userWallet }).from(userSettings),
+  ]);
+  const set = new Set<string>();
+  cycleRows.forEach(r => r.wallet && set.add(r.wallet.toLowerCase()));
+  workflowRows.forEach(r => r.wallet && set.add(r.wallet.toLowerCase()));
+  settingsRows.forEach(r => r.wallet && set.add(r.wallet.toLowerCase()));
+  if (set.size === 0) set.add(DEMO_WALLET.toLowerCase());
+  return Array.from(set);
+}
+
 // ── Background Cron Loops ────────────────────────────────────────────────────
 async function startLoops() {
   // Guardian (5 min)
   cron.schedule("*/5 * * * *", async () => {
     try {
-      const rows = await db.selectDistinct({ wallet: repaymentCycles.userWallet }).from(repaymentCycles);
-      const wallets = rows.map(r => r.wallet.toLowerCase());
-      if (wallets.length === 0) wallets.push(DEMO_WALLET);
+      const wallets = await getMonitoredWallets();
       for (const wallet of wallets) {
         try {
           const apiKey = await resolveKeeperHubApiKey(wallet);
@@ -566,9 +579,7 @@ async function startLoops() {
   // Yield Rotator (15 min)
   cron.schedule("*/15 * * * *", async () => {
     try {
-      const rows = await db.selectDistinct({ wallet: repaymentCycles.userWallet }).from(repaymentCycles);
-      const wallets = rows.map(r => r.wallet.toLowerCase());
-      if (wallets.length === 0) wallets.push(DEMO_WALLET);
+      const wallets = await getMonitoredWallets();
       for (const wallet of wallets) {
         try {
           const apiKey = await resolveKeeperHubApiKey(wallet);

@@ -75,7 +75,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     const ratePerSecRaw = await cUSDC.supplyRatePerSecond();
     const ratePerSec = Number(ratePerSecRaw) / 1e18;
     const secondsInYear = 365 * 24 * 3600;
-    const computed = parseFloat((ratePerSec * secondsInYear * 100).toFixed(2));
+    const computed = parseFloat(((Math.pow(1 + ratePerSec, secondsInYear) - 1) * 100).toFixed(2));
     compoundUSDCSupplyAPY = computed > 0 ? computed : Number(process.env.COMPOUND_APY_FALLBACK) || 3;
     log.info({ compoundUSDCSupplyAPY }, "Compound APY fetched on-chain");
   } catch (err) {
@@ -115,7 +115,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
 
   const rotateAmount = decision.recommendation.amount || userBalance;
-  const withdrawCalldata = encodeAaveWithdraw(USDC_SEPOLIA, rotateAmount, AGENTIC_WALLET);
+  const withdrawCalldata = encodeAaveWithdraw(USDC_SEPOLIA, rotateAmount, userWallet);
   const supplyCalldata = encodeCompoundSupply(USDC_SEPOLIA, rotateAmount);
 
   const simWithdraw = await simulate(

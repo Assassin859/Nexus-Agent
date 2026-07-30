@@ -78,7 +78,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
       userWallet,
       action: "swap",
       amount: workflow.amount,
-      status: "reverted_simulation",
+      status: "delayed",
       reason: `Gas threshold exceeded ($${estimatedGasUSD.toFixed(2)}): ${decision.userExplanation}`,
       aiAnalysis: decision.analysis,
     });

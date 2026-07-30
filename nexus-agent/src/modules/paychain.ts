@@ -76,7 +76,15 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     // Extract numeric amount from prompt (e.g. "pay dev team 20 usdc" -> 20)
     const amountMatch = userMessage.match(/(\d+)\s*(usdc|usdt|weth|\$)/i) || userMessage.match(/\$\s*(\d+)/);
     const recipients = matchedPayee.recipientAddresses as Array<{ address: string; amount?: number }> | null;
-    const amount = amountMatch ? parseInt(amountMatch[1], 10) : (recipients?.[0]?.amount || 20);
+    const amount = amountMatch ? parseInt(amountMatch[1], 10) : recipients?.[0]?.amount;
+
+    if (!amount) {
+      return {
+        success: false,
+        verification_required: true,
+        message: `⚠️ No payment amount specified for "${matchedPayee.name}". Please specify an amount (e.g. "pay ${matchedPayee.name} 100 USDC").`,
+      };
+    }
 
     // Case A: Team in Shared Vault Pool Mode
     if (matchedPayee.type === "team" && matchedPayee.payoutMode === "vault_pool") {
