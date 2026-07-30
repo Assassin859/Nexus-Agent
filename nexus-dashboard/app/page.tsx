@@ -192,7 +192,7 @@ export default function PortfolioPage() {
             <tr>
               <td className="cell-bold">Aave V3</td>
               <td>USDC</td>
-              <td className="cell-green">{data?.currentUSDCSupplyAPY ? `${data.currentUSDCSupplyAPY}%` : "4.2%"}</td>
+              <td className="cell-green">{loading ? "..." : isError ? "—" : data?.currentUSDCSupplyAPY ? `${data.currentUSDCSupplyAPY.toFixed(2)}%` : "—"}</td>
               <td>5.8%</td>
               <td><span className="pill pill-success">Current Position</span></td>
             </tr>

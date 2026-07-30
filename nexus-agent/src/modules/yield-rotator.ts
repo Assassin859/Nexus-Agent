@@ -5,6 +5,7 @@ import { db } from "../db/client.js";
 import { executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow } from "../lib/mcp-client.js";
+import { sendKeeperNotification } from "../lib/mcp-client.js";
 import {
   encodeAaveWithdraw,
   encodeCompoundSupply,
@@ -12,56 +13,77 @@ import {
   COMPOUND_V3_USDC,
   USDC_SEPOLIA,
 } from "../lib/calldata.js";
+import { getAavePosition } from "../lib/aave.js";
+import { getAgenticWallet } from "../lib/agentic-wallet.js";
+import { resolveKeeperHubApiKey } from "../lib/user-context.js";
+import { childLogger } from "../lib/logger.js";
+import { shouldAlert } from "../lib/alert-throttle.js";
 import { getProvider } from "../lib/rpc.js";
 import { Contract } from "ethers";
-import { getAavePosition } from "../lib/aave.js";
-
-import { resolveKeeperHubApiKey } from "../lib/user-context.js";
-
-const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || (() => {
-  console.warn("[YIELD] WARNING: AGENTIC_WALLET_ADDRESS is not set. Yield rotation transactions may fail. Set it in .env.");
-  return "";
-})();
 
 const COMPOUND_ABI = [
   "function supplyRatePerSecond() view returns (uint256)",
   "function balanceOf(address owner) view returns (uint256)",
 ];
 
+const ALLOWED_CHANNELS = ["telegram", "discord", "email"] as const;
+type AlertChannel = typeof ALLOWED_CHANNELS[number];
+const ALERT_CHANNEL: AlertChannel = ALLOWED_CHANNELS.includes(
+  process.env.ALERT_CHANNEL as AlertChannel
+)
+  ? (process.env.ALERT_CHANNEL as AlertChannel)
+  : "telegram";
+
 export async function run(userWallet: string, options?: { apiKey?: string }): Promise<void> {
+  const AGENTIC_WALLET = getAgenticWallet();
+  if (!AGENTIC_WALLET) return; // dev-only early exit; prod throws at startup
+
+  const log = childLogger({ module: "yield", wallet: userWallet.slice(0, 8) });
   const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(userWallet));
-  console.log(`[YIELD] Evaluating yield opportunities for ${userWallet}`);
+
+  log.info("Evaluating yield opportunities");
 
   const position = await getAavePosition(userWallet);
   const aaveUSDCSupplyAPY = position.currentUSDCSupplyAPY;
 
-  // Skip on RPC error — can't make reliable decisions without real data
+  // ── Skip on RPC error ─────────────────────────────────────────────────────
   if (position.isError) {
-    console.warn(`[YIELD] RPC error for ${userWallet.slice(0, 8)} — skipping. Reason: ${position.errorReason}`);
+    log.warn({ reason: position.errorReason }, "RPC error — skipping");
+    if (shouldAlert(`${userWallet.slice(0, 8)}:rpc_error`)) {
+      await sendKeeperNotification(
+        ALERT_CHANNEL,
+        `🔴 Yield RPC error for ${userWallet.slice(0, 8)}: ${position.errorReason}`,
+        effectiveKey
+      ).catch(() => {});
+    }
     return;
   }
 
-  // Skip if wallet has no Aave collateral — nothing to rotate
+  // ── Skip if no Aave collateral ────────────────────────────────────────────
   if (position.collateralUSD === 0) {
-    console.log("[YIELD] No Aave collateral — skipping.");
+    log.info("No Aave collateral — skipping.");
     return;
   }
 
   const userBalance = position.collateralUSD;
-  let compoundUSDCSupplyAPY = 32.59;
+
+  // ── Fetch Compound APY from on-chain, env-configurable conservative fallback ─
+  let compoundUSDCSupplyAPY = Number(process.env.COMPOUND_APY_FALLBACK) || 3;
   try {
     const provider = await getProvider();
     const cUSDC = new Contract(COMPOUND_V3_USDC, COMPOUND_ABI, provider);
     const ratePerSecRaw = await cUSDC.supplyRatePerSecond();
     const ratePerSec = Number(ratePerSecRaw) / 1e18;
     const secondsInYear = 365 * 24 * 3600;
-    compoundUSDCSupplyAPY = parseFloat((ratePerSec * secondsInYear * 100).toFixed(2));
-    if (compoundUSDCSupplyAPY === 0) compoundUSDCSupplyAPY = 32.59;
-  } catch {
-    compoundUSDCSupplyAPY = 32.59;
+    const computed = parseFloat((ratePerSec * secondsInYear * 100).toFixed(2));
+    compoundUSDCSupplyAPY = computed > 0 ? computed : Number(process.env.COMPOUND_APY_FALLBACK) || 3;
+    log.info({ compoundUSDCSupplyAPY }, "Compound APY fetched on-chain");
+  } catch (err) {
+    log.warn({ reason: err instanceof Error ? err.message : err }, "Compound APY fetch failed — using fallback");
   }
 
-  const estimatedGasUSD = 4.50;
+  // ── Env-configurable gas estimate fallback ────────────────────────────────
+  const estimatedGasUSD = Number(process.env.ESTIMATED_GAS_USD_FALLBACK) || 4.5;
 
   const { object: decision } = await generateObject({
     model: githubModels(BRAIN_MODEL),
@@ -78,7 +100,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     }),
   });
 
-  console.log(`[YIELD] Brain decision: should_rotate=${decision.recommendation.should_rotate} — ${decision.userExplanation}`);
+  log.info({ shouldRotate: decision.recommendation.should_rotate }, decision.userExplanation);
 
   if (!decision.recommendation.should_rotate) {
     await db.insert(executionsLog).values({
@@ -102,7 +124,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   );
 
   if (simWithdraw.wouldRevert) {
-    console.warn(`[YIELD] Pre-flight simulation reverted (insufficient collateral or zero gas). Recording resilience log.`);
+    log.warn("Pre-flight simulation reverted — recording resilience log.");
     await db.insert(executionsLog).values({
       userWallet,
       action: "rotate",
@@ -136,5 +158,14 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     aiAnalysis: decision.analysis,
   });
 
-  console.log(`[YIELD] Rotated ${rotateAmount} USDC (Aave V3 → Compound V3). KeeperHub executionId: ${executionId} (isStub: ${isStub})`);
+  log.info({ executionId, isStub, rotateAmount }, "Rotated USDC (Aave V3 → Compound V3)");
+
+  // ── Alert on real execution success (throttled) ───────────────────────────
+  if (!isStub && shouldAlert(`${userWallet.slice(0, 8)}:yield_success`)) {
+    await sendKeeperNotification(
+      ALERT_CHANNEL,
+      `🔄 Yield rotated: ${rotateAmount} USDC → Compound V3 for ${userWallet.slice(0, 8)}`,
+      effectiveKey
+    ).catch(() => {});
+  }
 }

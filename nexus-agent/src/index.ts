@@ -1,10 +1,18 @@
 import dotenv from "dotenv";
 dotenv.config({ path: "../.env", override: true });
 
-// ── 0. Production Startup Guard ────────────────────────────────────────────────
+// ── 0. Production Startup Guards ────────────────────────────────────────────────
+import { logger } from "./lib/logger.js";
+import { getAgenticWallet } from "./lib/agentic-wallet.js";
+
 if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
-  console.error("[FATAL] JWT_SECRET environment variable is required in production.");
+  logger.fatal("JWT_SECRET environment variable is required in production.");
   process.exit(1);
+}
+
+// Throw at startup (not mid-cron) if AGENTIC_WALLET_ADDRESS is missing in prod
+if (process.env.NODE_ENV === "production") {
+  getAgenticWallet(); // throws if unset in production
 }
 
 import express from "express";
@@ -32,6 +40,16 @@ import {
   AuthError,
 } from "./middleware/auth.js";
 import { resolveKeeperHubApiKey } from "./lib/user-context.js";
+import { sendKeeperNotification } from "./lib/mcp-client.js";
+import { shouldAlert } from "./lib/alert-throttle.js";
+import { pinoHttp } from "pino-http";
+import crypto from "node:crypto";
+
+const ALLOWED_CHANNELS = ["telegram", "discord", "email"] as const;
+type AlertChannel = typeof ALLOWED_CHANNELS[number];
+const ALERT_CHANNEL: AlertChannel = ALLOWED_CHANNELS.includes(
+  process.env.ALERT_CHANNEL as AlertChannel
+) ? (process.env.ALERT_CHANNEL as AlertChannel) : "telegram";
 
 const app = express();
 
@@ -56,6 +74,18 @@ app.use(
 );
 
 app.use(express.json());
+
+// ── Structured HTTP request logging ──────────────────────────────────────────
+app.use(pinoHttp({
+  logger,
+  genReqId: () => crypto.randomUUID(),
+  customLogLevel: (_req: any, res: any) =>
+    res.statusCode >= 500 ? "error" : res.statusCode >= 400 ? "warn" : "info",
+  serializers: {
+    req: (req: any) => ({ method: req.method, url: req.url, reqId: req.id }),
+    res: (res: any) => ({ statusCode: res.statusCode }),
+  },
+}));
 
 // ── 2. Rate Limiting ───────────────────────────────────────────────────────────
 const apiLimiter = rateLimit({
@@ -522,9 +552,15 @@ async function startLoops() {
         try {
           const apiKey = await resolveKeeperHubApiKey(wallet);
           await runGuardian(wallet, { apiKey });
-        } catch (err) { console.error(`[GUARDIAN CRON] Error for ${wallet.slice(0, 8)}:`, err); }
+        } catch (err) {
+          logger.error({ wallet: wallet.slice(0, 8), err }, "[GUARDIAN CRON] Error");
+          const alertKey = await resolveKeeperHubApiKey(wallet).catch(() => undefined);
+          if (shouldAlert(`${wallet.slice(0, 8)}:cron_error`)) {
+            sendKeeperNotification(ALERT_CHANNEL, `❌ Guardian cron failed for ${wallet.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`, alertKey).catch(() => {});
+          }
+        }
       }
-    } catch (err) { console.error("[GUARDIAN CRON] DB query failed:", err); }
+    } catch (err) { logger.error({ err }, "[GUARDIAN CRON] DB query failed"); }
   });
 
   // Yield Rotator (15 min)
@@ -537,9 +573,15 @@ async function startLoops() {
         try {
           const apiKey = await resolveKeeperHubApiKey(wallet);
           await runYieldRotator(wallet, { apiKey });
-        } catch (err) { console.error(`[YIELD CRON] Error for ${wallet.slice(0, 8)}:`, err); }
+        } catch (err) {
+          logger.error({ wallet: wallet.slice(0, 8), err }, "[YIELD CRON] Error");
+          const alertKey = await resolveKeeperHubApiKey(wallet).catch(() => undefined);
+          if (shouldAlert(`${wallet.slice(0, 8)}:cron_error`)) {
+            sendKeeperNotification(ALERT_CHANNEL, `❌ Yield cron failed for ${wallet.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`, alertKey).catch(() => {});
+          }
+        }
       }
-    } catch (err) { console.error("[YIELD CRON] DB query failed:", err); }
+    } catch (err) { logger.error({ err }, "[YIELD CRON] DB query failed"); }
   });
 
   // DCA (hourly)
@@ -554,22 +596,27 @@ async function startLoops() {
         try {
           const apiKey = await resolveKeeperHubApiKey(wallet);
           await runDCA(wallet, { apiKey });
-        } catch (err) { console.error(`[DCA CRON] Error for ${wallet.slice(0, 8)}:`, err); }
+        } catch (err) {
+          logger.error({ wallet: wallet.slice(0, 8), err }, "[DCA CRON] Error");
+          const alertKey = await resolveKeeperHubApiKey(wallet).catch(() => undefined);
+          if (shouldAlert(`${wallet.slice(0, 8)}:cron_error`)) {
+            sendKeeperNotification(ALERT_CHANNEL, `❌ DCA cron failed for ${wallet.slice(0, 8)}: ${err instanceof Error ? err.message : String(err)}`, alertKey).catch(() => {});
+          }
+        }
       }
-    } catch (err) { console.error("[DCA CRON] DB query failed:", err); }
+    } catch (err) { logger.error({ err }, "[DCA CRON] DB query failed"); }
   });
 
-  console.log("[NEXUS] Background cron loops initialized (Guardian: 5min, Yield: 15min, DCA: hourly).");
+  logger.info("Background cron loops initialized (Guardian: 5min, Yield: 15min, DCA: hourly).");
 }
 
 const PORT = parseInt(process.env.PORT || "3001", 10);
 app.listen(PORT, () => {
-  console.log(`[NEXUS] nexus-agent API running on http://localhost:${PORT}`);
-  console.log(`[NEXUS] Demo wallet: ${DEMO_WALLET}`);
+  logger.info({ port: PORT, demoWallet: DEMO_WALLET }, "nexus-agent API started");
   startLoops();
 });
 
 process.on("SIGTERM", () => {
-  console.log("[NEXUS] SIGTERM received — gracefully shutting down.");
+  logger.info("SIGTERM received — gracefully shutting down.");
   process.exit(0);
 });

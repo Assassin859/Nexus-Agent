@@ -7,16 +7,20 @@ import { simulate } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow } from "../lib/mcp-client.js";
 import { getProvider } from "../lib/rpc.js";
 import { encodeUniswapSwap, UNISWAP_V3_ROUTER } from "../lib/calldata.js";
+import { getEthPriceUSD } from "../lib/price-feed.js";
+import { getAgenticWallet } from "../lib/agentic-wallet.js";
+import { resolveKeeperHubApiKey } from "../lib/user-context.js";
+import { childLogger } from "../lib/logger.js";
 import { eq, and } from "drizzle-orm";
 import { formatEther } from "ethers";
 
-import { resolveKeeperHubApiKey } from "../lib/user-context.js";
-
-const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || "0x0000000000000000000000000000000000000000";
-const ETH_PRICE_USD  = 3500;
-
 export async function run(userWallet: string, options?: { apiKey?: string }): Promise<void> {
+  const AGENTIC_WALLET = getAgenticWallet();
+  if (!AGENTIC_WALLET) return; // dev-only early exit; prod throws at startup
+
+  const log = childLogger({ module: "dca", wallet: userWallet.slice(0, 8) });
   const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(userWallet));
+
   const workflow = await db.query.activeWorkflows.findFirst({
     where: and(
       eq(activeWorkflows.userWallet, userWallet),
@@ -26,21 +30,34 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   });
 
   if (!workflow) {
-    console.log("[DCA] No active DCA workflow for wallet:", userWallet);
+    log.info("No active DCA workflow — skipping.");
     return;
   }
 
-  let estimatedGasUSD = 6;
-  try {
-    const provider = await getProvider();
-    const feeData = await provider.getFeeData();
-    const gasPriceWei = feeData.gasPrice ?? 0n;
-    const estimatedGasUnits = 150_000n;
-    const gasCostEth = Number(formatEther(gasPriceWei * estimatedGasUnits));
-    estimatedGasUSD = gasCostEth * ETH_PRICE_USD;
-    console.log(`[DCA] Real gas estimate: $${estimatedGasUSD.toFixed(2)} (${(gasPriceWei / 1_000_000_000n)}gwei)`);
-  } catch (err) {
-    console.warn("[DCA] Failed to fetch real gas price, using fallback:", err instanceof Error ? err.message : err);
+  // ── Fetch provider once; resolve gas + ETH price in parallel ────────────────
+  // Separate try/catch per concern so a gas RPC failure doesn't block a good price.
+  const provider = await getProvider();
+
+  let estimatedGasUSD = Number(process.env.ESTIMATED_GAS_USD_FALLBACK) || 6;
+  let ethPriceUSD = Number(process.env.ETH_PRICE_USD_FALLBACK) || 3000;
+
+  const [gasFee, livePrice] = await Promise.allSettled([
+    provider.getFeeData(),
+    getEthPriceUSD(),
+  ]);
+
+  // Resolve live price first — needed for gas USD calculation below
+  if (livePrice.status === "fulfilled") {
+    ethPriceUSD = livePrice.value;
+  }
+
+  if (gasFee.status === "fulfilled") {
+    const gasPriceWei = gasFee.value.gasPrice ?? 0n;
+    const gasCostEth = Number(formatEther(gasPriceWei * 150_000n));
+    estimatedGasUSD = gasCostEth * ethPriceUSD;
+    log.info({ estimatedGasUSD: estimatedGasUSD.toFixed(2), gasPriceGwei: String(gasPriceWei / 1_000_000_000n) }, "Real gas estimate");
+  } else {
+    log.warn({ reason: (gasFee.reason as Error)?.message }, "Failed to fetch gas price — using fallback");
   }
 
   const { object: decision } = await generateObject({
@@ -56,7 +73,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   });
 
   if (!decision.recommendation.execute_swap) {
-    console.log(`[DCA] Swap delayed ${decision.recommendation.delay_minutes}min: ${decision.userExplanation}`);
+    log.info({ delayMin: decision.recommendation.delay_minutes }, `Swap delayed: ${decision.userExplanation}`);
     await db.insert(executionsLog).values({
       userWallet,
       action: "swap",
@@ -69,14 +86,14 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
 
   const maxSlippage = decision.recommendation.max_slippage_percentage ?? 0.5;
-  const calldata = encodeUniswapSwap(workflow.amount, AGENTIC_WALLET, maxSlippage);
+  const calldata = encodeUniswapSwap(workflow.amount, AGENTIC_WALLET, maxSlippage, ethPriceUSD);
 
   const sim = await simulate(
     { from: AGENTIC_WALLET, to: UNISWAP_V3_ROUTER, data: calldata },
     userWallet
   );
   if (sim.wouldRevert) {
-    console.warn("[DCA] Simulation caught revert — aborting.");
+    log.warn("Simulation caught revert — aborting swap.");
     return;
   }
 
@@ -97,5 +114,5 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     aiAnalysis: decision.analysis,
   });
 
-  console.log(`[DCA] Swap executed. executionId: ${executionId}`);
+  log.info({ executionId, isStub }, `Swap executed: ${workflow.amount} USDC → ETH`);
 }

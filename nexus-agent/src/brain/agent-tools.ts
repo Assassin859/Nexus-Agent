@@ -278,8 +278,10 @@ export function createAgentTools(
             amount: l.amount,
             status: l.status,
             reason: l.reason,
-            txHash: l.txHash || `0x${"1".repeat(64)}`,
-            etherscanUrl: `https://sepolia.etherscan.io/tx/${l.txHash || "0x" + "1".repeat(64)}`,
+            txHash: l.txHash ?? null,
+            ...(l.txHash && l.status !== "simulated_stub" && {
+              etherscanUrl: `https://sepolia.etherscan.io/tx/${l.txHash}`,
+            }),
             timestamp: l.timestamp ? new Date(l.timestamp).toISOString() : new Date().toISOString(),
           })),
         };

@@ -21,6 +21,8 @@ export type ExecutionStatus = {
   executionId: string;
   status: "pending" | "simulating" | "broadcasting" | "mined" | "failed";
   txHash?: string;
+  /** true when MCP is unavailable or workflowId is a stub — not a real on-chain execution */
+  simulated?: boolean;
 };
 
 export type ExecutionLog = {
@@ -96,11 +98,14 @@ export async function getExecutionStatus(
   executionId: string,
   apiKey?: string
 ): Promise<ExecutionStatus> {
-  if (executionId.startsWith("exec-stub-")) return { executionId, status: "mined", txHash: "0x" + "1".repeat(64) };
+  // Stub path — not a real on-chain execution
+  if (executionId.startsWith("exec-stub-")) {
+    return { executionId, status: "pending", txHash: undefined, simulated: true };
+  }
   const client = await tryGetMcpClient();
   const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
 
-  if (!client) return { executionId, status: "mined", txHash: "0x" + "1".repeat(64) };
+  if (!client) return { executionId, status: "pending", txHash: undefined, simulated: true };
   try {
     const result = await client.callTool({
       name: "get_execution_status",
@@ -108,7 +113,7 @@ export async function getExecutionStatus(
     });
     return result.content as ExecutionStatus;
   } catch {
-    return { executionId, status: "mined", txHash: "0x" + "1".repeat(64) };
+    return { executionId, status: "pending", txHash: undefined, simulated: true };
   }
 }
 

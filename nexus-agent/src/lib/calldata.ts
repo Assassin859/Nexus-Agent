@@ -82,13 +82,12 @@ export function encodeAaveSupply(
 export function encodeUniswapSwap(
   amountInUSD: number,
   recipient: string,
-  maxSlippagePct = 0.5
+  maxSlippagePct = 0.5,
+  ethPriceUSD = 3000
 ): string {
   const amountIn = parseUnits(amountInUSD.toFixed(6), 6); // USDC 6 decimals
-  // amountOutMinimum: estimate WETH output using static price, apply slippage tolerance
-  // ETH_PRICE_USD is a conservative fallback; real-time price oracle would be ideal.
-  const ETH_PRICE_USD = 3500;
-  const estimatedEthOut = amountInUSD / ETH_PRICE_USD;
+  // amountOutMinimum: estimate WETH output using live Chainlink price, apply slippage tolerance
+  const estimatedEthOut = amountInUSD / ethPriceUSD;
   const minEthOut = estimatedEthOut * (1 - maxSlippagePct / 100);
   const amountOutMinimum = parseUnits(minEthOut.toFixed(18), 18);
   const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 min from now
