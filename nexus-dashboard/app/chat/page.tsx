@@ -12,6 +12,9 @@ type PortfolioData = {
   workflows: any[];
 };
 
+type ToolCall = { toolName: string; args?: Record<string, unknown> };
+type ToolResult = { toolName: string; result?: unknown };
+
 const DEFAULT_WELCOME = {
   sender: "agent",
   text: "Hello! I am your NexusAgent AI assistant powered by GitHub Models. How can I assist with your automated wealth strategy today?",
@@ -20,7 +23,7 @@ const DEFAULT_WELCOME = {
 export default function ChatPage() {
   const { walletAddress, authToken, signInWithEthereum } = useWallet();
 
-  const [messages, setMessages] = useState<Array<{ sender: string; text: string; intents?: any[] }>>([DEFAULT_WELCOME]);
+  const [messages, setMessages] = useState<Array<{ sender: string; text: string; toolCalls?: ToolCall[]; toolResults?: ToolResult[] }>>([DEFAULT_WELCOME]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
@@ -105,7 +108,8 @@ export default function ChatPage() {
       const agentMsg = {
         sender: "agent",
         text: data.reply || "Position evaluated. Health Factor is in safe bounds.",
-        intents: data.intents || [],
+        toolCalls: (data.toolCalls || []) as ToolCall[],
+        toolResults: (data.toolResults || data.executionResults || []) as ToolResult[],
       };
       setMessages((prev) => [...prev, agentMsg]);
     } catch {
@@ -211,14 +215,35 @@ export default function ChatPage() {
                       {m.text}
                     </div>
 
-                    {/* Show detected AI Intents if present */}
-                    {m.intents && m.intents.length > 0 && (
-                      <div style={{
-                        fontSize: 11, fontFamily: "monospace", padding: "6px 10px",
-                        background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)",
-                        borderRadius: 6, color: "#818cf8", display: "flex", alignItems: "center", gap: 6
-                      }}>
-                        <Cpu size={12} /> Intents parsed: {m.intents.map((i: any) => i.type).join(", ")}
+                    {/* Tool action chips — rendered when agent called a tool */}
+                    {m.toolCalls && m.toolCalls.length > 0 && (
+                      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                        {m.toolCalls.map((tc, ti) => {
+                          // Find matching result for this tool call
+                          const matched = m.toolResults?.find((r) => r.toolName === tc.toolName);
+                          const resultSummary = matched?.result
+                            ? typeof matched.result === "object"
+                              ? (matched.result as any).message ||
+                                ((matched.result as any).success === false ? "⚠ Action required" : "✓ Done")
+                              : String(matched.result)
+                            : null;
+                          return (
+                            <div
+                              key={ti}
+                              style={{
+                                fontSize: 11, fontFamily: "monospace", padding: "5px 10px",
+                                background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)",
+                                borderRadius: 6, color: "#818cf8", display: "flex", alignItems: "center", gap: 6
+                              }}
+                            >
+                              <Cpu size={12} />
+                              <span style={{ fontWeight: 700 }}>{tc.toolName}</span>
+                              {resultSummary && (
+                                <span style={{ color: "var(--text-muted)", marginLeft: 4 }}>— {resultSummary}</span>
+                              )}
+                            </div>
+                          );
+                        })}
                       </div>
                     )}
                   </div>
