@@ -142,13 +142,34 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       ? matchedPayee.recipientAddresses
       : [{ name: matchedPayee.name, address: matchedPayee.vaultPoolAddress || walletAddress }];
 
+    if (targets.length === 0) {
+      return {
+        success: false,
+        verification_required: true,
+        message: `⚠️ Payee "${matchedPayee.name}" has no registered recipient wallet addresses.`,
+      };
+    }
+
+    const perMemberAmount =
+      matchedPayee.type === "team" && targets.length > 1
+        ? Math.floor(amount / targets.length)
+        : amount;
+
+    if (perMemberAmount < 1) {
+      return {
+        success: false,
+        verification_required: true,
+        message: `⚠️ Total payroll amount $${amount} is too small to divide among ${targets.length} team members (minimum 1 USDC per member).`,
+      };
+    }
+
     const createdWfs: string[] = [];
     const cronSchedule = parseCronFromMessage(userMessage);
 
     for (const member of targets) {
       const targetAddr = (typeof member === "string" ? member : member.address) || walletAddress;
       const memberName = typeof member === "string" ? member : member.name;
-      const calldata = encodeERC20Transfer(targetAddr, amount);
+      const calldata = encodeERC20Transfer(targetAddr, perMemberAmount);
 
       const { workflowId, isStub } = await createWorkflow({
         name: `payroll-${(memberName || "member").replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
@@ -169,31 +190,41 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         userWallet: walletAddress,
         type: "payroll",
         recipientAddress: targetAddr,
-        amount,
+        amount: perMemberAmount,
         cronSchedule,
         status: "active",
         keeperhubWorkflowId: workflowId,
       }).onConflictDoUpdate({
         target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
-        set: { amount, cronSchedule, keeperhubWorkflowId: workflowId, updatedAt: new Date() },
+        set: { amount: perMemberAmount, cronSchedule, keeperhubWorkflowId: workflowId, updatedAt: new Date() },
       });
 
       await db.insert(executionsLog).values({
         userWallet: walletAddress,
         action: "payroll",
-        amount,
+        amount: perMemberAmount,
         status: "success",
-        reason: `Registered ${amount} USDC payroll workflow for ${memberName} (${targetAddr.slice(0, 8)}...).`,
-        aiAnalysis: { matchedPayee: matchedPayee.name, targetMember: memberName, amount },
+        reason: `Registered ${perMemberAmount} USDC payroll workflow for ${memberName} (${targetAddr.slice(0, 8)}...).`,
+        aiAnalysis: {
+          matchedPayee: matchedPayee.name,
+          targetMember: memberName,
+          amount: perMemberAmount,
+          totalAmount: amount,
+        },
       });
 
       createdWfs.push(workflowId);
     }
 
+    const isSplit = matchedPayee.type === "team" && targets.length > 1;
+    const msgDetails = isSplit
+      ? `Created ${perMemberAmount} USDC payroll workflows for each of the ${targets.length} members (total: ${amount} USDC).`
+      : `Created ${perMemberAmount} USDC payroll workflow for ${matchedPayee.name}.`;
+
     return {
       success: true,
       verification_required: false,
-      message: `👥 Resolved '${matchedPayee.name}' (${targets.length} member wallet${targets.length > 1 ? "s" : ""}). Created ${amount} USDC payroll workflows for each member.`,
+      message: `👥 Resolved '${matchedPayee.name}' (${targets.length} wallet${targets.length > 1 ? "s" : ""}). ${msgDetails}`,
       workflowId: createdWfs[0],
     };
   }
