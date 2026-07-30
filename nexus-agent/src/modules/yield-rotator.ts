@@ -4,7 +4,8 @@ import { YieldRotatorSchema, YIELD_ROTATOR_SYSTEM_PROMPT } from "../brain/schema
 import { db } from "../db/client.js";
 import { executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
-import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled } from "../lib/mcp-client.js";
+import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled, type WorkflowStep } from "../lib/mcp-client.js";
+import { ensureAllowance } from "../lib/allowance.js";
 import {
   encodeAaveWithdraw,
   encodeCompoundSupply,
@@ -13,7 +14,8 @@ import {
   USDC_SEPOLIA,
 } from "../lib/calldata.js";
 import { getAavePosition } from "../lib/aave.js";
-import { getAgenticWallet } from "../lib/agentic-wallet.js";
+import { getAgenticWallet, getWalletContext } from "../lib/agentic-wallet.js";
+import { getCompoundUsdcSupplyAPY } from "../lib/compound.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
 import { childLogger } from "../lib/logger.js";
 import { shouldAlert } from "../lib/alert-throttle.js";
@@ -34,11 +36,24 @@ const ALERT_CHANNEL: AlertChannel = ALLOWED_CHANNELS.includes(
   : "telegram";
 
 export async function run(userWallet: string, options?: { apiKey?: string }): Promise<void> {
-  const AGENTIC_WALLET = getAgenticWallet();
-  if (!AGENTIC_WALLET) return; // dev-only early exit; prod throws at startup
+  const context = getWalletContext(userWallet);
+  if (!context || !context.signerWallet) return;
 
   const log = childLogger({ module: "yield", wallet: userWallet.slice(0, 8) });
   const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(userWallet));
+
+  // ── Ownership Guard: Aave withdraw has no onBehalfOf ─────────────────────
+  if (!context.canWithdrawAaveSupply) {
+    log.info("Cannot rotate watched wallet's Aave supply without shared wallet ownership — skipping.");
+    await db.insert(executionsLog).values({
+      userWallet,
+      action: "rotate",
+      amount: 0,
+      status: "success",
+      reason: "Cannot rotate watched wallet's Aave supply without shared wallet ownership (userWallet !== AGENTIC_WALLET)",
+    });
+    return;
+  }
 
   log.info("Evaluating yield opportunities");
 
@@ -58,28 +73,17 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  // ── Skip if no Aave collateral ────────────────────────────────────────────
-  if (position.collateralUSD === 0) {
-    log.info("No Aave collateral — skipping.");
+  // ── Skip if no Aave USDC supply ────────────────────────────────────────────
+  if (position.usdcSuppliedUSD === 0) {
+    log.info("No Aave USDC supply — skipping.");
     return;
   }
 
-  const userBalance = position.collateralUSD;
+  const userBalance = position.usdcSuppliedUSD;
 
-  // ── Fetch Compound APY from on-chain, env-configurable conservative fallback ─
-  let compoundUSDCSupplyAPY = Number(process.env.COMPOUND_APY_FALLBACK) || 3;
-  try {
-    const provider = await getProvider();
-    const cUSDC = new Contract(COMPOUND_V3_USDC, COMPOUND_ABI, provider);
-    const ratePerSecRaw = await cUSDC.supplyRatePerSecond();
-    const ratePerSec = Number(ratePerSecRaw) / 1e18;
-    const secondsInYear = 365 * 24 * 3600;
-    const computed = parseFloat(((Math.pow(1 + ratePerSec, secondsInYear) - 1) * 100).toFixed(2));
-    compoundUSDCSupplyAPY = computed > 0 ? computed : Number(process.env.COMPOUND_APY_FALLBACK) || 3;
-    log.info({ compoundUSDCSupplyAPY }, "Compound APY fetched on-chain");
-  } catch (err) {
-    log.warn({ reason: err instanceof Error ? err.message : err }, "Compound APY fetch failed — using fallback");
-  }
+  // ── Fetch Compound APY from on-chain helper ────────────────────────────────
+  const compoundUSDCSupplyAPY = await getCompoundUsdcSupplyAPY();
+  log.info({ compoundUSDCSupplyAPY }, "Compound APY fetched on-chain");
 
   // ── Env-configurable gas estimate fallback ────────────────────────────────
   const estimatedGasUSD = Number(process.env.ESTIMATED_GAS_USD_FALLBACK) || 4.5;
@@ -113,35 +117,64 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  const rotateAmount = decision.recommendation.amount || userBalance;
-  const withdrawCalldata = encodeAaveWithdraw(USDC_SEPOLIA, rotateAmount, userWallet);
+  const rotateAmount = Math.min(decision.recommendation.amount || userBalance, userBalance);
+  // Step 1: Withdraw from Aave to signer wallet
+  const withdrawCalldata = encodeAaveWithdraw(USDC_SEPOLIA, rotateAmount, context.signerWallet);
+  // Step 2: Supply to Compound V3 from signer wallet
   const supplyCalldata = encodeCompoundSupply(USDC_SEPOLIA, rotateAmount);
 
+  // Pre-flight simulate Step 1 (Aave withdraw)
   const simWithdraw = await simulate(
-    { from: AGENTIC_WALLET, to: AAVE_V3_POOL, data: withdrawCalldata },
+    { from: context.signerWallet, to: AAVE_V3_POOL, data: withdrawCalldata },
     userWallet
   );
 
   if (simWithdraw.wouldRevert) {
-    log.warn("Pre-flight simulation reverted — recording resilience log.");
+    log.warn("Step 1 (Aave withdraw) pre-flight simulation reverted — recording resilience log.");
     await db.insert(executionsLog).values({
       userWallet,
       action: "rotate",
       amount: rotateAmount,
       status: "reverted_simulation",
-      reason: `Pre-flight simulation intercepted revert: Insufficient Aave collateral/balance to rotate ${rotateAmount} USDC to Compound V3. Zero gas wasted.`,
+      reason: `Pre-flight simulation intercepted revert: Aave withdraw of ${rotateAmount} USDC failed (${simWithdraw.revertReason || "Reverted"}). Zero gas wasted.`,
       aiAnalysis: decision.analysis,
     });
     return;
   }
 
+  // Pre-flight simulate Step 2 (Compound supply)
+  const simSupply = await simulate(
+    { from: context.signerWallet, to: COMPOUND_V3_USDC, data: supplyCalldata },
+    userWallet
+  );
+
+  if (simSupply.wouldRevert) {
+    log.warn("Step 2 (Compound supply) pre-flight simulation reverted — recording resilience log.");
+    await db.insert(executionsLog).values({
+      userWallet,
+      action: "rotate",
+      amount: rotateAmount,
+      status: "reverted_simulation",
+      reason: `Pre-flight simulation intercepted revert: Compound V3 supply of ${rotateAmount} USDC failed (${simSupply.revertReason || "Reverted"}). Zero gas wasted.`,
+      aiAnalysis: decision.analysis,
+    });
+    return;
+  }
+
+  // Prepend ERC20 max-uint256 approval step for Compound V3 USDC supply if needed
+  const allowanceCalldata = await ensureAllowance(context.signerWallet, USDC_SEPOLIA, COMPOUND_V3_USDC, rotateAmount);
+  const steps: WorkflowStep[] = [
+    { type: "transaction", to: AAVE_V3_POOL, calldata: withdrawCalldata, gasStrategy: "standard" },
+  ];
+  if (allowanceCalldata) {
+    steps.push({ type: "transaction", to: USDC_SEPOLIA, calldata: allowanceCalldata, gasStrategy: "standard" });
+  }
+  steps.push({ type: "transaction", to: COMPOUND_V3_USDC, calldata: supplyCalldata, gasStrategy: "standard" });
+
   const { workflowId, isStub: createStub } = await createWorkflow({
     name: `yield-rotate-${userWallet.slice(0, 8)}-${Date.now()}`,
     triggerType: "manual",
-    steps: [
-      { type: "transaction", to: AAVE_V3_POOL, calldata: withdrawCalldata, gasStrategy: "standard" },
-      { type: "transaction", to: COMPOUND_V3_USDC, calldata: supplyCalldata, gasStrategy: "standard" },
-    ],
+    steps,
     mevProtected: true,
   }, effectiveKey);
 

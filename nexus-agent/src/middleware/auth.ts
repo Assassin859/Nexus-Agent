@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from "express";
-import jwt from "jsonwebtoken";
+import jwt, { type SignOptions } from "jsonwebtoken";
 
 export interface AuthedRequest extends Request {
   userWallet: string;
@@ -26,7 +26,7 @@ export function generateAuthToken(walletAddress: string): string {
 
   const payload = { walletAddress: walletAddress.toLowerCase() };
   const signingKey = secret || "dev_nexus_jwt_secret_fallback_key_2026";
-  const expiresIn = (process.env.JWT_EXPIRES_IN || "7d") as unknown as number;
+  const expiresIn = (process.env.JWT_EXPIRES_IN || "7d") as SignOptions["expiresIn"];
 
   return jwt.sign(payload, signingKey, { expiresIn });
 }

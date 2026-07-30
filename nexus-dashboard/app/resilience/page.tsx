@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { CheckCircle2, Clock, ShieldX } from "lucide-react";
+import { CheckCircle2, Clock, ShieldX, Activity } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 
@@ -35,11 +35,20 @@ const INITIAL_SCENARIOS: ScenarioCard[] = [
   {
     icon: Clock,
     title: "Gas Adjusted Path",
-    pill: { label: "Delayed Execution", cls: "pill-warning" },
+    pill: { label: "Gas Delayed", cls: "pill-warning" },
     desc: "Actions (e.g. DCA swaps) where estimated gas exceeds safety thresholds are paused to prevent gas loss.",
     code: { text: "Status: WAITING FOR RUN\nNo gas-adjusted pauses recorded.", color: "#fbbf24", bg: "rgba(245,158,11,0.09)", border: "rgba(245,158,11,0.25)" },
     accent: { color: "#fbbf24", bg: "rgba(245,158,11,0.10)", border: "rgba(245,158,11,0.3)" },
     side: "#f59e0b",
+  },
+  {
+    icon: Activity,
+    title: "In-Flight Executions",
+    pill: { label: "In-Flight", cls: "pill-cyan" },
+    desc: "Active executions currently processing on-chain or waiting for confirmation under 15m TTL.",
+    code: { text: "Status: IDLE\nNo active in-flight executions.", color: "#38bdf8", bg: "rgba(56,189,248,0.09)", border: "rgba(56,189,248,0.25)" },
+    accent: { color: "#38bdf8", bg: "rgba(56,189,248,0.10)", border: "rgba(56,189,248,0.3)" },
+    side: "#38bdf8",
   },
   {
     icon: ShieldX,
@@ -63,21 +72,32 @@ export default function ResiliencePage() {
         const data: LogItem[] = await res.json();
         if (Array.isArray(data) && data.length > 0) {
           const happy = data.find(d => d.status === "success");
-          const paused = data.find(d => d.status === "pending" || d.reason?.includes("Gas"));
-          const revert = data.find(d => d.status === "reverted_simulation" || d.status === "reverted_chain");
+          const delayed = data.find(d => d.status === "delayed");
+          const pending = data.find(d => d.status === "pending");
+          const simRevert = data.find(d => d.status === "reverted_simulation");
+          const chainRevert = data.find(d => d.status === "reverted_chain");
 
           const updated = [...INITIAL_SCENARIOS];
           if (happy) {
             updated[0].desc = `Action ${happy.action.toUpperCase()} executed successfully for amount $${happy.amount}.`;
             updated[0].code.text = `Status: SUCCESS (200 OK)\nReason: ${happy.reason || "Mined on Sepolia"}`;
           }
-          if (paused) {
-            updated[1].desc = `Action ${paused.action.toUpperCase()} evaluated. Gas or cycle limit rules applied.`;
-            updated[1].code.text = `Status: PAUSED\nReason: ${paused.reason || "Gas limit rule active"}`;
+          if (delayed) {
+            updated[1].desc = `Action ${delayed.action.toUpperCase()} evaluated. Gas or cycle limit rules applied.`;
+            updated[1].code.text = `Status: DELAYED\nReason: ${delayed.reason || "Gas threshold limit active"}`;
           }
-          if (revert) {
-            updated[2].desc = `Simulation intercepted revert before broadcasting to Sepolia chain.`;
-            updated[2].code.text = `Status: ABORTED (Sim Revert)\nReason: ${revert.reason || "Revert caught, 0 gas wasted"}`;
+          if (pending) {
+            updated[2].desc = `Action ${pending.action.toUpperCase()} is currently in-flight on-chain.`;
+            updated[2].code.text = `Status: PENDING (<15m TTL)\nReason: ${pending.reason || "Waiting for mining settlement"}`;
+          }
+          if (simRevert || chainRevert) {
+            const revertTarget = simRevert || chainRevert!;
+            const isSim = revertTarget.status === "reverted_simulation";
+            updated[3].pill = { label: isSim ? "Pre-Flight Intercepted" : "Reverted On-Chain", cls: isSim ? "pill-warning" : "pill-danger" };
+            updated[3].desc = isSim
+              ? `Simulation intercepted revert before broadcasting to Sepolia (0 gas wasted).`
+              : `Execution reverted on-chain during broadcast.`;
+            updated[3].code.text = `Status: ${revertTarget.status.toUpperCase()}\nReason: ${revertTarget.reason || "Revert recorded"}`;
           }
           setScenarios(updated);
         }
@@ -95,7 +115,7 @@ export default function ResiliencePage() {
         <p className="page-subtitle">Every action is simulated prior to broadcast. Zero gas wasted on reverts.</p>
       </div>
 
-      <div className="grid-3">
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
         {scenarios.map((s) => {
           const Icon = s.icon;
           return (
@@ -118,15 +138,16 @@ export default function ResiliencePage() {
                   <span className={`pill ${s.pill.cls}`}>{s.pill.label}</span>
                 </div>
               </div>
-              <p style={{ fontSize: 12.5, color: "var(--text-2)", lineHeight: 1.65, fontWeight: 500 }}>{s.desc}</p>
-              <div
-                className="res-code"
-                style={{ background: s.code.bg, border: `1px solid ${s.code.border}`, color: s.code.color }}
+              <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.5 }}>{s.desc}</p>
+              <pre
+                style={{
+                  background: s.code.bg, color: s.code.color, border: `1px solid ${s.code.border}`,
+                  borderRadius: 8, padding: 14, fontSize: 11.5, fontFamily: "ui-monospace, monospace",
+                  whiteSpace: "pre-wrap", overflowX: "auto"
+                }}
               >
-                {s.code.text.split("\n").map((line, i) => (
-                  <div key={i}>{line}</div>
-                ))}
-              </div>
+                {s.code.text}
+              </pre>
             </div>
           );
         })}

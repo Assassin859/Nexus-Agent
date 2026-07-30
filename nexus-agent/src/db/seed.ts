@@ -1,4 +1,5 @@
-﻿import { db, pool } from "./client.js";
+import "../lib/env.js";
+import { db, pool } from "./client.js";
 import { repaymentCycles, activeWorkflows, executionsLog } from "./schema.js";
 
 async function seed() {
@@ -6,8 +7,8 @@ async function seed() {
 
   // Wallets from our environment / spec sheets
   const walletA = "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b".toLowerCase(); // MetaMask demo
-  const walletB = "0xsafe000000000000000000000000000000000001".toLowerCase(); // Placeholder safe wallet
-  const walletC = "0xrisk000000000000000000000000000000000002".toLowerCase(); // Placeholder critical wallet
+  const walletB = "0x70997970c51812dc3a010c7d01b50e0d17dc79c8".toLowerCase(); // Safe demo wallet (Hardhat #1)
+  const walletC = "0x90f79bf6eb2c4f870365e785982e1f101e93b906".toLowerCase(); // Critical demo wallet (Hardhat #3)
 
   try {
     // Clear out old records for a clean run

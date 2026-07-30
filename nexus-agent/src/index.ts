@@ -1,9 +1,8 @@
-import dotenv from "dotenv";
-dotenv.config({ path: "../.env", override: true });
+import "./lib/env.js";
 
 // ── 0. Production Startup Guards ────────────────────────────────────────────────
 import { logger } from "./lib/logger.js";
-import { getAgenticWallet } from "./lib/agentic-wallet.js";
+import { getAgenticWallet, getWalletContext } from "./lib/agentic-wallet.js";
 
 if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
   logger.fatal("JWT_SECRET environment variable is required in production.");
@@ -25,9 +24,12 @@ import { githubModels, BRAIN_MODEL } from "./brain/provider.js";
 import { run as runGuardian } from "./modules/guardian.js";
 import { run as runYieldRotator } from "./modules/yield-rotator.js";
 import { run as runDCA } from "./modules/dca.js";
+import { registerDcaWorkflow } from "./modules/dca-schedule.js";
 import { handle as handlePaychain } from "./modules/paychain.js";
 import { syncKeeperHubState } from "./lib/keeperhub-sync.js";
 import { getAavePosition } from "./lib/aave.js";
+import { getCompoundUsdcSupplyAPY } from "./lib/compound.js";
+import { shouldRunCronNow } from "./lib/cron-evaluator.js";
 import { db } from "./db/client.js";
 import { activeWorkflows, executionsLog, userSettings, payees, repaymentCycles } from "./db/schema.js";
 import { eq, desc, and } from "drizzle-orm";
@@ -357,6 +359,27 @@ app.post("/api/user/settings", requireAuth, async (req: express.Request, res: ex
   }
 });
 
+// ── DCA Schedule Endpoint (Protected) ───────────────────────────────────────
+app.post("/api/dca/schedule", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const { amount = 50, schedule, cronSchedule, message } = req.body;
+    const result = await registerDcaWorkflow({
+      userWallet: wallet,
+      amount: Number(amount) || 50,
+      cronSchedule: cronSchedule || schedule,
+      message,
+    });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "DCA registration failed" });
+  }
+});
+
 // ── Sync Endpoint (Protected) ────────────────────────────────────────────────
 app.post("/api/keeperhub/sync", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
@@ -376,12 +399,17 @@ app.get("/api/portfolio/:walletAddress", requireAuth, async (req: express.Reques
     const walletAddress = req.params.walletAddress.toLowerCase();
     assertWalletScope(authedReq, walletAddress);
 
-    const [position, workflows] = await Promise.all([
+    const [position, workflows, compoundAPY] = await Promise.all([
       getAavePosition(walletAddress),
       db.query.activeWorkflows.findMany({
         where: eq(activeWorkflows.userWallet, walletAddress),
       }),
+      getCompoundUsdcSupplyAPY(),
     ]);
+
+    const ctx = getWalletContext(walletAddress);
+    const aaveAPY = position.currentUSDCSupplyAPY || 0;
+    const apyDeltaVsAave = parseFloat((compoundAPY - aaveAPY).toFixed(2));
 
     const ltvPercent = position.collateralUSD > 0
       ? parseFloat(((position.debtUSD / position.collateralUSD) * 100).toFixed(1))
@@ -395,7 +423,14 @@ app.get("/api/portfolio/:walletAddress", requireAuth, async (req: express.Reques
       availableBorrowsUSD: parseFloat(position.availableBorrowsUSD.toFixed(0)),
       ltvPercent,
       usdcWalletBalance: parseFloat(position.usdcWalletBalance.toFixed(2)),
-      currentUSDCSupplyAPY: parseFloat(position.currentUSDCSupplyAPY.toFixed(2)),
+      usdcSuppliedUSD: parseFloat((position.usdcSuppliedUSD || 0).toFixed(2)),
+      usdcSuppliedAmount: parseFloat((position.usdcSuppliedAmount || 0).toFixed(2)),
+      currentUSDCSupplyAPY: parseFloat(aaveAPY.toFixed(2)),
+      compoundUSDCSupplyAPY: parseFloat(compoundAPY.toFixed(2)),
+      apyDeltaVsAave,
+      signerWallet: ctx?.signerWallet ?? null,
+      sameWallet: ctx?.sameWallet ?? false,
+      yieldRotationAvailable: ctx?.canWithdrawAaveSupply ?? false,
       isError: position.isError ?? false,
       errorReason: position.errorReason,
       workflows,
@@ -454,12 +489,13 @@ You talk naturally like ChatGPT or Claude. You are smart, conversational, helpfu
 
 Your Capabilities & Tools:
 1. 'schedulePayroll': Use when the user wants to set up a recurring payment, salary, or transfer to an address, team, or payee name.
-2. 'cancelPayrolls': Use when the user wants to cancel, stop, or pause active payrolls or workflows.
-3. 'listWorkflows': Use when the user asks about their active workflows, registered payrolls, or triggers.
-4. 'listPayees': Use when the user asks about saved payees, team members, or vault pools.
-5. 'queryPortfolio': Use when the user asks about their Aave position, loan, health factor, or debt.
-6. 'triggerStrategy': Use when the user wants to trigger DCA, Guardian position check, or Yield Rotator immediately.
-7. 'getLiveTransactions': Use when the user asks for live transactions, recent execution logs, or Sepolia Etherscan links.
+2. 'scheduleDCA': Use when the user wants to set up a recurring Dollar-Cost Averaging (DCA) swap of USDC into ETH (e.g. 'dca 50 usdc into eth weekly').
+3. 'cancelWorkflows': Use when the user wants to cancel, stop, or pause active workflows (payroll, dca, or all).
+4. 'listWorkflows': Use when the user asks about their active workflows, registered payrolls, or DCA triggers.
+5. 'listPayees': Use when the user asks about saved payees, team members, or vault pools.
+6. 'queryPortfolio': Use when the user asks about their Aave position, loan, health factor, or debt.
+7. 'triggerStrategy': Use when the user wants to trigger DCA, Guardian position check, or Yield Rotator immediately.
+8. 'getLiveTransactions': Use when the user asks for live transactions, recent execution logs, or Sepolia Etherscan links.
 
 Formatting Rules:
 - DO NOT use markdown tables. Format lists with markdown bullet points and emojis.
@@ -598,12 +634,14 @@ async function startLoops() {
   // DCA (hourly)
   cron.schedule("0 * * * *", async () => {
     try {
-      const rows = await db.selectDistinct({ wallet: activeWorkflows.userWallet })
-        .from(activeWorkflows)
-        .where(and(eq(activeWorkflows.type, "dca"), eq(activeWorkflows.status, "active")));
-      const wallets = rows.map(r => r.wallet.toLowerCase());
-      if (wallets.length === 0) wallets.push(DEMO_WALLET);
-      for (const wallet of wallets) {
+      const activeDcaRows = await db.query.activeWorkflows.findMany({
+        where: and(eq(activeWorkflows.type, "dca"), eq(activeWorkflows.status, "active")),
+      });
+      for (const wf of activeDcaRows) {
+        if (!shouldRunCronNow(wf.cronSchedule || "0 9 * * 1")) {
+          continue; // Skip execution until scheduled window
+        }
+        const wallet = wf.userWallet.toLowerCase();
         try {
           const apiKey = await resolveKeeperHubApiKey(wallet);
           await runDCA(wallet, { apiKey });

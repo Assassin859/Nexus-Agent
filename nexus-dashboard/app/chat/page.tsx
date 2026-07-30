@@ -104,6 +104,14 @@ export default function ChatPage() {
         authToken
       );
 
+      if (res.status === 401) {
+        setMessages((prev) => [
+          ...prev,
+          { sender: "agent", text: "🔑 Sign In with Ethereum (SIWE) is required to issue commands to NexusAgent." },
+        ]);
+        return;
+      }
+
       const data = await res.json();
       const agentMsg = {
         sender: "agent",
@@ -170,6 +178,15 @@ export default function ChatPage() {
           Clear History
         </button>
       </div>
+
+      {!authToken && (
+        <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#f59e0b", fontSize: 13 }}>
+          <span>Sign In with Ethereum to chat with NexusAgent and execute strategy commands.</span>
+          <button onClick={signInWithEthereum} className="btn btn-primary" style={{ padding: "6px 12px", fontSize: 12 }}>
+            Sign In via MetaMask
+          </button>
+        </div>
+      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 24, alignItems: "start" }}>
         {/* Chat box */}

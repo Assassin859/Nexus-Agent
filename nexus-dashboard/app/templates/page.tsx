@@ -13,12 +13,37 @@ const TEMPLATES = [
   { icon: Scale,     color: "#ec4899", title: "Multi-Protocol Rebalancer",     desc: "Maintains 33/33/33 balanced distribution across Aave, Compound, and Morpho Blue.",                           tag: "Rebalancing",          prompt: "Rebalance stablecoin portfolio evenly across Aave V3 and Compound V3." },
 ];
 
+import { useWallet } from "@/context/WalletContext";
+import { proxyFetch } from "@/lib/agent-fetch";
+
 export default function TemplatesPage() {
   const router = useRouter();
+  const { authToken } = useWallet();
   const [deploying, setDeploying] = useState<string | null>(null);
+  const [statusMsg, setStatusMsg] = useState<string | null>(null);
 
-  const handleFork = (tmpl: typeof TEMPLATES[0]) => {
+  const handleFork = async (tmpl: typeof TEMPLATES[0]) => {
     setDeploying(tmpl.title);
+    setStatusMsg(null);
+
+    // Direct interactive deployment for DCA template
+    if (tmpl.title === "USDC → ETH Weekly DCA" && authToken) {
+      try {
+        const res = await proxyFetch("/api/dca/schedule", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ amount: 100, schedule: "every Monday at 9am" }),
+        }, authToken);
+
+        if (res.ok) {
+          setStatusMsg("✅ DCA Workflow Registered!");
+          setTimeout(() => router.push("/workflows"), 1200);
+          return;
+        }
+      } catch {}
+    }
+
+    // Default chat fallback
     sessionStorage.setItem("pending_chat_prompt", tmpl.prompt);
     router.push("/chat");
   };
@@ -29,6 +54,12 @@ export default function TemplatesPage() {
         <h1 className="page-title">Workflow Template Store</h1>
         <p className="page-subtitle">Pre-configured KeeperHub automations — Fork and deploy in 60 seconds</p>
       </div>
+
+      {statusMsg && (
+        <div style={{ background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.3)", borderRadius: 8, padding: 12, color: "#34d399", fontSize: 13, fontWeight: 600 }}>
+          {statusMsg}
+        </div>
+      )}
 
       <div className="grid-3">
         {TEMPLATES.map((tmpl) => {

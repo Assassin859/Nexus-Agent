@@ -4,26 +4,28 @@ import { DCASchema, DCA_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
-import { createWorkflow, executeWorkflow, pollExecutionUntilSettled } from "../lib/mcp-client.js";
+import { createWorkflow, executeWorkflow, pollExecutionUntilSettled, type WorkflowStep } from "../lib/mcp-client.js";
+import { ensureAllowance } from "../lib/allowance.js";
 import { getProvider } from "../lib/rpc.js";
-import { encodeUniswapSwap, UNISWAP_V3_ROUTER } from "../lib/calldata.js";
+import { encodeUniswapSwap, UNISWAP_V3_ROUTER, USDC_SEPOLIA } from "../lib/calldata.js";
+import { getAavePosition, getUsdcBalance } from "../lib/aave.js";
+import { getAgenticWallet, getWalletContext } from "../lib/agentic-wallet.js";
 import { getEthPriceUSD } from "../lib/price-feed.js";
-import { getAgenticWallet } from "../lib/agentic-wallet.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
 import { childLogger } from "../lib/logger.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, lt } from "drizzle-orm";
 import { formatEther } from "ethers";
 
 export async function run(userWallet: string, options?: { apiKey?: string }): Promise<void> {
-  const AGENTIC_WALLET = getAgenticWallet();
-  if (!AGENTIC_WALLET) return; // dev-only early exit; prod throws at startup
+  const context = getWalletContext(userWallet);
+  if (!context || !context.signerWallet) return;
 
   const log = childLogger({ module: "dca", wallet: userWallet.slice(0, 8) });
   const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(userWallet));
 
   const workflow = await db.query.activeWorkflows.findFirst({
     where: and(
-      eq(activeWorkflows.userWallet, userWallet),
+      eq(activeWorkflows.userWallet, context.monitoredWallet),
       eq(activeWorkflows.type, "dca"),
       eq(activeWorkflows.status, "active")
     ),
@@ -31,6 +33,20 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
   if (!workflow) {
     log.info("No active DCA workflow — skipping.");
+    return;
+  }
+
+  // ── Check Signer USDC Balance ──────────────────────────────────────────────
+  const signerUsdc = await getUsdcBalance(context.signerWallet);
+  if (signerUsdc < workflow.amount) {
+    log.warn({ signerUsdc, amountNeeded: workflow.amount }, "Signer wallet has insufficient USDC balance for DCA swap.");
+    await db.insert(executionsLog).values({
+      userWallet: context.monitoredWallet,
+      action: "swap",
+      amount: workflow.amount,
+      status: "delayed",
+      reason: `Signer wallet (${context.signerWallet.slice(0, 8)}) has insufficient USDC balance ($${signerUsdc.toFixed(2)} available, $${workflow.amount} needed)`,
+    });
     return;
   }
 
@@ -75,7 +91,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   if (!decision.recommendation.execute_swap) {
     log.info({ delayMin: decision.recommendation.delay_minutes }, `Swap delayed: ${decision.userExplanation}`);
     await db.insert(executionsLog).values({
-      userWallet,
+      userWallet: context.monitoredWallet,
       action: "swap",
       amount: workflow.amount,
       status: "delayed",
@@ -85,51 +101,114 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  const maxSlippage = decision.recommendation.max_slippage_percentage ?? 0.5;
-  const calldata = encodeUniswapSwap(workflow.amount, AGENTIC_WALLET, maxSlippage, ethPriceUSD);
+  // ── Step 1b: Stale Pending Lock Expiry & Active Guard (TTL 15m) ───────────
+  const cutoff15m = new Date(Date.now() - 15 * 60 * 1000);
+  const expiredPendingRows = await db.query.executionsLog.findMany({
+    where: and(
+      eq(executionsLog.userWallet, context.monitoredWallet),
+      eq(executionsLog.action, "swap"),
+      eq(executionsLog.status, "pending"),
+      lt(executionsLog.timestamp, cutoff15m)
+    ),
+  });
 
-  const sim = await simulate(
-    { from: AGENTIC_WALLET, to: UNISWAP_V3_ROUTER, data: calldata },
-    userWallet
-  );
-  if (sim.wouldRevert) {
-    log.warn("Simulation caught revert — aborting swap.");
+  if (expiredPendingRows.length > 0) {
+    for (const stale of expiredPendingRows) {
+      await db.update(executionsLog)
+        .set({ status: "reverted_chain", reason: "DCA swap pending lock expired (TTL 15m)" })
+        .where(eq(executionsLog.id, stale.id));
+    }
+  }
+
+  const activePendingTx = await db.query.executionsLog.findFirst({
+    where: and(
+      eq(executionsLog.userWallet, context.monitoredWallet),
+      eq(executionsLog.action, "swap"),
+      eq(executionsLog.status, "pending")
+    ),
+  });
+  if (activePendingTx) {
+    log.warn({ logId: activePendingTx.id }, "Active DCA swap pending transaction exists (<15m) — skipping.");
     return;
   }
 
-  const { workflowId, isStub: createStub } = await createWorkflow({
-    name: `dca-${userWallet.slice(0, 8)}-${Date.now()}`,
-    triggerType: "manual",
-    steps: [{ type: "transaction", to: UNISWAP_V3_ROUTER, calldata, gasStrategy: "standard" }],
-  }, effectiveKey);
-  const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
-  const isStub = createStub || execStub;
+  const maxSlippage = decision.recommendation.max_slippage_percentage ?? 0.5;
+  // Send swapped ETH directly to monitored userWallet
+  const calldata = encodeUniswapSwap(workflow.amount, context.monitoredWallet, maxSlippage, ethPriceUSD);
 
-  let finalStatus: string;
-  let txHash: string | undefined;
-  let executionIdForLog: string | undefined;
-
-  if (isStub) {
-    finalStatus = "simulated_stub";
-  } else {
-    const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
-    executionIdForLog = executionId;
-    finalStatus = poll.timedOut
-      ? "reverted_chain"
-      : poll.status === "mined" ? "success"
-      : "reverted_chain";
-    txHash = poll.txHash;
+  const sim = await simulate(
+    { from: context.signerWallet, to: UNISWAP_V3_ROUTER, data: calldata },
+    context.monitoredWallet
+  );
+  if (sim.wouldRevert) {
+    log.warn("Simulation caught revert — recording resilience log.");
+    await db.insert(executionsLog).values({
+      userWallet: context.monitoredWallet,
+      action: "swap",
+      amount: workflow.amount,
+      status: "reverted_simulation",
+      reason: `Pre-flight simulation intercepted revert: Uniswap DCA swap of ${workflow.amount} USDC failed (${sim.revertReason || "Reverted"}). Zero gas wasted.`,
+      aiAnalysis: decision.analysis,
+    });
+    return;
   }
 
-  await db.insert(executionsLog).values({
-    userWallet,
+  // Prepend ERC20 max-uint256 approval step for Uniswap router if needed
+  const allowanceCalldata = await ensureAllowance(context.signerWallet, USDC_SEPOLIA, UNISWAP_V3_ROUTER, workflow.amount);
+  const steps: WorkflowStep[] = [];
+  if (allowanceCalldata) {
+    steps.push({ type: "transaction", to: USDC_SEPOLIA, calldata: allowanceCalldata, gasStrategy: "standard" });
+  }
+  steps.push({ type: "transaction", to: UNISWAP_V3_ROUTER, calldata, gasStrategy: "standard" });
+
+  // Insert pending row before execution
+  const [pendingRow] = await db.insert(executionsLog).values({
+    userWallet: context.monitoredWallet,
     action: "swap",
     amount: Math.round(workflow.amount),
-    status: finalStatus,
-    txHash,
-    reason: `DCA: ${workflow.amount} USDC → ETH via Uniswap V3. ${decision.userExplanation}`,
-    aiAnalysis: { ...decision.analysis, executionId: executionIdForLog },
-  });
+    status: "pending",
+    reason: decision.userExplanation,
+    aiAnalysis: decision.analysis,
+  }).returning({ id: executionsLog.id });
 
-  log.info({ executionId, isStub, finalStatus }, `Swap executed: ${workflow.amount} USDC → ETH`);
+  try {
+    const { workflowId, isStub: createStub } = await createWorkflow({
+      name: `dca-${userWallet.slice(0, 8)}-${Date.now()}`,
+      triggerType: "manual",
+      steps,
+    }, effectiveKey);
+    const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
+    const isStub = createStub || execStub;
+
+    if (isStub) {
+      await db.update(executionsLog)
+        .set({
+          status: "simulated_stub",
+          reason: `DCA (Simulated Stub): ${decision.userExplanation}`,
+          aiAnalysis: { ...decision.analysis, executionId },
+        })
+        .where(eq(executionsLog.id, pendingRow.id));
+    } else {
+      const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
+      const finalStatus = poll.timedOut
+        ? "reverted_chain"
+        : poll.status === "mined" ? "success"
+        : "reverted_chain";
+
+      await db.update(executionsLog)
+        .set({
+          status: finalStatus,
+          txHash: poll.txHash,
+          reason: `DCA: ${workflow.amount} USDC → ETH via Uniswap V3. ${decision.userExplanation}`,
+          aiAnalysis: { ...decision.analysis, executionId },
+        })
+        .where(eq(executionsLog.id, pendingRow.id));
+    }
+
+    log.info({ isStub }, `Swap executed: ${workflow.amount} USDC → ETH`);
+  } catch (err) {
+    await db.update(executionsLog)
+      .set({ status: "reverted_chain", reason: `DCA execution failed: ${err instanceof Error ? err.message : String(err)}` })
+      .where(eq(executionsLog.id, pendingRow.id));
+  }
 }

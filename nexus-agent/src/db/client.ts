@@ -1,9 +1,7 @@
+import "../lib/env.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 import * as schema from "./schema.js";
-
-import dotenv from "dotenv";
-dotenv.config({ path: "../.env" });
 
 const connectionString = process.env.DATABASE_URL || process.env.DATABASE_PUBLIC_URL;
 

@@ -20,20 +20,21 @@ The user never manually configures a workflow. They talk to the AI in plain Engl
 ## Architecture & Native AI Tool Calling Engine
 
 ```
-User Message ("cancel all", "pay dev team 20 usdc every thursday", "what's my health factor?")
+User Message ("dca 50 usdc into eth weekly", "pay dev team 20 usdc every thursday", "cancel all dca")
                                 │
                                 ▼
          ┌──────────────────────────────────────────────┐
          │       NexusAgent Conversational Agent        │
-         │ generateText(model: gpt-4o-mini, maxSteps: 5)│
+         │generateText(model: gpt-4o-mini, maxSteps: 5) │
          │     Powered by Vercel AI SDK Native Tools    │
          └──────────────────────┬───────────────────────┘
                                 │
           ┌─────────────────────┴─────────────────────┐
           ▼                                           ▼
 [Native Tool Execution]                     [Conversational Response]
-  • schedulePayroll()                        "I've set up a payroll of 20 USDC
-  • cancelPayrolls()                          to the dev team every Thursday!"
+  • schedulePayroll()                        "I've set up a weekly DCA swap of
+  • scheduleDCA()                             50 USDC into ETH for your wallet!"
+  • cancelWorkflows()
   • listWorkflows()
   • listPayees()
   • queryPortfolio()
@@ -43,28 +44,34 @@ User Message ("cancel all", "pay dev team 20 usdc every thursday", "what's my he
           ▼
 ┌─────────────────────────────────────────────────────────┐
 │                 KeeperHub MCP Execution                 │
-│  • Turnkey MPC Wallet Signing (Google Sign-In Account)   │
-│  • Flashbots MEV-Protected Swaps & Gas Sponsorship       │
+│  • Turnkey MPC Wallet Signing (AGENTIC_WALLET)          │
+│  • Flashbots MEV-Protected Swaps & Gas Sponsorship      │
 │  • Etherscan Live Tx Verification Links                 │
 └─────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## Key Features
+## Key Features & Architecture
 
-1. **Native AI SDK Tool Calling Loop**: Powered by `gpt-4o` with `maxSteps: 5`. Handles typos (`cancle`), slang, and complex multi-step user prompts without rigid keyword shortcuts.
-2. **Google Sign-In + Turnkey MPC Wallet Alignment**: Connects Google accounts directly to KeeperHub Turnkey MPC wallets (`0x89f97Cb3...`), solving MetaMask address mismatch issues.
-3. **Payee Directory & Auto-Creation**:
-   - Detects missing payee names (`"dev team"`) and prompts the user with alternative registered payees (`"test team"`).
-   - Automatically provisions new `Team` or `Single` payee entries in Postgres if confirmed (`"do it anyway"`).
-4. **KeeperHub Workflow Payload Inspector**:
-   - Inspect raw ERC20 calldata (`0xa9059cbb...`), gas strategies, target contracts, and cron schedules directly on every workflow card.
-5. **Live Etherscan & Transaction Tracking**:
-   - 1-click verification on Sepolia Etherscan and KeeperHub Execution Monitor.
-   - Chat command `show live tx` outputs real-time execution logs with verified transaction hashes.
-6. **Chat History Persistence**:
-   - Persistent `localStorage` history guarded against initial render race conditions.
+1. **Native AI SDK Tool Calling Loop**: Powered by `gpt-4o-mini` with `maxSteps: 5`. Handles typos (`cancle`), natural language schedules, and multi-step user prompts without rigid keyword shortcuts.
+2. **Dual-Wallet Scoping & Signer Alignment**:
+   - `monitoredWallet` (`userWallet`): Read-only target account monitored by the agent.
+   - `signerWallet` (`AGENTIC_WALLET_ADDRESS`): KeeperHub Turnkey MPC wallet executing on-chain transactions on behalf of the user (supported for Aave repay/supply via `onBehalfOf`).
+   - Yield Rotation is cleanly scoped to positions owned directly by `AGENTIC_WALLET`.
+3. **Agent-Cron DCA Engine**:
+   - Direct agent-cron hourly evaluation for scheduled token swaps (`active_workflows`).
+   - Single-active DCA constraint per wallet with automatic upsert semantics.
+4. **Resilience & Pre-Flight Intercept Engine**:
+   - Every transaction is pre-flight simulated prior to broadcast, wasting **0 gas** on contract reverts.
+   - 15-minute pending lock TTL cleanup ensures stuck executions never block future strategy cycles.
+5. **PayChain Team Remainder & Compensating Cancel Pattern**:
+   - Distributes exact remainder cents to final team members ($100 / 3 => $33, $33, $34).
+   - Remote KeeperHub workflows created prior to a failure are automatically rolled back via compensating `cancelWorkflow()` calls.
+6. **3-Tier Connection UI Model**:
+   - **Tier 1 (MCP Connected):** Full remote execution with active API key.
+   - **Tier 2 (OAuth Session Active):** Connected via OAuth, prompt to add API key.
+   - **Tier 3 (Unlinked / SIWE Auth Required):** Prompt to authenticate via Web3 wallet.
 
 ---
 
@@ -72,34 +79,35 @@ User Message ("cancel all", "pay dev team 20 usdc every thursday", "what's my he
 
 ### 🛡️ Guardian — Liquidation Protection (`modules/guardian.ts`)
 - **Cron:** every 5 minutes
-- Evaluates live Aave V3 Health Factor, collateral, debt, and spending limits.
-- Automatically repays debt or supplies collateral before liquidation threshold.
+- Evaluates live Aave V3 Health Factor, collateral, debt, and 30-day budget cycles.
+- Automatically repays debt or supplies collateral before liquidation threshold (HF < 1.15).
 
 ### 🔄 Yield Rotator — APY Optimization (`modules/yield-rotator.ts`)
 - **Cron:** every 15 minutes
-- Monitors live supply rates between Aave V3 and Compound V3 on Sepolia.
+- Monitors live supply rates between Aave V3 and Compound V3 on Sepolia using `lib/compound.ts`.
 - Rotates deposits only when 90-day APY profit exceeds gas costs (break-even < 45 days).
 
-### 📅 DCA Engine — Dollar-Cost Averaging (`modules/dca.ts`)
+### 📅 DCA Engine — Dollar-Cost Averaging (`modules/dca.ts` & `modules/dca-schedule.ts`)
 - **Cron:** every hour
 - Executes recurring USDC → ETH swaps via Uniswap V3 with gas-price delays if gas > 5% of purchase value.
 
 ### 💸 PayChain — Recurring Payroll (`modules/paychain.ts`)
-- Natural language payroll scheduler with duplicate collision detection, payee auto-creation, and spending ceiling enforcement.
+- Natural language payroll scheduler with duplicate collision detection, payee auto-creation, remainder cent distribution, and spending ceiling enforcement.
 
 ---
 
-## 7-Page Dashboard (`nexus-dashboard/`)
+## 7-Page Dashboard & Template Store (`nexus-dashboard/`)
 
 | Page | Route | Features |
 |---|---|---|
-| Portfolio | `/` | Live Aave V3 health factor gauge, collateral, and debt balance |
+| Portfolio | `/` | Live Aave V3 health factor gauge, collateral, debt, and Compound APYs |
 | Active Workflows | `/workflows` | Registered KeeperHub workflows, MPC payload inspector, Etherscan links |
 | Live Feed | `/feed` | Real-time audit log of broadcasted on-chain transactions |
-| Resilience Log | `/resilience` | Log of simulated reverts and pre-flight safety checks |
-| Alerts | `/alerts` | Health factor warning threshold & gas spike alerts |
-| AI Chat | `/chat` | Conversational command center powered by GPT-4o tool-calling |
+| Resilience Log | `/resilience` | 4-card grid log of simulated reverts, gas delays, and pre-flight checks |
+| Alerts | `/alerts` | Health factor warning threshold, repayment success, & gas spike alerts |
+| AI Chat | `/chat` | Conversational command center with SIWE auth guards and tool calling |
 | Payees | `/payees` | Registered single payees, team directories, and shared vault pools |
+| Template Store | `/templates` | Pre-configured KeeperHub automation templates with 1-click deployment |
 
 ---
 
@@ -110,28 +118,44 @@ User Message ("cancel all", "pay dev team 20 usdc every thursday", "what's my he
 cp .env.example .env
 ```
 
-Set key environment variables:
+Set key environment variables in the repo-root `.env`:
 ```env
-GITHUB_TOKEN=ghp_...              # GitHub PAT for GPT-4o inference
+GITHUB_TOKEN=ghp_...              # GitHub PAT for gpt-4o-mini inference
 DATABASE_URL=postgresql://...     # PostgreSQL database URL
 KEEPERHUB_API_KEY=kh_...          # KeeperHub MCP API key
+AGENTIC_WALLET_ADDRESS=0x89f9...  # KeeperHub MPC signer wallet
+JWT_SECRET=your_jwt_secret_here   # Required in production
 ALCHEMY_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
-NEXT_PUBLIC_WALLET_ADDRESS=0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b
 ```
 
-### 2. Start Agent Backend
+### 2. Database Setup & Seed Data
 ```bash
 cd nexus-agent
-pnpm install
-pnpm dev           # Runs on http://localhost:3001
+pnpm db:migrate
+pnpm db:seed           # Seeds demo repayment cycles and active workflows
 ```
 
-### 3. Start Dashboard
+### 3. Run System Verification Suite
 ```bash
-cd nexus-dashboard
-pnpm install
-pnpm dev           # Runs on http://localhost:3000
+pnpm verify            # Executes Tier A & Tier B verification checks
 ```
+
+### 4. Start Agent Backend & Dashboard
+```bash
+# Terminal 1: Agent Backend
+cd nexus-agent
+pnpm dev               # Runs on http://localhost:3001
+
+# Terminal 2: Next.js Dashboard
+cd nexus-dashboard
+pnpm dev               # Runs on http://localhost:3000
+```
+
+---
+
+## Upstream Integration & Friction Notes
+
+For detailed documentation on KeeperHub MCP integration friction, upstream pull requests, and protocol edge cases identified during development, see [KEEPERHUB_BUGS.md](./KEEPERHUB_BUGS.md).
 
 ---
 

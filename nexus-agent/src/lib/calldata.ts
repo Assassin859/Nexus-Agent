@@ -14,6 +14,24 @@ export const COMPOUND_V3_USDC  = "0xAec1F48e02Cfb822Be958B68C7957156EB3F0b6e";
 const VARIABLE_RATE = 2;
 
 /**
+ * Encodes an ERC20 `approve(spender, amount)` call.
+ * Selector 0x095ea7b3 -> approve(address spender, uint256 amount)
+ */
+export function encodeERC20Approve(
+  token: string,
+  spender: string,
+  amount: bigint | number,
+  decimals = 6
+): string {
+  const amountRaw = typeof amount === "bigint"
+    ? amount
+    : parseUnits(amount.toFixed(decimals), decimals);
+  const selector = "0x095ea7b3";
+  const encoded = abi.encode(["address", "uint256"], [spender, amountRaw]);
+  return selector + encoded.slice(2);
+}
+
+/**
  * Encodes an Aave V3 `repay(asset, amount, interestRateMode, onBehalfOf)` call.
  * Used by Guardian module when HF < 1.15.
  */

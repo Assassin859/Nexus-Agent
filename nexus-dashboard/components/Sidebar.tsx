@@ -69,9 +69,7 @@ export default function Sidebar() {
     setSigningIn(true);
     try {
       const res = await signInWithEthereum();
-      if (res.success) {
-        setKhServerKey(true);
-      } else if (res.error) {
+      if (res.error) {
         alert(res.error);
       }
     } finally {
@@ -158,10 +156,10 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* KeeperHub Connection Status */}
+        {/* KeeperHub Connection Status (3-Tier Model) */}
         <div style={{ paddingTop: 16, borderTop: "1px solid var(--border)" }}>
-          {khSessionToken || khEmail ? (
-            // OAuth connected — show email + sign out
+          {khServerKey ? (
+            // Tier 1: Real MCP Key Active
             <div style={{
               padding: "10px 12px", borderRadius: 8,
               background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.2)",
@@ -170,24 +168,33 @@ export default function Sidebar() {
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                   <Cpu size={13} color="#34d399" />
-                  <span style={{ fontSize: 11, fontWeight: 700, color: "#34d399" }}>KeeperHub Connected</span>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#34d399" }}>KeeperHub MCP Connected</span>
                 </div>
                 <CheckCircle2 size={11} color="#34d399" />
               </div>
-              {khEmail && (
-                <span style={{ fontSize: 9, color: "var(--text-muted)", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {khEmail}
-                </span>
-              )}
-              <button
-                onClick={signOutKeeperHub}
-                style={{ marginTop: 4, background: "none", border: "none", color: "#f87171", fontSize: 9, cursor: "pointer", textAlign: "left", padding: 0 }}
-              >
-                Sign out
-              </button>
+              <span style={{ fontSize: 9, color: "var(--text-muted)" }}>API Key &amp; Remote Workflows Active</span>
             </div>
+          ) : khSessionToken || khEmail ? (
+            // Tier 2: OAuth Session Active without Saved Key
+            <button
+              onClick={() => setModalOpen(true)}
+              style={{
+                width: "100%", padding: "10px 12px", borderRadius: 8,
+                background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.2)",
+                display: "flex", flexDirection: "column", gap: 4, cursor: "pointer", textAlign: "left"
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                  <Cpu size={13} color="#f59e0b" />
+                  <span style={{ fontSize: 11, fontWeight: 700, color: "#f59e0b" }}>OAuth Session Active</span>
+                </div>
+                <AlertCircle size={11} color="#f59e0b" />
+              </div>
+              <span style={{ fontSize: 9, color: "var(--text-muted)" }}>Click to configure MCP API key</span>
+            </button>
           ) : (
-            // Not connected — prompt to sign in
+            // Tier 3: Unlinked
             <button
               onClick={() => setModalOpen(true)}
               style={{

@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { Cpu, RefreshCw, Clock, ExternalLink, ShieldCheck, Key, Code, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import KeeperHubSyncModal from "@/components/KeeperHubSyncModal";
 
 type WorkflowItem = {
   id: string;
@@ -154,53 +155,13 @@ export default function WorkflowsPage() {
         </div>
       </div>
 
-      {/* Auth Modal */}
-      {showAuthModal && (
-        <div style={{
-          position: "fixed", inset: 0, background: "rgba(0,0,0,0.75)", backdropFilter: "blur(6px)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100, padding: 20
-        }}>
-          <div className="card animate-in" style={{ maxWidth: 460, width: "100%", padding: 28, display: "flex", flexDirection: "column", gap: 18 }}>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-              <div style={{ fontSize: 18, fontWeight: 700, display: "flex", alignItems: "center", gap: 10, color: "var(--text)" }}>
-                <ShieldCheck color="#34d399" size={22} /> KeeperHub MCP Credentials
-              </div>
-              <button onClick={() => setShowAuthModal(false)} style={{ background: "none", border: "none", color: "var(--text-muted)", cursor: "pointer", fontSize: 18 }}>✕</button>
-            </div>
-
-            <p style={{ fontSize: 13, color: "var(--text-muted)", lineHeight: 1.6 }}>
-              Nexus Agent automatically syncs all autonomous triggers with the KeeperHub MCP server. Your active session is connected via turnkey MPC wallet.
-            </p>
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-              <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>KeeperHub API Key / Session Token</label>
-              <input
-                type="password"
-                placeholder="kh_live_mcp_****************"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                style={{
-                  padding: "10px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)",
-                  border: "1px solid var(--border)", color: "var(--text)", fontFamily: "monospace", fontSize: 13
-                }}
-              />
-            </div>
-
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
-              <button onClick={() => setShowAuthModal(false)} className="btn" style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
-                Cancel
-              </button>
-              <button
-                onClick={() => { setConnected(true); setShowAuthModal(false); }}
-                className="btn"
-                style={{ background: "var(--primary)", color: "#fff" }}
-              >
-                Save &amp; Connect MCP
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* KeeperHub Sync Modal */}
+      <KeeperHubSyncModal
+        isOpen={showAuthModal}
+        onClose={() => setShowAuthModal(false)}
+        walletAddress={wallet || ""}
+        onKeySaved={() => setConnected(true)}
+      />
 
       {/* Workflow Cards List */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>

@@ -32,6 +32,8 @@ export async function GET(
       ltvPercent: 0,
       usdcWalletBalance: 0,
       currentUSDCSupplyAPY: 0,
+      compoundUSDCSupplyAPY: 0,
+      apyDeltaVsAave: 0,
       isError: true,
       errorReason: err instanceof Error ? err.message : "Agent offline",
       workflows: [],

@@ -14,7 +14,7 @@ type LogItem = {
 };
 
 type AlertCardData = {
-  type: "danger" | "warning" | "info";
+  type: "danger" | "warning" | "success" | "info";
   title: string;
   message: string;
   time: string;
@@ -23,6 +23,7 @@ type AlertCardData = {
 const COLOR: Record<string, { bg: string; color: string; border: string }> = {
   danger:  { bg: "rgba(244,63,94,0.10)",  color: "#fb7185", border: "rgba(244,63,94,0.45)" },
   warning: { bg: "rgba(245,158,11,0.10)", color: "#fbbf24", border: "rgba(245,158,11,0.45)" },
+  success: { bg: "rgba(34,197,94,0.10)",  color: "#34d399", border: "rgba(34,197,94,0.45)" },
   info:    { bg: "rgba(99,102,241,0.10)", color: "#818cf8", border: "rgba(99,102,241,0.45)" },
 };
 
@@ -38,10 +39,18 @@ export default function AlertsPage() {
         const data: LogItem[] = await res.json();
         if (Array.isArray(data)) {
           const parsed: AlertCardData[] = data.map((item) => {
-            const isDanger = item.status === "reverted_chain" || item.action === "repay";
-            const isWarning = item.status === "reverted_simulation" || item.action === "block_transaction";
+            const isDanger = item.status === "reverted_chain" || item.status === "failed";
+            const isWarning = item.status === "reverted_simulation" || item.status === "delayed" || item.action === "block_transaction";
+            const isSuccess = item.status === "success" && (item.action === "repay" || item.action === "supply_collateral" || item.action === "rotate" || item.action === "swap");
+
+            let type: "danger" | "warning" | "success" | "info";
+            if (isDanger) type = "danger";
+            else if (isWarning) type = "warning";
+            else if (isSuccess) type = "success";
+            else type = "info";
+
             return {
-              type: isDanger ? "danger" : isWarning ? "warning" : "info",
+              type,
               title: `${item.action.toUpperCase()} Execution Logged (${item.status})`,
               message: item.reason || `Action ${item.action} with amount ${item.amount} USDC processed.`,
               time: item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : "Recent",

@@ -3,7 +3,9 @@ import { z } from "zod";
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog, payees } from "../db/schema.js";
 import { handle as handlePaychain } from "../modules/paychain.js";
+import { registerDcaWorkflow } from "../modules/dca-schedule.js";
 import { getAavePosition } from "../lib/aave.js";
+import { getWalletContext } from "../lib/agentic-wallet.js";
 import { cancelWorkflow } from "../lib/mcp-client.js";
 import { run as runGuardian } from "../modules/guardian.js";
 import { run as runYieldRotator } from "../modules/yield-rotator.js";
@@ -20,6 +22,122 @@ export function createAgentTools(
   apiKey?: string
 ) {
   const wallet = walletAddress.toLowerCase();
+
+  const cancelWorkflowsTool = tool({
+    description: "Cancel, stop, or pause active workflows (payroll, dca, or all) for this wallet (e.g., 'stop all payrolls', 'cancel all dca', 'pause my payments')",
+    parameters: z.object({
+      target: z.string().default("all").describe("Target to cancel: 'all' or specific recipient name/address"),
+      type: z.enum(["payroll", "dca", "all"]).default("all").describe("Workflow type filter: 'payroll', 'dca', or 'all'"),
+    }),
+    execute: async ({ target, type = "all" }) => {
+      const trimmedTarget = (target || "all").trim();
+      const targetType = type || "all";
+
+      const activeList = await db.query.activeWorkflows.findMany({
+        where: and(
+          eq(activeWorkflows.userWallet, wallet),
+          eq(activeWorkflows.status, "active")
+        ),
+      });
+
+      // Early branch: Direct DCA cancellation ignores payee name/address lookups
+      if (targetType === "dca") {
+        const dcaRows = activeList.filter((wf) => wf.type === "dca");
+        if (dcaRows.length === 0) {
+          return { cancelledCount: 0, message: "No active DCA workflows found." };
+        }
+        for (const wf of dcaRows) {
+          await db.update(activeWorkflows)
+            .set({ status: `cancelled_${wf.id.slice(0, 8)}` })
+            .where(eq(activeWorkflows.id, wf.id));
+        }
+        await db.insert(executionsLog).values({
+          userWallet: wallet,
+          action: "workflow_cancel",
+          amount: 0,
+          status: "success",
+          reason: `Cancelled ${dcaRows.length} active DCA workflow(s).`,
+        });
+        return {
+          cancelledCount: dcaRows.length,
+          message: `🛑 Cancelled ${dcaRows.length} active DCA workflow(s) locally.`,
+        };
+      }
+
+      let recipientAddressSet: Set<string> | null = null;
+      if (trimmedTarget !== "all" && trimmedTarget !== "") {
+        const isAddress = /^0x[a-fA-F0-9]{40}$/.test(trimmedTarget);
+        if (isAddress) {
+          recipientAddressSet = new Set([trimmedTarget.toLowerCase()]);
+        } else {
+          const matchedPayees = await db.query.payees.findMany({
+            where: and(eq(payees.userWallet, wallet), ilike(payees.name, trimmedTarget)),
+          });
+          const resolvedAddresses = matchedPayees.flatMap((p) =>
+            (p.recipientAddresses as Array<{ name: string; address: string }>)
+              .map((m) => m.address?.toLowerCase())
+              .filter(Boolean) as string[]
+          );
+          if (resolvedAddresses.length === 0) {
+            return {
+              cancelledCount: 0,
+              message: `No payee found matching "${trimmedTarget}". Use 'all' to cancel all payrolls, or provide a 0x address.`,
+            };
+          }
+          recipientAddressSet = new Set(resolvedAddresses);
+        }
+      }
+
+      const filteredList = activeList.filter((wf) => {
+        if (targetType !== "all" && wf.type !== targetType) return false;
+        if (wf.type === "dca") {
+          // Named/address targets apply to payroll only
+          if (recipientAddressSet !== null) return false;
+          return true;
+        }
+        if (wf.type === "payroll" && recipientAddressSet !== null) {
+          return !!(wf.recipientAddress && recipientAddressSet.has(wf.recipientAddress.toLowerCase()));
+        }
+        return true;
+      });
+
+      if (filteredList.length === 0) {
+        return {
+          cancelledCount: 0,
+          message: `No active workflows matched target '${trimmedTarget}' (type: ${targetType}).`,
+        };
+      }
+
+      let remoteOk = 0;
+      let skipped = 0;
+
+      for (const wf of filteredList) {
+        if (wf.type === "payroll" && wf.keeperhubWorkflowId) {
+          const result = await cancelWorkflow(wf.keeperhubWorkflowId, apiKey);
+          if (result.ok && !result.isStub) remoteOk++;
+        } else {
+          skipped++;
+        }
+
+        await db.update(activeWorkflows)
+          .set({ status: `cancelled_${wf.id.slice(0, 8)}` })
+          .where(eq(activeWorkflows.id, wf.id));
+      }
+
+      await db.insert(executionsLog).values({
+        userWallet: wallet,
+        action: "workflow_cancel",
+        amount: 0,
+        status: "success",
+        reason: `Cancelled ${filteredList.length} active ${targetType} workflow(s). Target: ${trimmedTarget}`,
+      });
+
+      return {
+        cancelledCount: filteredList.length,
+        message: `🛑 Cancelled ${filteredList.length} active ${targetType === "all" ? "" : targetType + " "}workflow(s) locally (${remoteOk} synced remotely, ${skipped} local-only/stub rows updated).`,
+      };
+    },
+  });
 
   return {
     // ── Tool 1: Schedule Payroll ──────────────────────────────────────────────
@@ -53,108 +171,31 @@ export function createAgentTools(
       },
     }),
 
-    // ── Tool 2: Cancel Payrolls / Workflows ───────────────────────────────────
-    cancelPayrolls: tool({
-      description: "Cancel, stop, or pause active payroll workflows or all workflows for this wallet (e.g., 'stop all payrolls', 'cancle all', 'pause my payments')",
+    // ── Tool 1b: Schedule DCA ────────────────────────────────────────────────
+    scheduleDCA: tool({
+      description: "Schedule a recurring Dollar-Cost Averaging (DCA) swap of USDC into ETH (e.g., 'dca 50 usdc into eth weekly', 'set up weekly $100 dca')",
       parameters: z.object({
-        target: z.string().default("all").describe("Target to cancel: 'all' or specific recipient name/address"),
+        amount: z.number().describe("USDC amount per swap"),
+        schedule: z.string().optional().describe("Natural language schedule e.g. 'weekly', 'every monday at 9am'"),
       }),
-      execute: async ({ target }) => {
-        const trimmedTarget = (target || "all").trim();
-
-        // ── Step 1: Resolve target to a set of recipient addresses ──────────
-        let recipientAddressSet: Set<string> | null = null; // null = "all"
-
-        if (trimmedTarget !== "all" && trimmedTarget !== "") {
-          const isAddress = /^0x[a-fA-F0-9]{40}$/.test(trimmedTarget);
-          if (isAddress) {
-            // Direct address filter
-            recipientAddressSet = new Set([trimmedTarget.toLowerCase()]);
-          } else {
-            // Name lookup — exact case-insensitive match against payees table
-            const matchedPayees = await db.query.payees.findMany({
-              where: and(
-                eq(payees.userWallet, wallet),
-                ilike(payees.name, trimmedTarget)
-              ),
-            });
-
-            // Collect all recipient addresses from the matched payees' JSONB field
-            const resolvedAddresses = matchedPayees.flatMap((p) =>
-              (p.recipientAddresses as Array<{ name: string; address: string }>)
-                .map((m) => m.address?.toLowerCase())
-                .filter(Boolean) as string[]
-            );
-
-            if (resolvedAddresses.length === 0) {
-              return {
-                cancelledCount: 0,
-                message: `No payee found matching "${trimmedTarget}". Use 'all' to cancel all payrolls, or provide a 0x address.`,
-              };
-            }
-
-            recipientAddressSet = new Set(resolvedAddresses);
-          }
-        }
-
-        // ── Step 2: Find active payroll workflows matching the target ────────
-        const activeList = await db.query.activeWorkflows.findMany({
-          where: and(
-            eq(activeWorkflows.userWallet, wallet),
-            eq(activeWorkflows.type, "payroll"),
-            eq(activeWorkflows.status, "active")
-          ),
-        });
-
-        const toCancel = recipientAddressSet === null
-          ? activeList
-          : activeList.filter(
-              (wf) => wf.recipientAddress && recipientAddressSet!.has(wf.recipientAddress.toLowerCase())
-            );
-
-        if (toCancel.length === 0) {
-          return {
-            cancelledCount: 0,
-            message: "No active payroll workflows were found matching that target.",
-          };
-        }
-
-        // ── Step 3: Cancel each workflow locally + remote MCP sync ───────────
-        let remoteOk = 0;
-        let skipped = 0;
-
-        for (const wf of toCancel) {
-          // Remote MCP cancel (only if a real keeperhub workflow ID exists)
-          if (wf.keeperhubWorkflowId) {
-            const result = await cancelWorkflow(wf.keeperhubWorkflowId, apiKey);
-            if (result.ok && !result.isStub) remoteOk++;
-          } else {
-            // Legacy row or stub — no remote ID to cancel
-            skipped++;
-          }
-
-          // Local status update — always proceeds regardless of remote result
-          await db.update(activeWorkflows)
-            .set({ status: `cancelled_${wf.id.slice(0, 8)}` })
-            .where(eq(activeWorkflows.id, wf.id));
-        }
-
-        // ── Step 4: Audit log ────────────────────────────────────────────────
-        await db.insert(executionsLog).values({
+      execute: async ({ amount, schedule }) => {
+        const res = await registerDcaWorkflow({
           userWallet: wallet,
-          action: "payroll",
-          amount: 0,
-          status: "success",
-          reason: `Cancelled ${toCancel.length} active payroll workflow(s). Target: ${trimmedTarget}`,
+          amount,
+          cronSchedule: schedule,
         });
 
-        const summary = `Cancelled ${toCancel.length} workflows locally (${remoteOk} synced with KeeperHub, ${skipped} legacy/stub rows skipped — no remote ID)`;
         return {
-          cancelledCount: toCancel.length,
-          message: `🛑 ${summary}. No further scheduled payouts will execute.`,
+          success: res.success,
+          message: res.message,
+          workflowId: res.workflowId,
         };
       },
     }),
+
+    // ── Tool 2: Cancel Workflows (Payroll & DCA) ─────────────────────────────
+    cancelWorkflows: cancelWorkflowsTool,
+    cancelPayrolls: cancelWorkflowsTool,
 
     // ── Tool 3: List Active Workflows ─────────────────────────────────────────
     listWorkflows: tool({
@@ -204,10 +245,19 @@ export function createAgentTools(
 
     // ── Tool 5: Query Portfolio (Aave) ────────────────────────────────────────
     queryPortfolio: tool({
-      description: "Query current Aave loan position, health factor, collateral USD, and debt USD (e.g., 'what is my health factor', 'check loan', 'am I safe')",
+      description: "Query current Aave loan position, health factor, collateral USD, debt USD, and USDC supply balance (e.g., 'what is my health factor', 'check loan', 'am I safe')",
       parameters: z.object({}),
       execute: async () => {
         const pos = await getAavePosition(wallet);
+        const ctx = getWalletContext(wallet);
+
+        const alignmentFields = {
+          usdcSuppliedUSD: pos.usdcSuppliedUSD,
+          usdcSuppliedAmount: pos.usdcSuppliedAmount,
+          signerWallet: ctx?.signerWallet ?? null,
+          sameWallet: ctx?.sameWallet ?? false,
+          yieldRotationAvailable: ctx?.canWithdrawAaveSupply ?? false,
+        };
 
         if (pos.isError) {
           return {
@@ -217,6 +267,7 @@ export function createAgentTools(
             isSafe: false,
             status: "Degraded / RPC Error",
             errorReason: pos.errorReason,
+            ...alignmentFields,
           };
         }
 
@@ -227,6 +278,7 @@ export function createAgentTools(
             debtUSD: pos.debtUSD,
             isSafe: null,
             status: "No Active Loan",
+            ...alignmentFields,
           };
         }
 
@@ -236,6 +288,7 @@ export function createAgentTools(
           debtUSD: pos.debtUSD,
           isSafe: pos.healthFactor >= 1.2,
           status: pos.healthFactor >= 1.5 ? "Safe Zone" : pos.healthFactor >= 1.15 ? "Warning Zone" : "Liquidation Risk",
+          ...alignmentFields,
         };
       },
     }),

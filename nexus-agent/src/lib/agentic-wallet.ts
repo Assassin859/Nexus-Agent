@@ -24,3 +24,24 @@ export function getAgenticWallet(): string | null {
   }
   return addr;
 }
+
+export type WalletExecutionContext = {
+  monitoredWallet: string;        // Normalized userWallet (.toLowerCase())
+  signerWallet: string | null;     // Normalized AGENTIC_WALLET (.toLowerCase()) or null in dev
+  sameWallet: boolean;             // monitoredWallet === signerWallet
+  canWithdrawAaveSupply: boolean;  // sameWallet && signerWallet !== null
+};
+
+export function getWalletContext(userWallet: string): WalletExecutionContext | null {
+  const signer = getAgenticWallet();
+  if (!signer) return null;
+  const monitored = userWallet.toLowerCase();
+  const signerNorm = signer.toLowerCase();
+  const same = monitored === signerNorm;
+  return {
+    monitoredWallet: monitored,
+    signerWallet: signerNorm,
+    sameWallet: same,
+    canWithdrawAaveSupply: same,
+  };
+}

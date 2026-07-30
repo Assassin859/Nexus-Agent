@@ -1,7 +1,7 @@
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog, userSettings } from "../db/schema.js";
 import { getExecutionLogs } from "./mcp-client.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { childLogger } from "./logger.js";
 
 /**
@@ -39,12 +39,23 @@ export async function syncKeeperHubState(walletAddress: string): Promise<{ workf
 
   let logsSynced = 0;
 
-  // Note: getExecutionLogs passes the remote keeperhubWorkflowId. If live KeeperHub tool schema
-  // requires an executionId instead, logsSynced will remain 0 until Slice D persists executionIds.
   for (const wf of eligibleWfs) {
     try {
-      const remoteId = wf.keeperhubWorkflowId!;
-      const logs = await getExecutionLogs(remoteId, apiKey);
+      const logRow = await db.query.executionsLog.findFirst({
+        where: and(
+          eq(executionsLog.userWallet, wallet),
+          eq(executionsLog.workflowId, wf.id)
+        ),
+        orderBy: [desc(executionsLog.timestamp)],
+      });
+
+      const executionId = (logRow?.aiAnalysis as any)?.executionId;
+      if (!executionId || typeof executionId !== "string" || executionId.startsWith("exec-stub-")) {
+        log.debug({ workflowId: wf.id }, "Skipping sync — no valid executionId on latest log row");
+        continue;
+      }
+
+      const logs = await getExecutionLogs(executionId, apiKey);
 
       for (const item of logs) {
         if (isStubLogMessage(item.message)) continue;

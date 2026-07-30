@@ -3,28 +3,11 @@ import { githubModels, BRAIN_MODEL } from "../brain/provider.js";
 import { PayChainSchema, PAYCHAIN_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog, payees } from "../db/schema.js";
-import { createWorkflow } from "../lib/mcp-client.js";
+import { createWorkflow, cancelWorkflow } from "../lib/mcp-client.js";
 import { encodeERC20Transfer, USDC_SEPOLIA } from "../lib/calldata.js";
+import { parseCronFromMessage } from "../lib/cron.js";
+import { splitTeamPayroll } from "../lib/payroll-split.js";
 import { eq, and, ilike } from "drizzle-orm";
-
-// ── Cron Parser: derive schedule from natural language message ───────────────
-function parseCronFromMessage(msg: string): string {
-  const m = msg.toLowerCase();
-  // Specific day of week
-  if (/\bevery\s+sunday\b|\bsundays\b/.test(m))    return "0 9 * * 0";
-  if (/\bevery\s+monday\b|\bmondays\b/.test(m))    return "0 9 * * 1";
-  if (/\bevery\s+tuesday\b|\btuesdays\b/.test(m))  return "0 9 * * 2";
-  if (/\bevery\s+wednesday\b|\bwednesdays\b/.test(m)) return "0 9 * * 3";
-  if (/\bevery\s+thursday\b|\bthursdays\b/.test(m)) return "0 9 * * 4";
-  if (/\bevery\s+friday\b|\bfridays\b/.test(m))    return "0 9 * * 5";
-  if (/\bevery\s+saturday\b|\bsaturdays\b/.test(m)) return "0 9 * * 6";
-  // Frequency keywords
-  if (/\bbiweekly\b|\bbi-weekly\b|\btwice.{0,10}month\b/.test(m)) return "0 9 1,15 * *";
-  if (/\bmonthly\b|\bevery\s+month\b|\bonce.{0,10}month\b/.test(m)) return "0 9 1 * *";
-  if (/\bdaily\b|\bevery\s+day\b/.test(m))          return "0 9 * * *";
-  // Default: weekly Monday 9am
-  return "0 9 * * 1";
-}
 
 
 export type PaychainRequest = {
@@ -107,7 +90,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         };
       }
 
-      await db.insert(activeWorkflows).values({
+      const [insertedVaultWf] = await db.insert(activeWorkflows).values({
         userWallet: walletAddress,
         type: "payroll",
         recipientAddress: poolAddr,
@@ -118,16 +101,21 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       }).onConflictDoUpdate({
         target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
         set: { amount, cronSchedule, keeperhubWorkflowId: workflowId, updatedAt: new Date() },
-      });
+      }).returning({ id: activeWorkflows.id });
 
-      await db.insert(executionsLog).values({
-        userWallet: walletAddress,
-        action: "payroll",
-        amount,
-        status: "success",
-        reason: `Deposited ${amount} USDC into '${matchedPayee.name}' Shared Vault Pool (${poolAddr.slice(0, 8)}...). Schedule: ${cronSchedule}.`,
-        aiAnalysis: { matchedPayee: matchedPayee.name, payoutMode: "vault_pool", memberCount: matchedPayee.memberCount },
-      });
+      if (insertedVaultWf?.id) {
+        await db.insert(executionsLog).values({
+          userWallet: walletAddress,
+          workflowId: insertedVaultWf.id,
+          action: "payroll",
+          amount,
+          status: "success",
+          reason: `Deposited ${amount} USDC into '${matchedPayee.name}' Shared Vault Pool (${poolAddr.slice(0, 8)}...). Schedule: ${cronSchedule}.`,
+          aiAnalysis: { matchedPayee: matchedPayee.name, payoutMode: "vault_pool", memberCount: matchedPayee.memberCount, keeperhubWorkflowId: workflowId },
+        });
+      } else {
+        console.warn(`[PAYCHAIN] Vault-pool activeWorkflows upsert returned no ID for ${matchedPayee.name} (${walletAddress.slice(0, 8)}...) — skipping executionsLog.`);
+      }
 
       return {
         success: true,
@@ -150,12 +138,12 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       };
     }
 
-    const perMemberAmount =
-      matchedPayee.type === "team" && targets.length > 1
-        ? Math.floor(amount / targets.length)
-        : amount;
+    const createdRemoteIds: string[] = [];
+    const cronSchedule = parseCronFromMessage(userMessage);
+    const memberItems: Array<{ targetAddr: string; memberName: string; memberAmount: number; workflowId: string }> = [];
 
-    if (perMemberAmount < 1) {
+    const splitAmounts = splitTeamPayroll(amount, targets.length);
+    if (splitAmounts.length === 0 || Math.min(...splitAmounts) < 1) {
       return {
         success: false,
         verification_required: true,
@@ -163,13 +151,12 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       };
     }
 
-    const createdWfs: string[] = [];
-    const cronSchedule = parseCronFromMessage(userMessage);
-
-    for (const member of targets) {
+    for (let i = 0; i < targets.length; i++) {
+      const member = targets[i];
       const targetAddr = (typeof member === "string" ? member : member.address) || walletAddress;
       const memberName = typeof member === "string" ? member : member.name;
-      const calldata = encodeERC20Transfer(targetAddr, perMemberAmount);
+      const memberAmount = splitAmounts[i];
+      const calldata = encodeERC20Transfer(targetAddr, memberAmount);
 
       const { workflowId, isStub } = await createWorkflow({
         name: `payroll-${(memberName || "member").replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
@@ -179,53 +166,85 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       }, effectiveKey);
 
       if (isStub) {
+        // Compensating cancel pattern: roll back all previously created remote workflows
+        for (const remoteId of createdRemoteIds) {
+          if (!remoteId.startsWith("wf-stub-")) {
+            await cancelWorkflow(remoteId, effectiveKey).catch(err => {
+              console.warn(`[PAYCHAIN] Compensating cancel failed for ${remoteId}:`, err);
+            });
+          }
+        }
         return {
           success: false,
           verification_required: false,
-          message: `⚠️ KeeperHub MCP is unavailable (stub mode). Workflow for member '${memberName}' was not registered.`,
+          message: `⚠️ KeeperHub MCP is unavailable or returned a stub. Multi-member team payroll registration for '${matchedPayee.name}' was aborted and compensated.`,
         };
       }
 
-      await db.insert(activeWorkflows).values({
-        userWallet: walletAddress,
-        type: "payroll",
-        recipientAddress: targetAddr,
-        amount: perMemberAmount,
-        cronSchedule,
-        status: "active",
-        keeperhubWorkflowId: workflowId,
-      }).onConflictDoUpdate({
-        target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
-        set: { amount: perMemberAmount, cronSchedule, keeperhubWorkflowId: workflowId, updatedAt: new Date() },
-      });
+      createdRemoteIds.push(workflowId);
+      memberItems.push({ targetAddr, memberName: memberName || "member", memberAmount, workflowId });
+    }
 
-      await db.insert(executionsLog).values({
-        userWallet: walletAddress,
-        action: "payroll",
-        amount: perMemberAmount,
-        status: "success",
-        reason: `Registered ${perMemberAmount} USDC payroll workflow for ${memberName} (${targetAddr.slice(0, 8)}...).`,
-        aiAnalysis: {
-          matchedPayee: matchedPayee.name,
-          targetMember: memberName,
-          amount: perMemberAmount,
-          totalAmount: amount,
-        },
-      });
+    // Atomic DB persistence after remote KeeperHub workflows succeed
+    try {
+      await db.transaction(async (tx) => {
+        for (const item of memberItems) {
+          const [insertedWf] = await tx.insert(activeWorkflows).values({
+            userWallet: walletAddress,
+            type: "payroll",
+            recipientAddress: item.targetAddr,
+            amount: item.memberAmount,
+            cronSchedule,
+            status: "active",
+            keeperhubWorkflowId: item.workflowId,
+          }).onConflictDoUpdate({
+            target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
+            set: { amount: item.memberAmount, cronSchedule, keeperhubWorkflowId: item.workflowId, updatedAt: new Date() },
+          }).returning({ id: activeWorkflows.id });
 
-      createdWfs.push(workflowId);
+          if (!insertedWf?.id) throw new Error("Failed to resolve activeWorkflows.id after upsert");
+
+          await tx.insert(executionsLog).values({
+            userWallet: walletAddress,
+            workflowId: insertedWf.id,
+            action: "payroll",
+            amount: item.memberAmount,
+            status: "success",
+            reason: `Registered ${item.memberAmount} USDC payroll workflow for ${item.memberName} (${item.targetAddr.slice(0, 8)}...).`,
+            aiAnalysis: {
+              matchedPayee: matchedPayee.name,
+              targetMember: item.memberName,
+              amount: item.memberAmount,
+              totalAmount: amount,
+              keeperhubWorkflowId: item.workflowId,
+            },
+          });
+        }
+      });
+    } catch (err) {
+      // Compensating cancel on DB transaction failure
+      for (const remoteId of createdRemoteIds) {
+        if (!remoteId.startsWith("wf-stub-")) {
+          await cancelWorkflow(remoteId, effectiveKey).catch(() => {});
+        }
+      }
+      return {
+        success: false,
+        verification_required: false,
+        message: `⚠️ Database transaction failed. Remote payroll workflows for '${matchedPayee.name}' were compensated and rolled back.`,
+      };
     }
 
     const isSplit = matchedPayee.type === "team" && targets.length > 1;
     const msgDetails = isSplit
-      ? `Created ${perMemberAmount} USDC payroll workflows for each of the ${targets.length} members (total: ${amount} USDC).`
-      : `Created ${perMemberAmount} USDC payroll workflow for ${matchedPayee.name}.`;
+      ? `Created payroll workflows for ${targets.length} members (${splitAmounts[0]} USDC each${splitAmounts[splitAmounts.length - 1] !== splitAmounts[0] ? `, last member ${splitAmounts[splitAmounts.length - 1]} USDC` : ""}; total: ${amount} USDC).`
+      : `Created ${memberItems[0]?.memberAmount} USDC payroll workflow for ${matchedPayee.name}.`;
 
     return {
       success: true,
       verification_required: false,
       message: `👥 Resolved '${matchedPayee.name}' (${targets.length} wallet${targets.length > 1 ? "s" : ""}). ${msgDetails}`,
-      workflowId: createdWfs[0],
+      workflowId: createdRemoteIds[0],
     };
   }
 
