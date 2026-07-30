@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Users, Plus, Trash2, Shield, Vault, User, ExternalLink, Cpu } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
+import { proxyFetch, agentFetch } from "@/lib/agent-fetch";
 
 type PayeeMember = {
   name: string;
@@ -21,7 +22,7 @@ type PayeeItem = {
 };
 
 export default function PayeesPage() {
-  const { walletAddress: wallet } = useWallet();
+  const { walletAddress: wallet, authToken } = useWallet();
   const [payeesList, setPayeesList] = useState<PayeeItem[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -37,9 +38,9 @@ export default function PayeesPage() {
   const [saving, setSaving] = useState(false);
 
   async function loadPayees() {
+    if (!wallet) return;
     try {
-      const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
-      const res = await fetch(`${agentUrl}/api/payees/${wallet}?t=${Date.now()}`);
+      const res = await proxyFetch(`/api/payees/${wallet}`, {}, authToken);
       if (res.ok) {
         const data = await res.json();
         if (Array.isArray(data)) setPayeesList(data);
@@ -55,7 +56,7 @@ export default function PayeesPage() {
     loadPayees();
     const interval = setInterval(loadPayees, 3000);
     return () => clearInterval(interval);
-  }, [wallet]);
+  }, [wallet, authToken]);
 
   function handleAddMember() {
     setMembers([...members, { name: "", address: "" }]);
@@ -75,21 +76,24 @@ export default function PayeesPage() {
     if (!name.trim()) return;
     setSaving(true);
     try {
-      const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
       const validMembers = members.filter(m => m.name.trim() || m.address.trim());
 
-      const res = await fetch(`${agentUrl}/api/payees`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          userWallet: wallet,
-          name: name.trim(),
-          type,
-          payoutMode: type === "single" ? "direct" : payoutMode,
-          vaultPoolAddress: (type === "team" && payoutMode === "vault_pool") ? vaultPoolAddress.trim() : null,
-          members: type === "single" ? [{ name: name.trim(), address: members[0]?.address?.trim() || "" }] : validMembers,
-        }),
-      });
+      const res = await agentFetch(
+        "/api/payees",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            userWallet: wallet,
+            name: name.trim(),
+            type,
+            payoutMode: type === "single" ? "direct" : payoutMode,
+            vaultPoolAddress: (type === "team" && payoutMode === "vault_pool") ? vaultPoolAddress.trim() : null,
+            members: type === "single" ? [{ name: name.trim(), address: members[0]?.address?.trim() || "" }] : validMembers,
+          }),
+        },
+        authToken
+      );
 
       if (res.ok) {
         setName("");
@@ -109,8 +113,7 @@ export default function PayeesPage() {
 
   async function handleDeletePayee(id: string) {
     try {
-      const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
-      await fetch(`${agentUrl}/api/payees/${id}`, { method: "DELETE" });
+      await agentFetch(`/api/payees/${id}`, { method: "DELETE" }, authToken);
       await loadPayees();
     } catch (err) {
       console.error("Failed to delete payee:", err);
@@ -120,8 +123,7 @@ export default function PayeesPage() {
   async function handleClearAllPayees() {
     if (!confirm("Are you sure you want to delete all payees for this wallet?")) return;
     try {
-      const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
-      await fetch(`${agentUrl}/api/payees/all/${wallet}`, { method: "DELETE" });
+      await agentFetch(`/api/payees/all/${wallet}`, { method: "DELETE" }, authToken);
       await loadPayees();
     } catch (err) {
       console.error("Failed to clear payees:", err);

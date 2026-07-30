@@ -14,9 +14,12 @@ import {
 } from "../lib/calldata.js";
 import { eq, and, sql } from "drizzle-orm";
 
+import { resolveKeeperHubApiKey } from "../lib/user-context.js";
+
 const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || "0x0000000000000000000000000000000000000000";
 
-export async function run(userWallet: string): Promise<void> {
+export async function run(userWallet: string, options?: { apiKey?: string }): Promise<void> {
+  const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(userWallet));
   console.log(`[GUARDIAN] Running evaluation for wallet: ${userWallet}`);
 
   // ── Step 1: Fetch Aave position ───────────────────────────────────────────
@@ -146,8 +149,8 @@ export async function run(userWallet: string): Promise<void> {
     name: `guardian-${userWallet.slice(0, 8)}-${Date.now()}`,
     triggerType: "manual",
     steps: [{ type: "transaction", to: targetContract, calldata, gasStrategy: "standard" }],
-  });
-  const { executionId, isStub: execStub } = await executeWorkflow(workflowId);
+  }, effectiveKey);
+  const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
   const isStub = createStub || execStub;
 
   // ── Step 11: Write execution log ─────────────────────────────────────────

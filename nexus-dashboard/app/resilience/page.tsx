@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { CheckCircle2, Clock, ShieldX } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
+import { proxyFetch } from "@/lib/agent-fetch";
 
 type LogItem = {
   action: string;
@@ -52,13 +53,13 @@ const INITIAL_SCENARIOS: ScenarioCard[] = [
 ];
 
 export default function ResiliencePage() {
-  const { walletAddress: wallet } = useWallet();
+  const { walletAddress: wallet, authToken } = useWallet();
   const [scenarios, setScenarios] = useState(INITIAL_SCENARIOS);
 
   useEffect(() => {
     async function loadResilience() {
       try {
-        const res = await fetch(`/api/feed/${wallet}`);
+        const res = await proxyFetch(`/api/feed/${wallet}`, {}, authToken);
         const data: LogItem[] = await res.json();
         if (Array.isArray(data) && data.length > 0) {
           const happy = data.find(d => d.status === "success");
@@ -85,7 +86,7 @@ export default function ResiliencePage() {
       }
     }
     loadResilience();
-  }, [wallet]);
+  }, [wallet, authToken]);
 
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>

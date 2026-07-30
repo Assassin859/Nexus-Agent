@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
-import { Cpu, CheckCircle2, X, Shield, Lock, LogIn } from "lucide-react";
+import { Cpu, CheckCircle2, X, Shield, Lock, Key } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
+import { agentFetch } from "@/lib/agent-fetch";
 
 type Props = {
   isOpen: boolean;
@@ -12,69 +13,59 @@ type Props = {
 };
 
 export default function KeeperHubSyncModal({ isOpen, onClose, walletAddress, onKeySaved }: Props) {
-  const { signInWithGoogle, googleEmail } = useWallet();
-  const [emailInput, setEmailInput] = useState(googleEmail || "");
-  const [showGoogleInput, setShowGoogleInput] = useState(false);
+  const { signInWithEthereum, authToken } = useWallet();
+  const [apiKeyInput, setApiKeyInput] = useState("");
   const [authenticating, setAuthenticating] = useState(false);
   const [error, setError] = useState("");
 
   if (!isOpen) return null;
 
-  function handleGoogleLoginSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    if (!emailInput.trim()) return;
-    setAuthenticating(true);
-
-    setTimeout(() => {
-      // Connect Google account -> maps to Turnkey MPC wallet
-      signInWithGoogle(emailInput.trim());
-      onKeySaved("kh_authenticated_google");
-      setAuthenticating(false);
-      onClose();
-    }, 600);
-  }
-
-  async function handleOneClickSignIn() {
+  async function handleSIWESignIn() {
     setAuthenticating(true);
     setError("");
 
     try {
-      const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
-      const challengeRes = await fetch(`${agentUrl}/api/auth/challenge?wallet=${walletAddress}`);
-      const { challenge } = await challengeRes.json();
-
-      let signature = "0xstub_signature";
-
-      if (typeof window !== "undefined" && (window as any).ethereum) {
-        try {
-          signature = await (window as any).ethereum.request({
-            method: "personal_sign",
-            params: [challenge, walletAddress],
-          });
-        } catch (signErr: any) {
-          setError("Signature rejected in wallet.");
-          setAuthenticating(false);
-          return;
-        }
-      }
-
-      const verifyRes = await fetch(`${agentUrl}/api/auth/verify`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ walletAddress, signature, challenge }),
-      });
-
-      if (verifyRes.ok) {
-        localStorage.setItem(`nexus_kh_key_${walletAddress.toLowerCase()}`, "kh_authenticated");
+      const res = await signInWithEthereum();
+      if (res.success) {
         onKeySaved("kh_authenticated");
         onClose();
-      } else {
-        setError("Signature verification failed.");
+      } else if (res.error) {
+        setError(res.error);
       }
-    } catch {
-      localStorage.setItem(`nexus_kh_key_${walletAddress.toLowerCase()}`, "kh_authenticated");
-      onKeySaved("kh_authenticated");
-      onClose();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Authentication failed");
+    } finally {
+      setAuthenticating(false);
+    }
+  }
+
+  async function handleSaveCustomKey(e: React.FormEvent) {
+    e.preventDefault();
+    if (!apiKeyInput.trim()) return;
+
+    setAuthenticating(true);
+    setError("");
+
+    try {
+      const res = await agentFetch(
+        "/api/user/settings",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ walletAddress, keeperhubApiKey: apiKeyInput.trim() }),
+        },
+        authToken
+      );
+
+      if (res.ok) {
+        onKeySaved(apiKeyInput.trim());
+        onClose();
+      } else {
+        const data = await res.json();
+        setError(data.error || "Failed to save KeeperHub API key.");
+      }
+    } catch (err) {
+      setError("Network error saving key.");
     } finally {
       setAuthenticating(false);
     }
@@ -103,8 +94,8 @@ export default function KeeperHubSyncModal({ isOpen, onClose, walletAddress, onK
             <Cpu size={22} />
           </div>
           <div>
-            <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--text)" }}>KeeperHub Sign In</h3>
-            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, marginTop: 2 }}>Authenticate with Google to connect your Turnkey MPC wallet</p>
+            <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--text)" }}>KeeperHub Key &amp; Session</h3>
+            <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, marginTop: 2 }}>Authenticate with Ethereum or configure a custom KeeperHub API key</p>
           </div>
         </div>
 
@@ -115,71 +106,49 @@ export default function KeeperHubSyncModal({ isOpen, onClose, walletAddress, onK
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--text-2)" }}>
             <Lock size={16} color="#818cf8" />
-            <span>Google OAuth / Web3Auth single sign-on</span>
+            <span>Cryptographic SIWE session isolation</span>
           </div>
         </div>
 
         {error && <span style={{ fontSize: 12, color: "#f87171", textAlign: "center" }}>{error}</span>}
 
-        {!showGoogleInput ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12, marginTop: 4 }}>
-            {/* Primary Google Login Button */}
-            <button
-              onClick={() => setShowGoogleInput(true)}
-              className="btn"
-              style={{
-                fontSize: 14, padding: "12px 16px", background: "linear-gradient(135deg, #4285F4, #34A853)",
-                color: "#fff", border: "none", borderRadius: 8, fontWeight: 600,
-                display: "flex", alignItems: "center", justifyContent: "center", gap: 10, cursor: "pointer"
-              }}
-            >
-              🌐 Sign in with Google (KeeperHub MPC)
-            </button>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          <button
+            onClick={handleSIWESignIn}
+            disabled={authenticating}
+            className="btn btn-primary"
+            style={{ fontSize: 13, padding: "11px 16px", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+          >
+            <CheckCircle2 size={16} /> {authenticating ? "Verifying SIWE..." : "Sign In with Ethereum"}
+          </button>
 
-            <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-muted)", fontSize: 11, textAlign: "center" }}>
-              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-              <span>OR CONNECT WITH METAMASK</span>
-              <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
-            </div>
-
-            <button
-              onClick={handleOneClickSignIn}
-              disabled={authenticating}
-              className="btn"
-              style={{ fontSize: 13, padding: "10px 14px", background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text)", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
-            >
-              <CheckCircle2 size={14} /> {authenticating ? "Verifying..." : "Sign in via Web3 Signature"}
-            </button>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, color: "var(--text-muted)", fontSize: 11, textAlign: "center" }}>
+            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
+            <span>OR CONFIGURE CUSTOM KEEPERHUB API KEY</span>
+            <div style={{ flex: 1, height: 1, background: "var(--border)" }} />
           </div>
-        ) : (
-          <form onSubmit={handleGoogleLoginSubmit} style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-            <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text-muted)" }}>Enter your Google / KeeperHub Email</label>
+
+          <form onSubmit={handleSaveCustomKey} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <input
-              type="email"
-              required
-              placeholder="user@gmail.com"
-              value={emailInput}
-              onChange={(e) => setEmailInput(e.target.value)}
+              type="text"
+              placeholder="kh_xxxxxxxxxxxxxxxxxxxxxxxx"
+              value={apiKeyInput}
+              onChange={(e) => setApiKeyInput(e.target.value)}
               style={{
-                padding: "11px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)",
-                border: "1px solid var(--border)", color: "var(--text)", fontSize: 13
+                padding: "10px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)",
+                border: "1px solid var(--border)", color: "var(--text)", fontSize: 13, fontFamily: "monospace"
               }}
             />
-            <div style={{ display: "flex", gap: 10, justifyContent: "flex-end", marginTop: 6 }}>
-              <button type="button" onClick={() => setShowGoogleInput(false)} className="btn" style={{ background: "transparent", border: "1px solid var(--border)", color: "var(--text-muted)" }}>
-                Back
-              </button>
-              <button
-                type="submit"
-                disabled={authenticating}
-                className="btn"
-                style={{ background: "#4285F4", color: "#fff", display: "flex", alignItems: "center", gap: 6 }}
-              >
-                <LogIn size={14} /> {authenticating ? "Connecting MPC..." : "Authenticate with Google"}
-              </button>
-            </div>
+            <button
+              type="submit"
+              disabled={authenticating || !apiKeyInput.trim()}
+              className="btn"
+              style={{ background: "rgba(255,255,255,0.08)", border: "1px solid var(--border)", color: "var(--text)", display: "flex", alignItems: "center", justifyContent: "center", gap: 6 }}
+            >
+              <Key size={14} /> Save Custom API Key
+            </button>
           </form>
-        )}
+        </div>
       </div>
     </div>
   );

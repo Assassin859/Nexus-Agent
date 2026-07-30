@@ -10,10 +10,13 @@ import { encodeUniswapSwap, UNISWAP_V3_ROUTER } from "../lib/calldata.js";
 import { eq, and } from "drizzle-orm";
 import { formatEther } from "ethers";
 
+import { resolveKeeperHubApiKey } from "../lib/user-context.js";
+
 const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || "0x0000000000000000000000000000000000000000";
 const ETH_PRICE_USD  = 3500;
 
-export async function run(userWallet: string): Promise<void> {
+export async function run(userWallet: string, options?: { apiKey?: string }): Promise<void> {
+  const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(userWallet));
   const workflow = await db.query.activeWorkflows.findFirst({
     where: and(
       eq(activeWorkflows.userWallet, userWallet),
@@ -81,8 +84,8 @@ export async function run(userWallet: string): Promise<void> {
     name: `dca-${userWallet.slice(0, 8)}-${Date.now()}`,
     triggerType: "manual",
     steps: [{ type: "transaction", to: UNISWAP_V3_ROUTER, calldata, gasStrategy: "standard" }],
-  });
-  const { executionId, isStub: execStub } = await executeWorkflow(workflowId);
+  }, effectiveKey);
+  const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
   const isStub = createStub || execStub;
 
   await db.insert(executionsLog).values({

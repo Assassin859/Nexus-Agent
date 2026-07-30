@@ -45,11 +45,19 @@ async function tryGetMcpClient(): Promise<Client | null> {
 }
 
 // 1. Create Workflow
-export async function createWorkflow(config: WorkflowConfig): Promise<{ workflowId: string; isStub: boolean }> {
+export async function createWorkflow(
+  config: WorkflowConfig,
+  apiKey?: string
+): Promise<{ workflowId: string; isStub: boolean }> {
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) return { workflowId: `wf-stub-${Date.now()}`, isStub: true };
   try {
-    const result = await client.callTool({ name: "create_workflow", arguments: { ...config, apiKey: process.env.KEEPERHUB_API_KEY } });
+    const result = await client.callTool({
+      name: "create_workflow",
+      arguments: { ...config, apiKey: effectiveKey },
+    });
     const content = result.content as any;
     const workflowId = typeof content === "object" && content?.workflowId ? content.workflowId : `wf-stub-${Date.now()}`;
     const isStub = workflowId.startsWith("wf-stub-");
@@ -60,12 +68,20 @@ export async function createWorkflow(config: WorkflowConfig): Promise<{ workflow
 }
 
 // 2. Execute Workflow
-export async function executeWorkflow(workflowId: string): Promise<{ executionId: string; isStub: boolean }> {
+export async function executeWorkflow(
+  workflowId: string,
+  apiKey?: string
+): Promise<{ executionId: string; isStub: boolean }> {
   if (workflowId.startsWith("wf-stub-")) return { executionId: `exec-stub-${Date.now()}`, isStub: true };
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) return { executionId: `exec-stub-${Date.now()}`, isStub: true };
   try {
-    const result = await client.callTool({ name: "execute_workflow", arguments: { workflowId, apiKey: process.env.KEEPERHUB_API_KEY } });
+    const result = await client.callTool({
+      name: "execute_workflow",
+      arguments: { workflowId, apiKey: effectiveKey },
+    });
     const content = result.content as any;
     const executionId = typeof content === "object" && content?.executionId ? content.executionId : `exec-stub-${Date.now()}`;
     const isStub = executionId.startsWith("exec-stub-");
@@ -76,12 +92,20 @@ export async function executeWorkflow(workflowId: string): Promise<{ executionId
 }
 
 // 3. Get Execution Status
-export async function getExecutionStatus(executionId: string): Promise<ExecutionStatus> {
+export async function getExecutionStatus(
+  executionId: string,
+  apiKey?: string
+): Promise<ExecutionStatus> {
   if (executionId.startsWith("exec-stub-")) return { executionId, status: "mined", txHash: "0x" + "1".repeat(64) };
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) return { executionId, status: "mined", txHash: "0x" + "1".repeat(64) };
   try {
-    const result = await client.callTool({ name: "get_execution_status", arguments: { executionId } });
+    const result = await client.callTool({
+      name: "get_execution_status",
+      arguments: { executionId, apiKey: effectiveKey },
+    });
     return result.content as ExecutionStatus;
   } catch {
     return { executionId, status: "mined", txHash: "0x" + "1".repeat(64) };
@@ -89,23 +113,40 @@ export async function getExecutionStatus(executionId: string): Promise<Execution
 }
 
 // 4. Get Execution Logs
-export async function getExecutionLogs(executionId: string): Promise<ExecutionLog[]> {
+export async function getExecutionLogs(
+  executionId: string,
+  apiKey?: string
+): Promise<ExecutionLog[]> {
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) return [{ timestamp: new Date().toISOString(), message: "Workflow executed via KeeperHub MCP (stub mode)", level: "info" }];
   try {
-    const result = await client.callTool({ name: "get_execution_logs", arguments: { executionId } });
+    const result = await client.callTool({
+      name: "get_execution_logs",
+      arguments: { executionId, apiKey: effectiveKey },
+    });
     return result.content as ExecutionLog[];
   } catch {
     return [{ timestamp: new Date().toISOString(), message: "Workflow executed via KeeperHub MCP", level: "info" }];
   }
 }
 
-// 5. Configure Gas Sponsorship (Mainnet/Sepolia)
-export async function setGasSponsorship(workflowId: string, enabled: boolean): Promise<boolean> {
+// 5. Configure Gas Sponsorship
+export async function setGasSponsorship(
+  workflowId: string,
+  enabled: boolean,
+  apiKey?: string
+): Promise<boolean> {
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) return true;
   try {
-    await client.callTool({ name: "set_gas_sponsorship", arguments: { workflowId, enabled } });
+    await client.callTool({
+      name: "set_gas_sponsorship",
+      arguments: { workflowId, enabled, apiKey: effectiveKey },
+    });
     return true;
   } catch {
     return true;
@@ -113,11 +154,20 @@ export async function setGasSponsorship(workflowId: string, enabled: boolean): P
 }
 
 // 6. Configure MEV Protection
-export async function setMEVProtection(workflowId: string, enabled: boolean): Promise<boolean> {
+export async function setMEVProtection(
+  workflowId: string,
+  enabled: boolean,
+  apiKey?: string
+): Promise<boolean> {
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) return true;
   try {
-    await client.callTool({ name: "set_mev_protection", arguments: { workflowId, enabled } });
+    await client.callTool({
+      name: "set_mev_protection",
+      arguments: { workflowId, enabled, apiKey: effectiveKey },
+    });
     return true;
   } catch {
     return true;
@@ -125,11 +175,19 @@ export async function setMEVProtection(workflowId: string, enabled: boolean): Pr
 }
 
 // 7. Register Webhook Trigger
-export async function registerWebhookTrigger(workflowId: string): Promise<{ webhookUrl: string }> {
+export async function registerWebhookTrigger(
+  workflowId: string,
+  apiKey?: string
+): Promise<{ webhookUrl: string }> {
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) return { webhookUrl: `https://keeperhub.com/hooks/${workflowId}` };
   try {
-    const result = await client.callTool({ name: "register_webhook_trigger", arguments: { workflowId } });
+    const result = await client.callTool({
+      name: "register_webhook_trigger",
+      arguments: { workflowId, apiKey: effectiveKey },
+    });
     return result.content as { webhookUrl: string };
   } catch {
     return { webhookUrl: `https://keeperhub.com/hooks/${workflowId}` };
@@ -137,23 +195,41 @@ export async function registerWebhookTrigger(workflowId: string): Promise<{ webh
 }
 
 // 8. Register Event Listener
-export async function registerEventListener(workflowId: string, eventSignature: string): Promise<boolean> {
+export async function registerEventListener(
+  workflowId: string,
+  eventSignature: string,
+  apiKey?: string
+): Promise<boolean> {
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) return true;
   try {
-    await client.callTool({ name: "register_event_listener", arguments: { workflowId, eventSignature } });
+    await client.callTool({
+      name: "register_event_listener",
+      arguments: { workflowId, eventSignature, apiKey: effectiveKey },
+    });
     return true;
   } catch {
     return true;
   }
 }
 
-// 9. Send Notification (Telegram/Email/Discord)
-export async function sendKeeperNotification(channel: "telegram" | "discord" | "email", message: string): Promise<boolean> {
+// 9. Send Notification
+export async function sendKeeperNotification(
+  channel: "telegram" | "discord" | "email",
+  message: string,
+  apiKey?: string
+): Promise<boolean> {
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) return true;
   try {
-    await client.callTool({ name: "send_notification", arguments: { channel, message } });
+    await client.callTool({
+      name: "send_notification",
+      arguments: { channel, message, apiKey: effectiveKey },
+    });
     return true;
   } catch {
     return true;
@@ -177,11 +253,15 @@ export async function getFailoverRPC(): Promise<string> {
 }
 
 // 11. Cancel / Delete Workflow on KeeperHub
-export async function cancelWorkflow(workflowId: string): Promise<{ ok: boolean; isStub: boolean }> {
-  // Stub IDs were never registered remotely — local-only cancel is always safe
+export async function cancelWorkflow(
+  workflowId: string,
+  apiKey?: string
+): Promise<{ ok: boolean; isStub: boolean }> {
   if (workflowId.startsWith("wf-stub-")) return { ok: true, isStub: true };
 
   const client = await tryGetMcpClient();
+  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+
   if (!client) {
     console.warn("[MCP] cancelWorkflow: no MCP client available. Local cancel only.");
     return { ok: false, isStub: true };
@@ -190,7 +270,7 @@ export async function cancelWorkflow(workflowId: string): Promise<{ ok: boolean;
   try {
     await client.callTool({
       name: "delete_workflow",
-      arguments: { workflowId, apiKey: process.env.KEEPERHUB_API_KEY },
+      arguments: { workflowId, apiKey: effectiveKey },
     });
     return { ok: true, isStub: false };
   } catch (err) {
@@ -198,4 +278,3 @@ export async function cancelWorkflow(workflowId: string): Promise<{ ok: boolean;
     return { ok: false, isStub: false };
   }
 }
-

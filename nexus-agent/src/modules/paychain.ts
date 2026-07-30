@@ -31,6 +31,7 @@ export type PaychainRequest = {
   userMessage: string;
   conversationHistory?: Array<{ sender: string; text: string }>;
   walletAddress: string;
+  apiKey?: string;
 };
 
 export type PaychainResponse = {
@@ -41,8 +42,11 @@ export type PaychainResponse = {
   aiAnalysis?: any;
 };
 
+import { resolveKeeperHubApiKey } from "../lib/user-context.js";
+
 export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
   const { userMessage, conversationHistory = [], walletAddress } = req;
+  const effectiveKey = req.apiKey || (await resolveKeeperHubApiKey(walletAddress));
   const msgLower = userMessage.toLowerCase();
 
   // ── Step 1: Look up registered Payees / Teams in Postgres DB ────────────────
@@ -71,7 +75,8 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
   if (matchedPayee) {
     // Extract numeric amount from prompt (e.g. "pay dev team 20 usdc" -> 20)
     const amountMatch = userMessage.match(/(\d+)\s*(usdc|usdt|weth|\$)/i) || userMessage.match(/\$\s*(\d+)/);
-    const amount = amountMatch ? parseInt(amountMatch[1], 10) : (matchedPayee.recipientAddresses[0]?.amount || 20);
+    const recipients = matchedPayee.recipientAddresses as Array<{ address: string; amount?: number }> | null;
+    const amount = amountMatch ? parseInt(amountMatch[1], 10) : (recipients?.[0]?.amount || 20);
 
     // Case A: Team in Shared Vault Pool Mode
     if (matchedPayee.type === "team" && matchedPayee.payoutMode === "vault_pool") {
@@ -84,7 +89,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         triggerType: "cron",
         cronSchedule,
         steps: [{ type: "transaction", to: USDC_SEPOLIA, calldata, gasStrategy: "standard" }],
-      });
+      }, effectiveKey);
 
       if (isStub) {
         return {
@@ -142,7 +147,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         triggerType: "cron",
         cronSchedule,
         steps: [{ type: "transaction", to: USDC_SEPOLIA, calldata, gasStrategy: "standard" }],
-      });
+      }, effectiveKey);
 
       if (isStub) {
         return {
@@ -254,7 +259,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       calldata,
       gasStrategy: "standard",
     }],
-  });
+  }, effectiveKey);
 
   if (isStub) {
     return {

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { Cpu, RefreshCw, Clock, ExternalLink, ShieldCheck, Key, Code, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
+import { proxyFetch } from "@/lib/agent-fetch";
 
 type WorkflowItem = {
   id: string;
@@ -50,7 +51,7 @@ function humanCron(cron: string): string {
 }
 
 export default function WorkflowsPage() {
-  const { walletAddress: wallet } = useWallet();
+  const { walletAddress: wallet, authToken } = useWallet();
   const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [spinning, setSpinning] = useState(false);
@@ -62,7 +63,7 @@ export default function WorkflowsPage() {
   async function loadWorkflows() {
     setSpinning(true);
     try {
-      const res = await fetch(`/api/portfolio/${wallet}`);
+      const res = await proxyFetch(`/api/portfolio/${wallet}`, {}, authToken);
       const data = await res.json();
       if (data && Array.isArray(data.workflows)) {
         setWorkflows(data.workflows);
@@ -79,7 +80,7 @@ export default function WorkflowsPage() {
     loadWorkflows();
     const interval = setInterval(loadWorkflows, 5000);
     return () => clearInterval(interval);
-  }, [wallet]);
+  }, [wallet, authToken]);
 
   const typeColors: Record<string, string> = {
     payroll: "#818cf8",

@@ -16,6 +16,8 @@ import { getProvider } from "../lib/rpc.js";
 import { Contract } from "ethers";
 import { getAavePosition } from "../lib/aave.js";
 
+import { resolveKeeperHubApiKey } from "../lib/user-context.js";
+
 const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || (() => {
   console.warn("[YIELD] WARNING: AGENTIC_WALLET_ADDRESS is not set. Yield rotation transactions may fail. Set it in .env.");
   return "";
@@ -26,7 +28,8 @@ const COMPOUND_ABI = [
   "function balanceOf(address owner) view returns (uint256)",
 ];
 
-export async function run(userWallet: string): Promise<void> {
+export async function run(userWallet: string, options?: { apiKey?: string }): Promise<void> {
+  const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(userWallet));
   console.log(`[YIELD] Evaluating yield opportunities for ${userWallet}`);
 
   const position = await getAavePosition(userWallet);
@@ -119,9 +122,9 @@ export async function run(userWallet: string): Promise<void> {
       { type: "transaction", to: COMPOUND_V3_USDC, calldata: supplyCalldata, gasStrategy: "standard" },
     ],
     mevProtected: true,
-  });
+  }, effectiveKey);
 
-  const { executionId, isStub: execStub } = await executeWorkflow(workflowId);
+  const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
   const isStub = createStub || execStub;
 
   await db.insert(executionsLog).values({

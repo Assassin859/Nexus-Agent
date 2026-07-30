@@ -1,5 +1,5 @@
 import { db, pool } from "./client.js";
-import { payees, activeWorkflows, executionsLog, repaymentCycles, userSettings } = "./schema.js";
+import { payees, activeWorkflows, executionsLog, repaymentCycles, userSettings } from "./schema.js";
 
 async function wipe() {
   console.log("🧹 Wiping database tables...");

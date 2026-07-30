@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AlertCircle, AlertTriangle, Info } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
+import { proxyFetch } from "@/lib/agent-fetch";
 
 type LogItem = {
   action: string;
@@ -26,14 +27,14 @@ const COLOR: Record<string, { bg: string; color: string; border: string }> = {
 };
 
 export default function AlertsPage() {
-  const { walletAddress: wallet } = useWallet();
+  const { walletAddress: wallet, authToken } = useWallet();
   const [alerts, setAlerts] = useState<AlertCardData[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadAlerts() {
       try {
-        const res = await fetch(`/api/feed/${wallet}`);
+        const res = await proxyFetch(`/api/feed/${wallet}`, {}, authToken);
         const data: LogItem[] = await res.json();
         if (Array.isArray(data)) {
           const parsed: AlertCardData[] = data.map((item) => {
@@ -55,7 +56,7 @@ export default function AlertsPage() {
       }
     }
     loadAlerts();
-  }, [wallet]);
+  }, [wallet, authToken]);
 
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>

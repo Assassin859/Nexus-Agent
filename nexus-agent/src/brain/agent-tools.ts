@@ -14,7 +14,11 @@ import { eq, desc, and, ilike } from "drizzle-orm";
  * Creates the set of native AI SDK tools for the LLM agent.
  * The model (GPT-4o / Claude) autonomously decides which tool to call based on conversation context.
  */
-export function createAgentTools(walletAddress: string, conversationHistory: any[] = []) {
+export function createAgentTools(
+  walletAddress: string,
+  conversationHistory: any[] = [],
+  apiKey?: string
+) {
   const wallet = walletAddress.toLowerCase();
 
   return {
@@ -37,6 +41,7 @@ export function createAgentTools(walletAddress: string, conversationHistory: any
           userMessage: promptText,
           conversationHistory,
           walletAddress: wallet,
+          apiKey,
         });
 
         return {
@@ -121,7 +126,7 @@ export function createAgentTools(walletAddress: string, conversationHistory: any
         for (const wf of toCancel) {
           // Remote MCP cancel (only if a real keeperhub workflow ID exists)
           if (wf.keeperhubWorkflowId) {
-            const result = await cancelWorkflow(wf.keeperhubWorkflowId);
+            const result = await cancelWorkflow(wf.keeperhubWorkflowId, apiKey);
             if (result.ok && !result.isStub) remoteOk++;
           } else {
             // Legacy row or stub — no remote ID to cancel
@@ -243,13 +248,13 @@ export function createAgentTools(walletAddress: string, conversationHistory: any
       }),
       execute: async ({ strategy }) => {
         if (strategy === "dca") {
-          await runDCA(wallet);
+          await runDCA(wallet, { apiKey });
           return { message: "🤖 DCA Swap strategy triggered successfully! Uniswap V3 calldata generated." };
         } else if (strategy === "guardian") {
-          await runGuardian(wallet);
+          await runGuardian(wallet, { apiKey });
           return { message: "🛡️ Guardian position check triggered! Health factor & repayment limits evaluated." };
         } else {
-          await runYieldRotator(wallet);
+          await runYieldRotator(wallet, { apiKey });
           return { message: "🤖 Yield Rotator strategy triggered! Evaluated APY delta & rotated yield positions." };
         }
       },

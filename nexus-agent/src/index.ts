@@ -1,13 +1,19 @@
 import dotenv from "dotenv";
 dotenv.config({ path: "../.env", override: true });
 
+// ── 0. Production Startup Guard ────────────────────────────────────────────────
+if (process.env.NODE_ENV === "production" && !process.env.JWT_SECRET) {
+  console.error("[FATAL] JWT_SECRET environment variable is required in production.");
+  process.exit(1);
+}
+
 import express from "express";
 import cors from "cors";
+import rateLimit from "express-rate-limit";
 import cron from "node-cron";
 import { verifyMessage } from "ethers";
 import { generateText } from "ai";
 import { githubModels, BRAIN_MODEL } from "./brain/provider.js";
-import { translateIntent } from "./brain/nlu-translator.js";
 import { run as runGuardian } from "./modules/guardian.js";
 import { run as runYieldRotator } from "./modules/yield-rotator.js";
 import { run as runDCA } from "./modules/dca.js";
@@ -17,10 +23,59 @@ import { getAavePosition } from "./lib/aave.js";
 import { db } from "./db/client.js";
 import { activeWorkflows, executionsLog, userSettings, payees, repaymentCycles } from "./db/schema.js";
 import { eq, desc, and } from "drizzle-orm";
+import { createAgentTools } from "./brain/agent-tools.js";
+import {
+  requireAuth,
+  assertWalletScope,
+  generateAuthToken,
+  AuthedRequest,
+  AuthError,
+} from "./middleware/auth.js";
+import { resolveKeeperHubApiKey } from "./lib/user-context.js";
 
 const app = express();
-app.use(cors());
+
+// ── 1. CORS Configuration ──────────────────────────────────────────────────────
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(",").map(o => o.trim())
+  : ["http://localhost:3000", "http://localhost:3001"];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (like mobile apps, curl, or server-to-server)
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error(`CORS policy violation: origin ${origin} is not allowed.`));
+      }
+    },
+    credentials: true,
+    allowedHeaders: ["Content-Type", "Authorization"],
+  })
+);
+
 app.use(express.json());
+
+// ── 2. Rate Limiting ───────────────────────────────────────────────────────────
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per windowMs
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests from this IP, please try again after 15 minutes." },
+});
+
+const authLimiter = rateLimit({
+  windowMs: 60 * 1000, // 1 minute
+  max: 10, // Limit each IP to 10 auth requests per minute
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many authentication requests, please try again in a minute." },
+});
+
+app.use("/api/", apiLimiter);
+app.use("/api/auth/", authLimiter);
 
 const DEMO_WALLET = (
   process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b"
@@ -30,24 +85,103 @@ app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "nexus-agent", ts: new Date().toISOString() });
 });
 
-// ── Payees Directory API Endpoints ─────────────────────────────────────────────
-app.get("/api/payees/:walletAddress", async (req, res) => {
+// ── SIWE Authentication & Challenge ─────────────────────────────────────────
+app.get("/api/auth/challenge", (req, res) => {
+  const wallet = (req.query.wallet as string || DEMO_WALLET).toLowerCase();
+  const timestamp = new Date().toISOString();
+  const challenge = `Sign in to NexusAgent\n\nWallet: ${wallet}\nTimestamp: ${timestamp}\n\nAuthorize automated wealth management & sync KeeperHub workflows.`;
+  res.json({ challenge, timestamp });
+});
+
+app.post("/api/auth/verify", async (req, res) => {
   try {
+    const { walletAddress, signature, challenge } = req.body;
+    if (!walletAddress || !signature || !challenge) {
+      return res.status(400).json({ error: "walletAddress, signature, and challenge are required" });
+    }
+
+    const expectedAddress = walletAddress.toLowerCase();
+
+    // 1. Verify Challenge Timestamp (<= 5 minutes old)
+    const tsMatch = challenge.match(/Timestamp:\s*([^\n]+)/);
+    if (tsMatch && tsMatch[1]) {
+      const challengeTime = new Date(tsMatch[1]).getTime();
+      const now = Date.now();
+      if (isNaN(challengeTime) || now - challengeTime > 5 * 60 * 1000) {
+        return res.status(400).json({ error: "Authentication failed: Challenge has expired (> 5 minutes old)." });
+      }
+    }
+
+    // 2. Verify Embedded Wallet in Challenge matches body walletAddress
+    const walletMatch = challenge.match(/Wallet:\s*(0x[a-fA-F0-9]{40})/i);
+    if (walletMatch && walletMatch[1].toLowerCase() !== expectedAddress) {
+      return res.status(400).json({ error: "Authentication failed: Embedded challenge wallet does not match request wallet." });
+    }
+
+    // 3. Cryptographic Signature Check (personal_sign)
+    const recoveredAddress = verifyMessage(challenge, signature).toLowerCase();
+    if (recoveredAddress !== expectedAddress) {
+      return res.status(401).json({ error: "Cryptographic signature verification failed." });
+    }
+
+    // 4. Issue JWT Token
+    const token = generateAuthToken(expectedAddress);
+
+    // 5. User Settings Sync — PRESERVE existing custom keeperhubApiKey on re-login
+    const existingSettings = await db.query.userSettings.findFirst({
+      where: eq(userSettings.userWallet, expectedAddress),
+    });
+
+    if (!existingSettings) {
+      const defaultKey = process.env.KEEPERHUB_API_KEY || `kh_auth_${Date.now()}`;
+      await db.insert(userSettings).values({
+        userWallet: expectedAddress,
+        keeperhubApiKey: defaultKey,
+        updatedAt: new Date(),
+      });
+    }
+
+    // Trigger async sync in background
+    syncKeeperHubState(expectedAddress).catch(err => console.error("[SYNC ERROR]:", err));
+
+    res.json({
+      success: true,
+      token,
+      walletAddress: expectedAddress,
+      expiresIn: process.env.JWT_EXPIRES_IN || "7d",
+      message: "Signature verified! JWT auth session issued.",
+    });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Authentication failed" });
+  }
+});
+
+// ── Payees Directory API Endpoints (Protected) ───────────────────────────────
+app.get("/api/payees/:walletAddress", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
     const wallet = req.params.walletAddress.toLowerCase();
+    assertWalletScope(authedReq, wallet);
+
     const list = await db.query.payees.findMany({
       where: eq(payees.userWallet, wallet),
       orderBy: [desc(payees.createdAt)],
     });
     res.json(list);
   } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Fetch payees failed" });
   }
 });
 
-app.post("/api/payees", async (req, res) => {
+app.post("/api/payees", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet; // Force wallet scope to JWT claim
+
     const {
-      userWallet,
       name,
       type, // 'single' | 'team'
       payoutMode = "direct", // 'direct' | 'vault_pool'
@@ -55,11 +189,9 @@ app.post("/api/payees", async (req, res) => {
       members = [], // Array of { name: string, address: string }
     } = req.body;
 
-    if (!userWallet || !name || !type) {
-      return res.status(400).json({ error: "userWallet, name, and type are required" });
+    if (!name || !type) {
+      return res.status(400).json({ error: "name and type are required" });
     }
-
-    const wallet = userWallet.toLowerCase();
 
     // 1. Insert Team / Primary Payee Record
     const primary = await db.insert(payees).values({
@@ -107,19 +239,36 @@ app.post("/api/payees", async (req, res) => {
   }
 });
 
-app.delete("/api/payees/all/:walletAddress", async (req, res) => {
+app.delete("/api/payees/all/:walletAddress", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
+    const authedReq = req as AuthedRequest;
     const wallet = req.params.walletAddress.toLowerCase();
+    assertWalletScope(authedReq, wallet);
+
     await db.delete(payees).where(eq(payees.userWallet, wallet));
     res.json({ success: true, message: `Cleared all payees for wallet ${wallet}` });
   } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Clear payees failed" });
   }
 });
 
-app.delete("/api/payees/:id", async (req, res) => {
+app.delete("/api/payees/:id", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
+    const authedReq = req as AuthedRequest;
     const { id } = req.params;
+
+    // Database ownership check
+    const payee = await db.query.payees.findFirst({
+      where: eq(payees.id, id),
+    });
+
+    if (!payee || payee.userWallet.toLowerCase() !== authedReq.userWallet) {
+      return res.status(403).json({ error: "Forbidden: Payee record does not belong to your authenticated wallet." });
+    }
+
     await db.delete(payees).where(eq(payees.id, id));
     res.json({ success: true });
   } catch (err) {
@@ -127,63 +276,13 @@ app.delete("/api/payees/:id", async (req, res) => {
   }
 });
 
-// ── SIWE Authentication & Challenge ─────────────────────────────────────────
-app.get("/api/auth/challenge", (req, res) => {
-  const wallet = (req.query.wallet as string || DEMO_WALLET).toLowerCase();
-  const timestamp = new Date().toISOString();
-  const challenge = `Sign in to NexusAgent\n\nWallet: ${wallet}\nTimestamp: ${timestamp}\n\nAuthorize automated wealth management & sync KeeperHub workflows.`;
-  res.json({ challenge, timestamp });
-});
-
-app.post("/api/auth/verify", async (req, res) => {
+// ── User Settings API Endpoints (Protected) ──────────────────────────────────
+app.get("/api/user/settings/:walletAddress", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
-    const { walletAddress, signature, challenge } = req.body;
-    if (!walletAddress || !signature || !challenge) {
-      return res.status(400).json({ error: "walletAddress, signature, and challenge are required" });
-    }
-
-    const recoveredAddress = verifyMessage(challenge, signature).toLowerCase();
-    const expectedAddress = walletAddress.toLowerCase();
-
-    if (recoveredAddress !== expectedAddress) {
-      return res.status(401).json({ error: "Cryptographic signature verification failed" });
-    }
-
-    const key = process.env.KEEPERHUB_API_KEY || `kh_auth_${Date.now()}`;
-    await db.insert(userSettings).values({
-      userWallet: expectedAddress,
-      keeperhubApiKey: key,
-      updatedAt: new Date(),
-    }).onConflictDoUpdate({
-      target: userSettings.userWallet,
-      set: { keeperhubApiKey: key, updatedAt: new Date() },
-    });
-
-    syncKeeperHubState(expectedAddress).catch(console.error);
-
-    res.json({
-      success: true,
-      walletAddress: expectedAddress,
-      message: "Signature verified! KeeperHub session connected.",
-    });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Authentication failed" });
-  }
-});
-
-app.post("/api/keeperhub/sync", async (req, res) => {
-  try {
-    const { walletAddress = DEMO_WALLET } = req.body;
-    const result = await syncKeeperHubState(walletAddress);
-    res.json({ success: true, ...result });
-  } catch (err) {
-    res.status(500).json({ error: err instanceof Error ? err.message : "Sync failed" });
-  }
-});
-
-app.get("/api/user/settings/:walletAddress", async (req, res) => {
-  try {
+    const authedReq = req as AuthedRequest;
     const wallet = req.params.walletAddress.toLowerCase();
+    assertWalletScope(authedReq, wallet);
+
     const settings = await db.query.userSettings.findFirst({
       where: eq(userSettings.userWallet, wallet),
     });
@@ -194,17 +293,23 @@ app.get("/api/user/settings/:walletAddress", async (req, res) => {
     }
     res.json({ hasKey: false, keyMasked: null });
   } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Fetch settings failed" });
   }
 });
 
-app.post("/api/user/settings", async (req, res) => {
+app.post("/api/user/settings", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
-    const { walletAddress, keeperhubApiKey } = req.body;
-    if (!walletAddress || !keeperhubApiKey) {
-      return res.status(400).json({ error: "walletAddress and keeperhubApiKey are required" });
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const { keeperhubApiKey } = req.body;
+
+    if (!keeperhubApiKey) {
+      return res.status(400).json({ error: "keeperhubApiKey is required" });
     }
-    const wallet = walletAddress.toLowerCase();
+
     await db.insert(userSettings).values({
       userWallet: wallet,
       keeperhubApiKey,
@@ -222,9 +327,25 @@ app.post("/api/user/settings", async (req, res) => {
   }
 });
 
-app.get("/api/portfolio/:walletAddress", async (req, res) => {
+// ── Sync Endpoint (Protected) ────────────────────────────────────────────────
+app.post("/api/keeperhub/sync", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const result = await syncKeeperHubState(wallet);
+    res.json({ success: true, ...result });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Sync failed" });
+  }
+});
+
+// ── Portfolio & Feed Endpoints (Protected) ───────────────────────────────────
+app.get("/api/portfolio/:walletAddress", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
     const walletAddress = req.params.walletAddress.toLowerCase();
+    assertWalletScope(authedReq, walletAddress);
+
     const [position, workflows] = await Promise.all([
       getAavePosition(walletAddress),
       db.query.activeWorkflows.findMany({
@@ -238,7 +359,6 @@ app.get("/api/portfolio/:walletAddress", async (req, res) => {
 
     res.json({
       walletAddress,
-      // healthFactor is null when RPC fails or no active loan — pass through as-is
       healthFactor: position.healthFactor !== null ? parseFloat(position.healthFactor.toFixed(2)) : null,
       collateralUSD: parseFloat(position.collateralUSD.toFixed(0)),
       debtUSD: parseFloat(position.debtUSD.toFixed(0)),
@@ -251,13 +371,19 @@ app.get("/api/portfolio/:walletAddress", async (req, res) => {
       workflows,
     });
   } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Portfolio fetch failed" });
   }
 });
 
-app.get("/api/feed/:walletAddress", async (req, res) => {
+app.get("/api/feed/:walletAddress", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
+    const authedReq = req as AuthedRequest;
     const walletAddress = req.params.walletAddress.toLowerCase();
+    assertWalletScope(authedReq, walletAddress);
+
     const logs = await db.query.executionsLog.findMany({
       where: eq(executionsLog.userWallet, walletAddress),
       orderBy: [desc(executionsLog.timestamp)],
@@ -265,18 +391,21 @@ app.get("/api/feed/:walletAddress", async (req, res) => {
     });
     res.json(logs);
   } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     res.status(500).json({ error: err instanceof Error ? err.message : "Feed fetch failed" });
   }
 });
 
-import { createAgentTools } from "./brain/agent-tools.js";
-
-app.post("/api/chat", async (req, res) => {
+// ── AI Chat Agent Endpoint (Protected) ───────────────────────────────────────
+app.post("/api/chat", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
-    const { userMessage, conversationHistory = [], walletAddress = DEMO_WALLET } = req.body;
-    const wallet = walletAddress.toLowerCase();
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const { userMessage, conversationHistory = [] } = req.body;
 
-    // Format conversation history for AI SDK generateText
+    const apiKey = await resolveKeeperHubApiKey(wallet);
     const messages = [
       ...conversationHistory.map((m: any) => ({
         role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
@@ -285,35 +414,30 @@ app.post("/api/chat", async (req, res) => {
       { role: "user" as const, content: userMessage },
     ];
 
-    // Instantiate native tools for this user wallet
-    const tools = createAgentTools(wallet, conversationHistory);
+    const tools = createAgentTools(wallet, conversationHistory, apiKey);
 
-    // Call GPT-4o / Claude with Native Tool Calling (Agent Loop)
     const result = await generateText({
       model: githubModels(BRAIN_MODEL),
       system: `You are NexusAgent, an intelligent, autonomous DeFi and automated payroll manager powered by KeeperHub MPC.
 You talk naturally like ChatGPT or Claude. You are smart, conversational, helpful, and understand informal language, typos, slang, and complex instructions.
 
 Your Capabilities & Tools:
-1. 'schedulePayroll': Use when the user wants to set up a recurring payment, salary, or transfer to an address, team, or payee name (e.g. 'pay 0x123... 10 USDC every friday', 'send 50 bucks to dev team weekly'). If user says 'do it anyway', 'confirm', 'override', set isExplicitOverride: true.
-2. 'cancelPayrolls': Use when the user wants to cancel, stop, or pause active payrolls or workflows (e.g. 'stop all payrolls', 'cancle all', 'pause my payments').
-3. 'listWorkflows': Use when the user asks about their active workflows, registered payrolls, or triggers (e.g. 'what are my workflows', 'my workflow', 'active payments').
-4. 'listPayees': Use when the user asks about saved payees, team members, or vault pools (e.g. 'show my payees', 'who are my team members').
+1. 'schedulePayroll': Use when the user wants to set up a recurring payment, salary, or transfer to an address, team, or payee name.
+2. 'cancelPayrolls': Use when the user wants to cancel, stop, or pause active payrolls or workflows.
+3. 'listWorkflows': Use when the user asks about their active workflows, registered payrolls, or triggers.
+4. 'listPayees': Use when the user asks about saved payees, team members, or vault pools.
 5. 'queryPortfolio': Use when the user asks about their Aave position, loan, health factor, or debt.
 6. 'triggerStrategy': Use when the user wants to trigger DCA, Guardian position check, or Yield Rotator immediately.
-7. 'getLiveTransactions': Use when the user asks for live transactions, recent execution logs, or Sepolia Etherscan links (e.g. 'show live tx', 'recent transactions', 'etherscan links').
+7. 'getLiveTransactions': Use when the user asks for live transactions, recent execution logs, or Sepolia Etherscan links.
 
 Formatting Rules:
-- DO NOT use markdown tables (e.g. '| col | col |'). Chat bubbles wrap tables poorly.
-- Always format lists (active workflows, payees, history) as clean, numbered or bulleted markdown lists with emojis (e.g. '1. 🟢 **PAYROLL** — 20 USDC (Every Thursday) → 0x1234...').
-- If no tool is needed (e.g. greetings, general DeFi questions), answer naturally in conversational English.
+- DO NOT use markdown tables. Format lists with markdown bullet points and emojis.
 - Never mention internal technical tool names to the user.`,
       messages,
       tools,
-      maxSteps: 5, // Allows autonomous Tool Call -> Execution -> Final Natural Language Response
+      maxSteps: 5,
     });
 
-    // Extract tool calls and execution results for audit feed
     const toolCalls = result.toolCalls || [];
     const toolResults = result.toolResults || [];
 
@@ -329,65 +453,96 @@ Formatting Rules:
   }
 });
 
-app.post("/api/payroll", async (req, res) => {
+// ── Payroll & Strategy Triggers (Protected) ───────────────────────────────────
+app.post("/api/payroll", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
-    const result = await handlePaychain(req.body);
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const apiKey = await resolveKeeperHubApiKey(wallet);
+
+    const result = await handlePaychain({
+      ...req.body,
+      walletAddress: wallet,
+      apiKey,
+    });
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Payroll processing failed" });
   }
 });
 
-app.post("/api/trigger/guardian", async (req, res) => {
-  const wallet = (req.body.wallet || DEMO_WALLET).toLowerCase();
-  runGuardian(wallet)
-    .then(() => res.json({ triggered: true, wallet }))
-    .catch(err => res.status(500).json({ error: err.message }));
+app.post("/api/trigger/guardian", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const apiKey = await resolveKeeperHubApiKey(wallet);
+
+    await runGuardian(wallet, { apiKey });
+    res.json({ triggered: true, wallet });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Guardian trigger failed" });
+  }
 });
 
-app.post("/api/trigger/dca", async (req, res) => {
-  const wallet = (req.body.wallet || DEMO_WALLET).toLowerCase();
-  runDCA(wallet)
-    .then(() => res.json({ triggered: true, wallet }))
-    .catch(err => res.status(500).json({ error: err.message }));
+app.post("/api/trigger/dca", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const apiKey = await resolveKeeperHubApiKey(wallet);
+
+    await runDCA(wallet, { apiKey });
+    res.json({ triggered: true, wallet });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "DCA trigger failed" });
+  }
 });
 
-app.post("/api/trigger/yield", async (req, res) => {
-  const wallet = (req.body.wallet || DEMO_WALLET).toLowerCase();
-  runYieldRotator(wallet)
-    .then(() => res.json({ triggered: true, wallet }))
-    .catch(err => res.status(500).json({ error: err.message }));
+app.post("/api/trigger/yield", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const apiKey = await resolveKeeperHubApiKey(wallet);
+
+    await runYieldRotator(wallet, { apiKey });
+    res.json({ triggered: true, wallet });
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Yield trigger failed" });
+  }
 });
 
+// ── Background Cron Loops ────────────────────────────────────────────────────
 async function startLoops() {
-  // ── Guardian: every 5 minutes — runs for each wallet with a repayment cycle ─
+  // Guardian (5 min)
   cron.schedule("*/5 * * * *", async () => {
     try {
       const rows = await db.selectDistinct({ wallet: repaymentCycles.userWallet }).from(repaymentCycles);
       const wallets = rows.map(r => r.wallet.toLowerCase());
       if (wallets.length === 0) wallets.push(DEMO_WALLET);
       for (const wallet of wallets) {
-        try { await runGuardian(wallet); }
-        catch (err) { console.error(`[GUARDIAN CRON] Error for ${wallet.slice(0, 8)}:`, err); }
+        try {
+          const apiKey = await resolveKeeperHubApiKey(wallet);
+          await runGuardian(wallet, { apiKey });
+        } catch (err) { console.error(`[GUARDIAN CRON] Error for ${wallet.slice(0, 8)}:`, err); }
       }
     } catch (err) { console.error("[GUARDIAN CRON] DB query failed:", err); }
   });
 
-  // ── Yield Rotator: every 15 minutes — same wallet source as Guardian ────────
+  // Yield Rotator (15 min)
   cron.schedule("*/15 * * * *", async () => {
     try {
       const rows = await db.selectDistinct({ wallet: repaymentCycles.userWallet }).from(repaymentCycles);
       const wallets = rows.map(r => r.wallet.toLowerCase());
       if (wallets.length === 0) wallets.push(DEMO_WALLET);
       for (const wallet of wallets) {
-        try { await runYieldRotator(wallet); }
-        catch (err) { console.error(`[YIELD CRON] Error for ${wallet.slice(0, 8)}:`, err); }
+        try {
+          const apiKey = await resolveKeeperHubApiKey(wallet);
+          await runYieldRotator(wallet, { apiKey });
+        } catch (err) { console.error(`[YIELD CRON] Error for ${wallet.slice(0, 8)}:`, err); }
       }
     } catch (err) { console.error("[YIELD CRON] DB query failed:", err); }
   });
 
-  // ── DCA: hourly — distinct wallets with active DCA workflows ────────────────
-  // Note: dca.ts uses findFirst, so only one workflow per wallet runs per tick.
+  // DCA (hourly)
   cron.schedule("0 * * * *", async () => {
     try {
       const rows = await db.selectDistinct({ wallet: activeWorkflows.userWallet })
@@ -396,8 +551,10 @@ async function startLoops() {
       const wallets = rows.map(r => r.wallet.toLowerCase());
       if (wallets.length === 0) wallets.push(DEMO_WALLET);
       for (const wallet of wallets) {
-        try { await runDCA(wallet); }
-        catch (err) { console.error(`[DCA CRON] Error for ${wallet.slice(0, 8)}:`, err); }
+        try {
+          const apiKey = await resolveKeeperHubApiKey(wallet);
+          await runDCA(wallet, { apiKey });
+        } catch (err) { console.error(`[DCA CRON] Error for ${wallet.slice(0, 8)}:`, err); }
       }
     } catch (err) { console.error("[DCA CRON] DB query failed:", err); }
   });

@@ -3,6 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { Send, Bot, User, Sparkles, Cpu } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
+import { proxyFetch } from "@/lib/agent-fetch";
 
 type PortfolioData = {
   healthFactor: number | null;
@@ -17,7 +18,7 @@ const DEFAULT_WELCOME = {
 };
 
 export default function ChatPage() {
-  const { walletAddress } = useWallet();
+  const { walletAddress, authToken, signInWithEthereum } = useWallet();
 
   const [messages, setMessages] = useState<Array<{ sender: string; text: string; intents?: any[] }>>([DEFAULT_WELCOME]);
   const [input, setInput] = useState("");
@@ -55,11 +56,11 @@ export default function ChatPage() {
   }, [messages]);
 
   useEffect(() => {
-    fetch(`/api/portfolio/${walletAddress}`)
+    if (!walletAddress) return;
+    proxyFetch(`/api/portfolio/${walletAddress}`, {}, authToken)
       .then((res) => res.json())
       .then((data) => {
         if (data) {
-          // Accept all states: numeric HF, null (no loan), or isError (degraded)
           setPortfolio({
             healthFactor: typeof data.healthFactor === "number" ? data.healthFactor : null,
             isError: data.isError ?? false,
@@ -69,7 +70,7 @@ export default function ChatPage() {
         }
       })
       .catch(() => {});
-  }, [walletAddress]);
+  }, [walletAddress, authToken]);
 
   async function sendMessage() {
     if (!input.trim() || loading) return;
@@ -86,15 +87,19 @@ export default function ChatPage() {
     }));
 
     try {
-      const res = await fetch("/api/chat", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: userText,
-          conversationHistory,
-          walletAddress,
-        }),
-      });
+      const res = await proxyFetch(
+        "/api/chat",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            message: userText,
+            conversationHistory,
+            walletAddress,
+          }),
+        },
+        authToken
+      );
 
       const data = await res.json();
       const agentMsg = {

@@ -1,0 +1,17 @@
+# Next.js build artifacts
+.next/
+out/
+
+# Dependencies
+node_modules/
+
+# Environment files
+.env
+.env.local
+.env.production
+
+# OS / IDE
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

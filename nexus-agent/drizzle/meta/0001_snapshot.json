@@ -1,0 +1,411 @@
+{
+  "id": "3c4d887d-1ee4-4400-949d-2fa418ceb60f",
+  "prevId": "41f205cd-0b55-47cf-96f4-54459028f086",
+  "version": "7",
+  "dialect": "postgresql",
+  "tables": {
+    "public.active_workflows": {
+      "name": "active_workflows",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_wallet": {
+          "name": "user_wallet",
+          "type": "varchar(42)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "recipient_address": {
+          "name": "recipient_address",
+          "type": "varchar(42)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "amount": {
+          "name": "amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cron_schedule": {
+          "name": "cron_schedule",
+          "type": "varchar(100)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar(20)",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'active'"
+        },
+        "keeperhub_workflow_id": {
+          "name": "keeperhub_workflow_id",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "active_workflows_user_wallet_idx": {
+          "name": "active_workflows_user_wallet_idx",
+          "columns": [
+            {
+              "expression": "user_wallet",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "unique_active_payroll": {
+          "name": "unique_active_payroll",
+          "columns": [
+            {
+              "expression": "user_wallet",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "recipient_address",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "status",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.executions_log": {
+      "name": "executions_log",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_wallet": {
+          "name": "user_wallet",
+          "type": "varchar(42)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "workflow_id": {
+          "name": "workflow_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "action": {
+          "name": "action",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "amount": {
+          "name": "amount",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "status": {
+          "name": "status",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "reason": {
+          "name": "reason",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "ai_analysis": {
+          "name": "ai_analysis",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tx_hash": {
+          "name": "tx_hash",
+          "type": "varchar(66)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "timestamp": {
+          "name": "timestamp",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "executions_log_user_wallet_idx": {
+          "name": "executions_log_user_wallet_idx",
+          "columns": [
+            {
+              "expression": "user_wallet",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "executions_log_workflow_id_active_workflows_id_fk": {
+          "name": "executions_log_workflow_id_active_workflows_id_fk",
+          "tableFrom": "executions_log",
+          "tableTo": "active_workflows",
+          "columnsFrom": [
+            "workflow_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "no action",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.payees": {
+      "name": "payees",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_wallet": {
+          "name": "user_wallet",
+          "type": "varchar(42)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "name": {
+          "name": "name",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "type": {
+          "name": "type",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "payout_mode": {
+          "name": "payout_mode",
+          "type": "varchar",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "'direct'"
+        },
+        "vault_pool_address": {
+          "name": "vault_pool_address",
+          "type": "varchar(42)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "recipient_addresses": {
+          "name": "recipient_addresses",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "member_count": {
+          "name": "member_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 1
+        },
+        "parent_team_id": {
+          "name": "parent_team_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "payees_user_wallet_idx": {
+          "name": "payees_user_wallet_idx",
+          "columns": [
+            {
+              "expression": "user_wallet",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.repayment_cycles": {
+      "name": "repayment_cycles",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "user_wallet": {
+          "name": "user_wallet",
+          "type": "varchar(42)",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cycle_start": {
+          "name": "cycle_start",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cycle_end": {
+          "name": "cycle_end",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "cycle_limit_usd": {
+          "name": "cycle_limit_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "total_repaid_this_cycle_usd": {
+          "name": "total_repaid_this_cycle_usd",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "default": 0
+        }
+      },
+      "indexes": {
+        "repayment_cycles_user_wallet_idx": {
+          "name": "repayment_cycles_user_wallet_idx",
+          "columns": [
+            {
+              "expression": "user_wallet",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    },
+    "public.user_settings": {
+      "name": "user_settings",
+      "schema": "",
+      "columns": {
+        "user_wallet": {
+          "name": "user_wallet",
+          "type": "varchar(42)",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "keeperhub_api_key": {
+          "name": "keeperhub_api_key",
+          "type": "varchar(255)",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": false,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {}
+    }
+  },
+  "enums": {},
+  "schemas": {},
+  "sequences": {},
+  "_meta": {
+    "columns": {},
+    "schemas": {},
+    "tables": {}
+  }
+}

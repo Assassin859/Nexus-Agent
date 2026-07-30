@@ -13,8 +13,8 @@ export async function syncKeeperHubState(walletAddress: string): Promise<{ workf
 
   const apiKey = settings?.keeperhubApiKey || process.env.KEEPERHUB_API_KEY;
 
-  // 2. Fetch execution logs via KeeperHub MCP tool wrapper
-  const logs = await getExecutionLogs("exec-all");
+  // 2. Fetch execution logs for the user's workflow via MCP
+  const logs = await getExecutionLogs("exec-all", apiKey);
   let logsSynced = 0;
 
   for (const log of logs) {

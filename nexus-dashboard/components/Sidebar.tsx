@@ -16,10 +16,12 @@ import {
   CheckCircle2,
   AlertCircle,
   Wallet,
-  ChevronDown,
+  Key,
+  LogOut,
 } from "lucide-react";
 import KeeperHubSyncModal from "./KeeperHubSyncModal";
 import { useWallet } from "@/context/WalletContext";
+import { agentFetch } from "@/lib/agent-fetch";
 
 const NAV_ITEMS = [
   { href: "/",            label: "Portfolio",   icon: LayoutDashboard },
@@ -34,22 +36,16 @@ const NAV_ITEMS = [
 
 export default function Sidebar() {
   const pathname = usePathname();
-  const { walletAddress, setWalletAddress, isConnected, googleEmail, signOutGoogle } = useWallet();
+  const { walletAddress, isConnected, authToken, signInWithEthereum, disconnectWallet } = useWallet();
   const [khConnected, setKhConnected] = useState(false);
   const [modalOpen, setModalOpen] = useState(false);
-  const [connecting, setConnecting] = useState(false);
+  const [signingIn, setSigningIn] = useState(false);
 
   useEffect(() => {
     async function checkKeeperHubStatus() {
-      if (!walletAddress) return;
-      const localKey = localStorage.getItem(`nexus_kh_key_${walletAddress.toLowerCase()}`);
-      if (localKey || googleEmail) {
-        setKhConnected(true);
-        return;
-      }
+      if (!walletAddress || !authToken) return;
       try {
-        const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
-        const res = await fetch(`${agentUrl}/api/user/settings/${walletAddress}`);
+        const res = await agentFetch(`/api/user/settings/${walletAddress}`, {}, authToken);
         if (res.ok) {
           const data = await res.json();
           if (data.hasKey) setKhConnected(true);
@@ -57,27 +53,20 @@ export default function Sidebar() {
       } catch {}
     }
     checkKeeperHubStatus();
-  }, [walletAddress, googleEmail]);
+  }, [walletAddress, authToken]);
 
-  async function handleConnectWallet() {
-    if (connecting) return;
-    setConnecting(true);
+  async function handleSIWE() {
+    if (signingIn) return;
+    setSigningIn(true);
     try {
-      if (typeof window !== "undefined" && (window as any).ethereum) {
-        const accounts: string[] = await (window as any).ethereum.request({
-          method: "eth_requestAccounts",
-        });
-        if (accounts.length > 0) {
-          setWalletAddress(accounts[0]);
-          setKhConnected(false);
-        }
-      } else {
-        alert("MetaMask not detected. Click 'KeeperHub Connected' to sign in with Google.");
+      const res = await signInWithEthereum();
+      if (res.success) {
+        setKhConnected(true);
+      } else if (res.error) {
+        alert(res.error);
       }
-    } catch (err: any) {
-      console.error("Wallet connection failed:", err.message);
     } finally {
-      setConnecting(false);
+      setSigningIn(false);
     }
   }
 
@@ -89,7 +78,7 @@ export default function Sidebar() {
     <>
       <aside className="sidebar">
         {/* Brand Header */}
-        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 28 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 24 }}>
           <div style={{
             width: 36, height: 36, borderRadius: "var(--radius-sm)",
             background: "linear-gradient(135deg, var(--primary), var(--secondary))",
@@ -108,49 +97,40 @@ export default function Sidebar() {
           </div>
         </div>
 
-        {/* Account / Google Account Status */}
-        {googleEmail ? (
-          <div style={{
-            padding: "12px", borderRadius: 8, marginBottom: 18,
-            background: "rgba(66,133,244,0.1)", border: "1px solid rgba(66,133,244,0.25)",
-            display: "flex", flexDirection: "column", gap: 4
-          }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <span style={{ fontSize: 10, color: "#93c5fd", fontWeight: 700, textTransform: "uppercase" }}>Google Account Connected</span>
-              <button onClick={signOutGoogle} style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 10 }}>Sign Out</button>
-            </div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", overflow: "hidden", textOverflow: "ellipsis" }}>
-              {googleEmail}
-            </div>
-            <div style={{ fontSize: 10, fontFamily: "monospace", color: "var(--text-muted)" }}>
-              MPC: {shortAddr}
-            </div>
+        {/* Account / SIWE Auth Card */}
+        <div style={{
+          padding: "12px", borderRadius: 8, marginBottom: 18,
+          background: authToken ? "rgba(52,211,153,0.06)" : "rgba(99,102,241,0.12)",
+          border: `1px solid ${authToken ? "rgba(52,211,153,0.25)" : "rgba(99,102,241,0.3)"}`,
+          display: "flex", flexDirection: "column", gap: 8
+        }}>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span style={{ fontSize: 10, color: authToken ? "#34d399" : "#818cf8", fontWeight: 700, textTransform: "uppercase", display: "flex", alignItems: "center", gap: 4 }}>
+              <Wallet size={12} /> {authToken ? "SIWE Authenticated" : "Web3 Wallet"}
+            </span>
+            {authToken && (
+              <button onClick={disconnectWallet} title="Sign Out" style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", display: "flex", alignItems: "center", gap: 2, fontSize: 10 }}>
+                <LogOut size={10} /> Disconnect
+              </button>
+            )}
           </div>
-        ) : (
-          <button
-            onClick={handleConnectWallet}
-            style={{
-              width: "100%", padding: "10px 12px", borderRadius: 8, marginBottom: 18,
-              background: isConnected ? "rgba(52,211,153,0.06)" : "rgba(99,102,241,0.12)",
-              border: `1px solid ${isConnected ? "rgba(52,211,153,0.25)" : "rgba(99,102,241,0.3)"}`,
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              cursor: "pointer",
-            }}
-          >
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-              <Wallet size={14} color={isConnected ? "#34d399" : "#818cf8"} />
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
-                <span style={{ fontSize: 11, fontWeight: 700, color: isConnected ? "#34d399" : "#818cf8" }}>
-                  {connecting ? "Connecting..." : isConnected ? shortAddr : "Connect Wallet"}
-                </span>
-                <span style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                  {isConnected ? "Turnkey MPC Active" : "MetaMask / Web3"}
-                </span>
-              </div>
-            </div>
-            {isConnected && <ChevronDown size={12} color="#34d399" />}
-          </button>
-        )}
+
+          <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", fontFamily: "monospace" }}>
+            {shortAddr}
+          </div>
+
+          {!authToken && (
+            <button
+              onClick={handleSIWE}
+              disabled={signingIn}
+              className="btn btn-primary"
+              style={{ width: "100%", padding: "6px 10px", fontSize: 11, display: "flex", alignItems: "center", justifyContent: "center", gap: 6, marginTop: 2 }}
+            >
+              <Key size={12} />
+              {signingIn ? "Signing Challenge..." : "Sign In with Ethereum"}
+            </button>
+          )}
+        </div>
 
         {/* Nav Links */}
         <nav style={{ display: "flex", flexDirection: "column", gap: 4, flex: 1 }}>
@@ -169,7 +149,7 @@ export default function Sidebar() {
           })}
         </nav>
 
-        {/* KeeperHub Status */}
+        {/* KeeperHub Key Settings */}
         <div style={{ paddingTop: 16, borderTop: "1px solid var(--border)" }}>
           <button
             onClick={() => setModalOpen(true)}
@@ -185,10 +165,10 @@ export default function Sidebar() {
               <Cpu size={14} color={khConnected ? "#34d399" : "#f59e0b"} />
               <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-start" }}>
                 <span style={{ fontSize: 11, fontWeight: 700, color: khConnected ? "#34d399" : "#f59e0b" }}>
-                  KeeperHub {khConnected ? "Connected" : "Unlinked"}
+                  KeeperHub {khConnected ? "Key Active" : "Key Settings"}
                 </span>
                 <span style={{ fontSize: 9, color: "var(--text-muted)" }}>
-                  {khConnected ? (googleEmail ? "Google MPC Sync" : "API Key Active") : "Sign in with Google"}
+                  {khConnected ? "Custom API Key" : "Configure Custom Key"}
                 </span>
               </div>
             </div>

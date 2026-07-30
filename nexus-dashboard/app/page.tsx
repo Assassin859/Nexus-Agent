@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import Link from "next/link";
 import { Shield, RefreshCw, Layers, ArrowUpRight, CheckCircle2, TrendingUp, AlertCircle, Wallet } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
+import { proxyFetch } from "@/lib/agent-fetch";
 
 type PortfolioData = {
   walletAddress: string;
@@ -21,25 +22,14 @@ type PortfolioData = {
 };
 
 export default function PortfolioPage() {
-  const { walletAddress: wallet, isConnected, setWalletAddress } = useWallet();
-
-  async function connectWallet() {
-    if (typeof window !== "undefined" && (window as any).ethereum) {
-      try {
-        const accounts: string[] = await (window as any).ethereum.request({ method: "eth_requestAccounts" });
-        if (accounts.length > 0) setWalletAddress(accounts[0]);
-      } catch {}
-    } else {
-      alert("MetaMask not detected.");
-    }
-  }
+  const { walletAddress: wallet, isConnected, authToken, signInWithEthereum } = useWallet();
   const [data, setData] = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadPortfolio() {
       try {
-        const res = await fetch(`/api/portfolio/${wallet}`);
+        const res = await proxyFetch(`/api/portfolio/${wallet}`, {}, authToken);
         const json = await res.json();
         setData(json);
       } catch (err) {
@@ -51,7 +41,7 @@ export default function PortfolioPage() {
     loadPortfolio();
     const interval = setInterval(loadPortfolio, 10000);
     return () => clearInterval(interval);
-  }, [wallet]);
+  }, [wallet, authToken]);
 
   const short = `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
 
@@ -90,7 +80,7 @@ export default function PortfolioPage() {
         </div>
         <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
           <button
-            onClick={connectWallet}
+            onClick={signInWithEthereum}
             className="btn btn-ghost"
             style={{ padding: "8px 14px", fontSize: 12.5, borderColor: isConnected ? "var(--success)" : "var(--border)" }}
           >

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useWallet } from "@/context/WalletContext";
+import { proxyFetch } from "@/lib/agent-fetch";
 import TransactionCard from "@/components/TransactionCard";
 
 type FeedItem = {
@@ -17,14 +18,14 @@ type FeedItem = {
 const STEPS = ["Triggered", "Simulating", "Broadcasting", "Mined"];
 
 export default function FeedPage() {
-  const { walletAddress } = useWallet();
+  const { walletAddress, authToken } = useWallet();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadFeed() {
       try {
-        const res = await fetch(`/api/feed/${walletAddress}`);
+        const res = await proxyFetch(`/api/feed/${walletAddress}`, {}, authToken);
         const data = await res.json();
         if (Array.isArray(data)) {
           setFeed(data);
@@ -38,7 +39,7 @@ export default function FeedPage() {
     loadFeed();
     const interval = setInterval(loadFeed, 5000);
     return () => clearInterval(interval);
-  }, [walletAddress]);
+  }, [walletAddress, authToken]);
 
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
