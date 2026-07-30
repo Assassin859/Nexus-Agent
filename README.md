@@ -19,6 +19,8 @@ The user never manually configures a workflow. They talk to the AI in plain Engl
 
 ## Architecture & Native AI Tool Calling Engine
 
+> 📖 **Full Technical Architecture Specification:** For an in-depth dive into our Domain Decision Ontology, Dual-Wallet Architecture, Reasoning Harness, and Security Model, read the canonical [Technical Specification](docs/TECHNICAL_SPEC.md).
+
 ```
 User Message ("dca 50 usdc into eth weekly", "pay dev team 20 usdc every thursday", "cancel all dca")
                                 │

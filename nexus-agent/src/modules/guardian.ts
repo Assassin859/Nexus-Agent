@@ -1,12 +1,14 @@
 import { generateObject } from "ai";
 import { githubModels, BRAIN_MODEL } from "../brain/provider.js";
 import { GuardianDecisionSchema, GUARDIAN_SYSTEM_PROMPT } from "../brain/schemas.js";
+import { selectBestCandidate } from "../lib/guardian-candidate-select.js";
 import { db } from "../db/client.js";
 import { repaymentCycles, executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled, type WorkflowStep } from "../lib/mcp-client.js";
 import { ensureAllowance } from "../lib/allowance.js";
 import { getAavePosition, getUsdcBalance } from "../lib/aave.js";
+import { getPriceTrend } from "../lib/price-feed.js";
 import {
   encodeAaveRepay,
   encodeAaveSupply,
@@ -143,7 +145,10 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   // ── Step 5: Read signerWallet USDC balance ──────────────────────────────
   const agenticBalance = await getUsdcBalance(signerWallet);
 
-  // ── Step 6: AI Brain ──────────────────────────────────────────────────────
+  // ── Step 6: AI Brain & Reasoning Harness Candidate Selection ───────────────
+  const priceTrend = await getPriceTrend();
+  log.info({ priceTrend }, "Market price trend for Guardian prompt");
+
   const { object: decision } = await generateObject({
     model: githubModels(BRAIN_MODEL),
     schema: GuardianDecisionSchema,
@@ -154,16 +159,41 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
       collateralValueUSD: position.collateralUSD,
       debtValueUSD: position.debtUSD,
       cycleRemainingBudget: cycleRemaining,
-      priceTrend: "stable",
+      priceTrend,
     }),
   });
 
-  log.info({ action: decision.recommendation.action }, decision.userExplanation);
+  const selectedRecommendation = selectBestCandidate(
+    decision.candidateActions,
+    decision.recommendation
+  );
+
+  if (
+    selectedRecommendation.action !== decision.recommendation.action ||
+    selectedRecommendation.amount !== decision.recommendation.amount
+  ) {
+    log.info(
+      { llm: decision.recommendation, harness: selectedRecommendation },
+      "Reasoning Harness candidate selector override applied."
+    );
+  } else {
+    log.info({ action: selectedRecommendation.action }, decision.userExplanation);
+  }
+
+  const aiAnalysisPayload = {
+    ...decision.analysis,
+    priceTrend,
+    candidateActions: decision.candidateActions ?? [],
+    llmRecommendation: decision.recommendation,
+    harnessRecommendation: selectedRecommendation,
+    harnessOverride:
+      selectedRecommendation.action !== decision.recommendation.action ||
+      selectedRecommendation.amount !== decision.recommendation.amount,
+  };
 
   // ── Alert: liquidation risk before execution ──────────────────────────────
-  // ── Alert: liquidation risk before execution ──────────────────────────────
   if (
-    decision.recommendation.action === "repay" &&
+    selectedRecommendation.action === "repay" &&
     (position.healthFactor ?? 99) < 1.15
   ) {
     if (shouldAlert(`${monitoredWallet.slice(0, 8)}:liquidation_risk`)) {
@@ -177,22 +207,22 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
   // ── Log hold/block without executing ─────────────────────────────────────
   if (
-    decision.recommendation.action === "hold" ||
-    decision.recommendation.action === "block_transaction"
+    selectedRecommendation.action === "hold" ||
+    selectedRecommendation.action === "block_transaction"
   ) {
     await db.insert(executionsLog).values({
       userWallet: monitoredWallet,
-      action: decision.recommendation.action,
+      action: selectedRecommendation.action,
       amount: 0,
       status: "success",
       reason: decision.userExplanation,
-      aiAnalysis: decision.analysis,
+      aiAnalysis: aiAnalysisPayload,
     });
     return;
   }
 
   // ── Step 7: Clamp amount ──────────────────────────────────────────────────
-  const amount = decision.recommendation.amount;
+  const amount = selectedRecommendation.amount;
   const clampedAmount = Math.max(0, Math.min(amount, cycleRemaining, agenticBalance));
 
   if (clampedAmount <= 0) {
@@ -202,18 +232,18 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     if (agenticBalance === 0 && shouldAlert(`${monitoredWallet.slice(0, 8)}:wallet_empty`)) {
       await sendKeeperNotification(
         ALERT_CHANNEL,
-        `🪙 Agentic wallet empty — cannot execute ${decision.recommendation.action} for ${monitoredWallet.slice(0, 8)}`,
+        `🪙 Agentic wallet empty — cannot execute ${selectedRecommendation.action} for ${monitoredWallet.slice(0, 8)}`,
         effectiveKey
       ).catch(() => {});
     }
 
     await db.insert(executionsLog).values({
       userWallet: monitoredWallet,
-      action: decision.recommendation.action,
+      action: selectedRecommendation.action,
       amount: 0,
       status: "success",
       reason: `Budget clamped to 0: cycleRemaining=$${cycleRemaining} agenticBalance=$${agenticBalance.toFixed(2)}`,
-      aiAnalysis: decision.analysis,
+      aiAnalysis: aiAnalysisPayload,
     });
     return;
   }
@@ -222,7 +252,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   let calldata: string;
   const targetContract = AAVE_V3_POOL;
 
-  const action = decision.recommendation.action;
+  const action = selectedRecommendation.action;
   if (action === "repay") {
     calldata = encodeAaveRepay(USDC_SEPOLIA, clampedAmount, monitoredWallet);
   } else if (action === "supply_collateral") {
@@ -241,11 +271,11 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     log.warn({ reason: sim.revertReason }, "Pre-flight simulation reverted — recording resilience log.");
     await db.insert(executionsLog).values({
       userWallet: monitoredWallet,
-      action: decision.recommendation.action,
+      action: selectedRecommendation.action,
       amount: Math.round(clampedAmount),
       status: "reverted_simulation",
       reason: `Pre-flight simulation intercepted revert: Guardian ${action} of ${clampedAmount.toFixed(2)} USDC failed (${sim.revertReason || "Reverted"}). Zero gas wasted.`,
-      aiAnalysis: decision.analysis,
+      aiAnalysis: aiAnalysisPayload,
     });
     return;
   }
@@ -253,11 +283,11 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   // ── Step 10: Insert pending row before execution ─────────────────────────
   const [pendingRow] = await db.insert(executionsLog).values({
     userWallet: monitoredWallet,
-    action: decision.recommendation.action,
+    action: selectedRecommendation.action,
     amount: Math.round(clampedAmount),
     status: "pending",
     reason: decision.userExplanation,
-    aiAnalysis: decision.analysis,
+    aiAnalysis: aiAnalysisPayload,
   }).returning({ id: executionsLog.id });
 
   try {
@@ -279,7 +309,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
     if (isStub) {
       await db.update(executionsLog)
-        .set({ status: "simulated_stub", aiAnalysis: { ...decision.analysis, executionId } })
+        .set({ status: "simulated_stub", reason: decision.userExplanation, aiAnalysis: { ...aiAnalysisPayload, executionId } })
         .where(eq(executionsLog.id, pendingRow.id));
     } else {
       const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
@@ -302,7 +332,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
       // ── Step 12: Increment cycle ONLY on confirmed mined success + txHash ─
       if (
-        decision.recommendation.action === "repay" &&
+        selectedRecommendation.action === "repay" &&
         finalStatus === "success" &&
         poll.txHash &&
         cycle
@@ -314,7 +344,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
       }
     }
 
-    log.info({ isStub, action: decision.recommendation.action, clampedAmount, requested: amount }, "Execution complete");
+    log.info({ isStub, action: selectedRecommendation.action, clampedAmount, requested: amount }, "Execution complete");
 
   } catch (err) {
     // Ensure pending lock is never left open on any unexpected error

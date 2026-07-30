@@ -1,9 +1,19 @@
-﻿import { z } from "zod";
+import { z } from "zod";
 
 // =============================================================================
 // GUARDIAN MODULE — Liquidation Protection
 // Source: model.md §2.1
 // =============================================================================
+
+export const CandidateActionSchema = z.object({
+  action: z.enum(["repay", "supply_collateral", "hold", "block_transaction"]),
+  amount: z.number(),
+  expectedHealthFactor: z.number().describe("Predicted Aave health factor after executing this action"),
+  estimatedGasUSD: z.number(),
+  riskScore: z.number().describe("0-10 risk rating (0 = safest, 10 = extreme risk)"),
+  pros: z.string(),
+  cons: z.string(),
+});
 
 export const GuardianDecisionSchema = z.object({
   analysis: z.object({
@@ -17,6 +27,7 @@ export const GuardianDecisionSchema = z.object({
       .describe("Remaining monthly repayment budget from repayment_cycles DB table"),
     safetyStatus: z.enum(["safe", "warning", "critical_liquidation_risk"]),
   }),
+  candidateActions: z.array(CandidateActionSchema).describe("Evaluated candidate actions ranked by safety and efficiency"),
   userExplanation: z.string().describe(
     "Message detailing balance limits, risk checks, or cycle info. E.g. 'Cannot repay full $1000 because wallet only holds $500. Proposing partial repay of $500.'"
   ),
@@ -29,6 +40,7 @@ export const GuardianDecisionSchema = z.object({
   }),
 });
 
+export type CandidateAction = z.infer<typeof CandidateActionSchema>;
 export type GuardianDecision = z.infer<typeof GuardianDecisionSchema>;
 
 export const GUARDIAN_SYSTEM_PROMPT = `
@@ -40,6 +52,14 @@ Input variables injected into every call:
 - cycleRemainingBudget: remaining monthly repayment budget (from DB repayment_cycles table)
 - executionHistory: recent repayments and pending transactions (from DB executions_log)
 - priceTrend: 'stable' | 'volatile' | 'crash'
+
+Candidates Rule:
+Always generate candidateActions containing 4 candidate options:
+- Option A: full repay (restoring HF to target 1.30)
+- Option B: partial repay (capped to available balance)
+- Option C: supply collateral (supplying USDC)
+- Option D: hold / do nothing (evaluating risk vs gas)
+Each candidate option must include numeric expectedHealthFactor, estimatedGasUSD, and riskScore (0-10 rating).
 
 Rules (enforce in strict order):
 1. CYCLE LOCK: If executionHistory contains a pending transaction for this wallet, output action "block_transaction". Never double-execute.

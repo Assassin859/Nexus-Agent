@@ -23,14 +23,12 @@ export async function ensureAllowance(
     const token = new Contract(tokenAddress, ERC20_ALLOWANCE_ABI, provider);
     const currentAllowance = await token.allowance(signerWallet.toLowerCase(), spenderAddress.toLowerCase());
 
-    // 1 USDC = 1e6 units
-    const requiredUnits = BigInt(Math.ceil(amountUSD * 1e6));
+    // 1 USDC = 1e6 units; approve exact required units (with 10% safety buffer) rather than infinite uint256.max
+    const requiredUnits = BigInt(Math.ceil(amountUSD * 1.10 * 1e6));
 
     if (BigInt(currentAllowance) < requiredUnits) {
-      console.log(`[ALLOWANCE] ${signerWallet.slice(0, 8)} allowance for ${spenderAddress.slice(0, 8)} is ${currentAllowance} < ${requiredUnits}. Generating uint256.max approve calldata.`);
-      // Approve max uint256 once to prevent repeated approval steps
-      const MAX_UINT256 = (1n << 256n) - 1n;
-      return encodeERC20Approve(tokenAddress, spenderAddress, MAX_UINT256);
+      console.log(`[ALLOWANCE] ${signerWallet.slice(0, 8)} allowance for ${spenderAddress.slice(0, 8)} is ${currentAllowance} < ${requiredUnits}. Generating exact capped approve calldata ($${(amountUSD * 1.1).toFixed(2)} USDC).`);
+      return encodeERC20Approve(tokenAddress, spenderAddress, requiredUnits);
     }
   } catch (err) {
     console.warn(`[ALLOWANCE] Failed to query allowance for ${signerWallet.slice(0, 8)}:`, err);

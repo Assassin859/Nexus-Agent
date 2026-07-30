@@ -39,14 +39,15 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   const context = getWalletContext(userWallet);
   if (!context || !context.signerWallet) return;
 
-  const log = childLogger({ module: "yield", wallet: userWallet.slice(0, 8) });
-  const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(userWallet));
+  const monitoredWallet = context.monitoredWallet;
+  const log = childLogger({ module: "yield", wallet: monitoredWallet.slice(0, 8) });
+  const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(monitoredWallet));
 
   // ── Ownership Guard: Aave withdraw has no onBehalfOf ─────────────────────
   if (!context.canWithdrawAaveSupply) {
     log.info("Cannot rotate watched wallet's Aave supply without shared wallet ownership — skipping.");
     await db.insert(executionsLog).values({
-      userWallet,
+      userWallet: monitoredWallet,
       action: "rotate",
       amount: 0,
       status: "success",
@@ -57,16 +58,16 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
   log.info("Evaluating yield opportunities");
 
-  const position = await getAavePosition(userWallet);
+  const position = await getAavePosition(monitoredWallet);
   const aaveUSDCSupplyAPY = position.currentUSDCSupplyAPY;
 
   // ── Skip on RPC error ─────────────────────────────────────────────────────
   if (position.isError) {
     log.warn({ reason: position.errorReason }, "RPC error — skipping");
-    if (shouldAlert(`${userWallet.slice(0, 8)}:rpc_error`)) {
+    if (shouldAlert(`${monitoredWallet.slice(0, 8)}:rpc_error`)) {
       await sendKeeperNotification(
         ALERT_CHANNEL,
-        `🔴 Yield RPC error for ${userWallet.slice(0, 8)}: ${position.errorReason}`,
+        `🔴 Yield RPC error for ${monitoredWallet.slice(0, 8)}: ${position.errorReason}`,
         effectiveKey
       ).catch(() => {});
     }
@@ -107,7 +108,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
   if (!decision.recommendation.should_rotate) {
     await db.insert(executionsLog).values({
-      userWallet,
+      userWallet: monitoredWallet,
       action: "rotate",
       amount: 0,
       status: "success",
@@ -126,13 +127,13 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   // Pre-flight simulate Step 1 (Aave withdraw)
   const simWithdraw = await simulate(
     { from: context.signerWallet, to: AAVE_V3_POOL, data: withdrawCalldata },
-    userWallet
+    monitoredWallet
   );
 
   if (simWithdraw.wouldRevert) {
     log.warn("Step 1 (Aave withdraw) pre-flight simulation reverted — recording resilience log.");
     await db.insert(executionsLog).values({
-      userWallet,
+      userWallet: monitoredWallet,
       action: "rotate",
       amount: rotateAmount,
       status: "reverted_simulation",
@@ -145,13 +146,13 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   // Pre-flight simulate Step 2 (Compound supply)
   const simSupply = await simulate(
     { from: context.signerWallet, to: COMPOUND_V3_USDC, data: supplyCalldata },
-    userWallet
+    monitoredWallet
   );
 
   if (simSupply.wouldRevert) {
     log.warn("Step 2 (Compound supply) pre-flight simulation reverted — recording resilience log.");
     await db.insert(executionsLog).values({
-      userWallet,
+      userWallet: monitoredWallet,
       action: "rotate",
       amount: rotateAmount,
       status: "reverted_simulation",
@@ -172,7 +173,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   steps.push({ type: "transaction", to: COMPOUND_V3_USDC, calldata: supplyCalldata, gasStrategy: "standard" });
 
   const { workflowId, isStub: createStub } = await createWorkflow({
-    name: `yield-rotate-${userWallet.slice(0, 8)}-${Date.now()}`,
+    name: `yield-rotate-${monitoredWallet.slice(0, 8)}-${Date.now()}`,
     triggerType: "manual",
     steps,
     mevProtected: true,
@@ -198,7 +199,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
 
   await db.insert(executionsLog).values({
-    userWallet,
+    userWallet: monitoredWallet,
     action: "rotate",
     amount: Math.round(rotateAmount),
     status: finalStatus,
@@ -210,10 +211,10 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   log.info({ executionId, isStub, finalStatus, rotateAmount }, "Rotated USDC (Aave V3 → Compound V3)");
 
   // ── Alert ONLY on confirmed mined success with txHash (throttled) ─────────
-  if (finalStatus === "success" && txHash && shouldAlert(`${userWallet.slice(0, 8)}:yield_success`)) {
+  if (finalStatus === "success" && txHash && shouldAlert(`${monitoredWallet.slice(0, 8)}:yield_success`)) {
     await sendKeeperNotification(
       ALERT_CHANNEL,
-      `🔄 Yield rotated: ${rotateAmount} USDC → Compound V3 for ${userWallet.slice(0, 8)}`,
+      `🔄 Yield rotated: ${rotateAmount} USDC → Compound V3 for ${monitoredWallet.slice(0, 8)}`,
       effectiveKey
     ).catch(() => {});
   }

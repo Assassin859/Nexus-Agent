@@ -7,6 +7,7 @@ import { shouldRunCronNow } from "../lib/cron-evaluator.js";
 import { encodeERC20Approve, USDC_SEPOLIA, AAVE_V3_POOL } from "../lib/calldata.js";
 import { getCompoundUsdcSupplyAPY } from "../lib/compound.js";
 import { ensureAllowance } from "../lib/allowance.js";
+import { selectBestCandidate } from "../lib/guardian-candidate-select.js";
 
 async function main() {
   const isIntegration = process.argv.includes("--integration");
@@ -72,6 +73,29 @@ async function main() {
   // 5. ERC20 Approve Calldata Generation
   const approveCalldata = encodeERC20Approve(USDC_SEPOLIA, AAVE_V3_POOL, (1n << 256n) - 1n);
   assert(approveCalldata.startsWith("0x095ea7b3"), "Calldata — ERC20 approve selector 0x095ea7b3");
+
+  // 6. Guardian Candidate Selection Harness
+  const fallbackRec = { action: "hold" as const, asset: "USDC", amount: 0, reason: "Fallback hold" };
+
+  // 6a. Empty candidates → return fallback
+  const emptyResult = selectBestCandidate([], fallbackRec);
+  assert(emptyResult.action === "hold", "Candidate Select — Empty array returns fallback recommendation");
+
+  // 6b. All riskScore > 5 → return fallback
+  const allHighRisk = [
+    { action: "repay" as const, amount: 500, expectedHealthFactor: 1.4, estimatedGasUSD: 2, riskScore: 6, pros: "Full repay", cons: "High cost" },
+    { action: "supply_collateral" as const, amount: 200, expectedHealthFactor: 1.3, estimatedGasUSD: 1.5, riskScore: 8, pros: "Cheaper", cons: "Slower" },
+  ];
+  const allFilteredResult = selectBestCandidate(allHighRisk, fallbackRec);
+  assert(allFilteredResult.action === "hold", "Candidate Select — All riskScore > 5 returns fallback");
+
+  // 6c. Two eligible candidates → lower riskScore wins; if tied, higher HF wins
+  const mixedCandidates = [
+    { action: "supply_collateral" as const, amount: 300, expectedHealthFactor: 1.35, estimatedGasUSD: 1.5, riskScore: 3, pros: "Safer", cons: "Less efficient" },
+    { action: "repay" as const, amount: 500, expectedHealthFactor: 1.45, estimatedGasUSD: 2, riskScore: 2, pros: "Best HF", cons: "More gas" },
+  ];
+  const rankedResult = selectBestCandidate(mixedCandidates, fallbackRec);
+  assert(rankedResult.action === "repay", "Candidate Select — Lower riskScore candidate wins ranking (riskScore=2 > riskScore=3)");
 
   // ── Tier B: On-Chain RPC Integrations (Optional) ──────────────────────────
   console.log("\n── Tier B: On-Chain RPC Queries (Optional) ──");
