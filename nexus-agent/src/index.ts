@@ -132,14 +132,15 @@ app.post("/api/auth/verify", async (req, res) => {
 
     const expectedAddress = walletAddress.toLowerCase();
 
-    // 1. Verify Challenge Timestamp (<= 5 minutes old)
+    // 1. Verify Challenge Timestamp (<= 5 minutes old) — Fail-closed
     const tsMatch = challenge.match(/Timestamp:\s*([^\n]+)/);
-    if (tsMatch && tsMatch[1]) {
-      const challengeTime = new Date(tsMatch[1]).getTime();
-      const now = Date.now();
-      if (isNaN(challengeTime) || now - challengeTime > 5 * 60 * 1000) {
-        return res.status(400).json({ error: "Authentication failed: Challenge has expired (> 5 minutes old)." });
-      }
+    if (!tsMatch || !tsMatch[1]) {
+      return res.status(400).json({ error: "Authentication failed: Challenge missing or malformed timestamp." });
+    }
+    const challengeTime = new Date(tsMatch[1].trim()).getTime();
+    const now = Date.now();
+    if (isNaN(challengeTime) || now - challengeTime > 5 * 60 * 1000) {
+      return res.status(400).json({ error: "Authentication failed: Challenge has expired (> 5 minutes old)." });
     }
 
     // 2. Verify Embedded Wallet in Challenge matches body walletAddress
@@ -163,10 +164,9 @@ app.post("/api/auth/verify", async (req, res) => {
     });
 
     if (!existingSettings) {
-      const defaultKey = process.env.KEEPERHUB_API_KEY || `kh_auth_${Date.now()}`;
       await db.insert(userSettings).values({
         userWallet: expectedAddress,
-        keeperhubApiKey: defaultKey,
+        keeperhubApiKey: process.env.KEEPERHUB_API_KEY || null,
         updatedAt: new Date(),
       });
     }

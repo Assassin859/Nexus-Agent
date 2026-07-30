@@ -2,7 +2,7 @@
 
 > **Hackathon:** Agents Onchain (DoraHacks) · **Dates:** July 27 – Aug 13, 2026  
 > **Built for:** Grand Prize ($2,000) + Best Onboarding UX Improvement Bounty ($1,000)  
-> **Tech Stack:** Node.js + Next.js 14 + Vercel AI SDK (Native Tool Calling) + GitHub Models (gpt-4o) + KeeperHub MCP + Google Sign-In (Turnkey MPC Wallet) + Postgres (Drizzle ORM)
+> **Tech Stack:** Node.js + Next.js 14 + Vercel AI SDK (Native Tool Calling) + GitHub Models (gpt-4o-mini) + KeeperHub MCP + SIWE (Web3 Wallet Sign-In) + Postgres (Drizzle ORM)
 
 ---
 
@@ -13,19 +13,19 @@ NexusAgent is an **AI brain** that monitors your onchain positions and autonomou
 > *KeeperHub is the railway network — powerful infrastructure for scheduled, gas-managed, MEV-protected onchain execution.  
 > NexusAgent is the autonomous train driver — it reads your portfolio in real-time, reasons about what action to take, and tells KeeperHub exactly what to execute and when.*
 
-The user never manually configures a workflow. They talk to the AI in plain English, Google Sign-In with their Turnkey MPC account, and the agent executes on-chain transactions autonomously.
+The user never manually configures a workflow. They talk to the AI in plain English, sign in with SIWE Web3 authentication, and the agent executes on-chain transactions autonomously.
 
 ---
 
 ## Architecture & Native AI Tool Calling Engine
 
 ```
-User Message ("cancle all", "pay dev team 20 usdc every thursday", "what's my health factor?")
+User Message ("cancel all", "pay dev team 20 usdc every thursday", "what's my health factor?")
                                 │
                                 ▼
          ┌──────────────────────────────────────────────┐
          │       NexusAgent Conversational Agent        │
-         │   generateText(model: gpt-4o, maxSteps: 5)   │
+         │ generateText(model: gpt-4o-mini, maxSteps: 5)│
          │     Powered by Vercel AI SDK Native Tools    │
          └──────────────────────┬───────────────────────┘
                                 │

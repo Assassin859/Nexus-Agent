@@ -22,6 +22,6 @@ export async function GET(
     const data = await res.json();
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json([], { status: 200 });
+    return NextResponse.json({ error: "Failed to fetch execution log feed" }, { status: 500 });
   }
 }

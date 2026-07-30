@@ -65,7 +65,7 @@ export default function PortfolioPage() {
     { label: "Collateral Value", value: `$${(data?.collateralUSD ?? 0).toLocaleString()}`, sub: "USDC & WETH Deposited", icon: Shield, color: "#34d399", href: "/resilience", ltv: undefined },
     { label: "Current Debt",     value: `$${(data?.debtUSD ?? 0).toLocaleString()}`,        sub: "USDC Borrowed",         icon: RefreshCw, color: "#818cf8", href: "/alerts", ltv: undefined },
     { label: "LTV Ratio",        value: `${data?.ltvPercent ?? 0}%`,                       sub: "Max 75% before risk",   icon: Layers,   color: "#fbbf24", href: "/resilience", ltv: data?.ltvPercent ?? 0 },
-    { label: "Active Workflows", value: `${data?.workflows?.length ?? 1} Active`,             sub: "Guardian · DCA · Payroll", icon: ArrowUpRight, color: "#06b6d4", href: "/feed", ltv: undefined },
+    { label: "Active Workflows", value: `${data?.workflows?.length ?? 0} Active`,             sub: "Guardian · DCA · Payroll", icon: ArrowUpRight, color: "#06b6d4", href: "/feed", ltv: undefined },
   ];
 
   return (
