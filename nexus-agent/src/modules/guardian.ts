@@ -4,7 +4,7 @@ import { GuardianDecisionSchema, GUARDIAN_SYSTEM_PROMPT } from "../brain/schemas
 import { db } from "../db/client.js";
 import { repaymentCycles, executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
-import { createWorkflow, executeWorkflow, sendKeeperNotification } from "../lib/mcp-client.js";
+import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled } from "../lib/mcp-client.js";
 import { getAavePosition, getUsdcBalance } from "../lib/aave.js";
 import {
   encodeAaveRepay,
@@ -74,12 +74,17 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     cycle = inserted[0];
   }
 
+  // ── NEW: Hard return on existing pending lock — before AI call ──────────
   const pendingTx = await db.query.executionsLog.findFirst({
     where: and(
       eq(executionsLog.userWallet, userWallet),
       eq(executionsLog.status, "pending")
     ),
   });
+  if (pendingTx) {
+    log.warn({ logId: pendingTx.id }, "Pending transaction exists — skipping evaluation.");
+    return;
+  }
 
   const cycleRemaining = (cycle?.cycleLimitUSD ?? 0) - (cycle?.totalRepaidThisCycleUSD ?? 0);
 
@@ -97,7 +102,6 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
       collateralValueUSD: position.collateralUSD,
       debtValueUSD: position.debtUSD,
       cycleRemainingBudget: cycleRemaining,
-      executionHistory: pendingTx ? ["pending_transaction_exists"] : [],
       priceTrend: "stable",
     }),
   });
@@ -183,34 +187,73 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  // ── Step 10: KeeperHub execution ──────────────────────────────────────────
-  const { workflowId, isStub: createStub } = await createWorkflow({
-    name: `guardian-${userWallet.slice(0, 8)}-${Date.now()}`,
-    triggerType: "manual",
-    steps: [{ type: "transaction", to: targetContract, calldata, gasStrategy: "standard" }],
-  }, effectiveKey);
-  const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
-  const isStub = createStub || execStub;
-
-  // ── Step 11: Write execution log ──────────────────────────────────────────
-  await db.insert(executionsLog).values({
+  // ── Step 10: Insert pending row before execution ─────────────────────────
+  const [pendingRow] = await db.insert(executionsLog).values({
     userWallet,
     action: decision.recommendation.action,
-    amount: clampedAmount,
-    status: isStub ? "simulated_stub" : "success",
+    amount: Math.round(clampedAmount),
+    status: "pending",
     reason: decision.userExplanation,
     aiAnalysis: decision.analysis,
-  });
+  }).returning({ id: executionsLog.id });
 
-  // ── Step 12: Increment repaid cycle total — ONLY on real repay ───────────
-  if (decision.recommendation.action === "repay" && !isStub && cycle) {
-    await db.update(repaymentCycles)
+  try {
+    // ── Step 11: KeeperHub execution ──────────────────────────────────────
+    const { workflowId, isStub: createStub } = await createWorkflow({
+      name: `guardian-${userWallet.slice(0, 8)}-${Date.now()}`,
+      triggerType: "manual",
+      steps: [{ type: "transaction", to: targetContract, calldata, gasStrategy: "standard" }],
+    }, effectiveKey);
+    const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
+    const isStub = createStub || execStub;
+
+    if (isStub) {
+      await db.update(executionsLog)
+        .set({ status: "simulated_stub", aiAnalysis: { ...decision.analysis, executionId } })
+        .where(eq(executionsLog.id, pendingRow.id));
+    } else {
+      const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
+      const finalStatus = poll.timedOut
+        ? "reverted_chain"
+        : poll.status === "mined" ? "success"
+        : "reverted_chain";
+      const finalReason = poll.timedOut
+        ? "Execution poll timeout"
+        : decision.userExplanation;
+
+      await db.update(executionsLog)
+        .set({
+          status: finalStatus,
+          txHash: poll.txHash,
+          reason: finalReason,
+          aiAnalysis: { ...decision.analysis, executionId }, // stored for Slice C sync
+        })
+        .where(eq(executionsLog.id, pendingRow.id));
+
+      // ── Step 12: Increment cycle ONLY on confirmed mined success + txHash ─
+      if (
+        decision.recommendation.action === "repay" &&
+        finalStatus === "success" &&
+        poll.txHash &&
+        cycle
+      ) {
+        await db.update(repaymentCycles)
+          .set({ totalRepaidThisCycleUSD: sql`${repaymentCycles.totalRepaidThisCycleUSD} + ${clampedAmount}` })
+          .where(eq(repaymentCycles.id, cycle.id));
+        log.info({ clampedAmount, limit: cycle.cycleLimitUSD }, "Cycle updated");
+      }
+    }
+
+    log.info({ isStub, action: decision.recommendation.action, clampedAmount, requested: amount }, "Execution complete");
+
+  } catch (err) {
+    // Ensure pending lock is never left open on any unexpected error
+    await db.update(executionsLog)
       .set({
-        totalRepaidThisCycleUSD: sql`${repaymentCycles.totalRepaidThisCycleUSD} + ${clampedAmount}`,
+        status: "reverted_chain",
+        reason: `Execution error: ${err instanceof Error ? err.message : String(err)}`,
       })
-      .where(eq(repaymentCycles.id, cycle.id));
-    log.info({ clampedAmount, total: (cycle.totalRepaidThisCycleUSD ?? 0) + clampedAmount, limit: cycle.cycleLimitUSD }, "Cycle updated");
+      .where(eq(executionsLog.id, pendingRow.id));
+    log.error({ err }, "Execution pipeline failed — pending row cleared to reverted_chain");
   }
-
-  log.info({ executionId, isStub, action: decision.recommendation.action, clampedAmount, requested: amount }, "Execution complete");
 }

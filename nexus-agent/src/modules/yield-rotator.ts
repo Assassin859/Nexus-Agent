@@ -4,8 +4,7 @@ import { YieldRotatorSchema, YIELD_ROTATOR_SYSTEM_PROMPT } from "../brain/schema
 import { db } from "../db/client.js";
 import { executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
-import { createWorkflow, executeWorkflow } from "../lib/mcp-client.js";
-import { sendKeeperNotification } from "../lib/mcp-client.js";
+import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled } from "../lib/mcp-client.js";
 import {
   encodeAaveWithdraw,
   encodeCompoundSupply,
@@ -149,19 +148,36 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
   const isStub = createStub || execStub;
 
+  let finalStatus: string;
+  let txHash: string | undefined;
+  let executionIdForLog: string | undefined;
+
+  if (isStub) {
+    finalStatus = "simulated_stub";
+  } else {
+    const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
+    executionIdForLog = executionId;
+    finalStatus = poll.timedOut
+      ? "reverted_chain"
+      : poll.status === "mined" ? "success"
+      : "reverted_chain";
+    txHash = poll.txHash;
+  }
+
   await db.insert(executionsLog).values({
     userWallet,
     action: "rotate",
-    amount: rotateAmount,
-    status: isStub ? "simulated_stub" : "success",
+    amount: Math.round(rotateAmount),
+    status: finalStatus,
+    txHash,
     reason: decision.userExplanation,
-    aiAnalysis: decision.analysis,
+    aiAnalysis: { ...decision.analysis, executionId: executionIdForLog },
   });
 
-  log.info({ executionId, isStub, rotateAmount }, "Rotated USDC (Aave V3 → Compound V3)");
+  log.info({ executionId, isStub, finalStatus, rotateAmount }, "Rotated USDC (Aave V3 → Compound V3)");
 
-  // ── Alert on real execution success (throttled) ───────────────────────────
-  if (!isStub && shouldAlert(`${userWallet.slice(0, 8)}:yield_success`)) {
+  // ── Alert ONLY on confirmed mined success with txHash (throttled) ─────────
+  if (finalStatus === "success" && txHash && shouldAlert(`${userWallet.slice(0, 8)}:yield_success`)) {
     await sendKeeperNotification(
       ALERT_CHANNEL,
       `🔄 Yield rotated: ${rotateAmount} USDC → Compound V3 for ${userWallet.slice(0, 8)}`,

@@ -4,7 +4,7 @@ import { DCASchema, DCA_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
-import { createWorkflow, executeWorkflow } from "../lib/mcp-client.js";
+import { createWorkflow, executeWorkflow, pollExecutionUntilSettled } from "../lib/mcp-client.js";
 import { getProvider } from "../lib/rpc.js";
 import { encodeUniswapSwap, UNISWAP_V3_ROUTER } from "../lib/calldata.js";
 import { getEthPriceUSD } from "../lib/price-feed.js";
@@ -105,14 +105,31 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
   const isStub = createStub || execStub;
 
+  let finalStatus: string;
+  let txHash: string | undefined;
+  let executionIdForLog: string | undefined;
+
+  if (isStub) {
+    finalStatus = "simulated_stub";
+  } else {
+    const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
+    executionIdForLog = executionId;
+    finalStatus = poll.timedOut
+      ? "reverted_chain"
+      : poll.status === "mined" ? "success"
+      : "reverted_chain";
+    txHash = poll.txHash;
+  }
+
   await db.insert(executionsLog).values({
     userWallet,
     action: "swap",
-    amount: workflow.amount,
-    status: isStub ? "simulated_stub" : "success",
+    amount: Math.round(workflow.amount),
+    status: finalStatus,
+    txHash,
     reason: `DCA: ${workflow.amount} USDC → ETH via Uniswap V3. ${decision.userExplanation}`,
-    aiAnalysis: decision.analysis,
+    aiAnalysis: { ...decision.analysis, executionId: executionIdForLog },
   });
 
-  log.info({ executionId, isStub }, `Swap executed: ${workflow.amount} USDC → ETH`);
+  log.info({ executionId, isStub, finalStatus }, `Swap executed: ${workflow.amount} USDC → ETH`);
 }

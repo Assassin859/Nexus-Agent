@@ -117,6 +117,38 @@ export async function getExecutionStatus(
   }
 }
 
+export type PollResult = ExecutionStatus & { timedOut?: boolean };
+
+/**
+ * Polls getExecutionStatus until terminal ("mined"|"failed") or maxAttempts reached.
+ * Short-circuits for exec-stub-* and simulated:true (MCP unavailable) responses.
+ * maxAttempts is configurable via POLL_MAX_ATTEMPTS env var (useful for test overrides).
+ */
+export async function pollExecutionUntilSettled(
+  executionId: string,
+  apiKey?: string,
+  maxAttempts = Number(process.env.POLL_MAX_ATTEMPTS) || 5,
+  delayMs = 3000
+): Promise<PollResult> {
+  // Stub executions are never on-chain — short-circuit immediately
+  if (executionId.startsWith("exec-stub-")) {
+    return { executionId, status: "pending", txHash: undefined, simulated: true };
+  }
+
+  const TERMINAL = new Set(["mined", "failed"]);
+  let last: ExecutionStatus = { executionId, status: "pending", simulated: false };
+
+  for (let i = 0; i < maxAttempts; i++) {
+    last = await getExecutionStatus(executionId, apiKey);
+    if (last.simulated) return { ...last, simulated: true }; // MCP unavailable
+    if (TERMINAL.has(last.status)) return { ...last, timedOut: false };
+    if (i < maxAttempts - 1) await new Promise(r => setTimeout(r, delayMs));
+  }
+
+  // Timed out — return last known status; caller must update DB row to reverted_chain
+  return { ...last, timedOut: true };
+}
+
 // 4. Get Execution Logs
 export async function getExecutionLogs(
   executionId: string,
