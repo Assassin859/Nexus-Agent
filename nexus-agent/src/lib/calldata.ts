@@ -34,6 +34,27 @@ export function encodeAaveRepay(
 }
 
 /**
+ * Encodes an Aave V3 `withdraw(asset, amount, to)` call.
+ * Used by Yield Rotator when withdrawing supplied assets from Aave V3.
+ * Selector 0x69328dec -> withdraw(address asset, uint256 amount, address to)
+ */
+export function encodeAaveWithdraw(
+  asset: string,
+  amountUSD: number,
+  to: string,
+  decimals = 6
+): string {
+  const amountRaw = parseUnits(amountUSD.toFixed(decimals), decimals);
+  const selector = "0x69328dec";
+  const encoded = abi.encode(
+    ["address", "uint256", "address"],
+    [asset, amountRaw, to]
+  );
+  return selector + encoded.slice(2);
+}
+
+
+/**
  * Encodes an Aave V3 `supply(asset, amount, onBehalfOf, referralCode)` call.
  * Used by Guardian when supplying additional collateral.
  */
@@ -64,8 +85,12 @@ export function encodeUniswapSwap(
   maxSlippagePct = 0.5
 ): string {
   const amountIn = parseUnits(amountInUSD.toFixed(6), 6); // USDC 6 decimals
-  // amountOutMinimum: apply slippage to estimated output (rough — real impl uses price oracle)
-  const amountOutMinimum = 0n; // Set to 0 for testnet demo — slippage enforced by KeeperHub MEV protection
+  // amountOutMinimum: estimate WETH output using static price, apply slippage tolerance
+  // ETH_PRICE_USD is a conservative fallback; real-time price oracle would be ideal.
+  const ETH_PRICE_USD = 3500;
+  const estimatedEthOut = amountInUSD / ETH_PRICE_USD;
+  const minEthOut = estimatedEthOut * (1 - maxSlippagePct / 100);
+  const amountOutMinimum = parseUnits(minEthOut.toFixed(18), 18);
   const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 min from now
 
   // ExactInputSingleParams struct

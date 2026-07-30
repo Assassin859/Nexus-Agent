@@ -1,5 +1,5 @@
 import { getProvider } from "./rpc.js";
-import { Contract } from "ethers";
+import { Contract, formatUnits } from "ethers";
 
 // Aave V3 Pool on Ethereum Sepolia (checksummed)
 const AAVE_V3_POOL = "0x6aE43d3271fF68408378A467c62b15264c8d77E4";
@@ -21,14 +21,39 @@ export type AavePosition = {
   debtUSD: number;
   availableBorrowsUSD: number;
   ltv: number;
-  healthFactor: number;
+  // null when RPC fails (isError=true) or no active loan (isError=false)
+  healthFactor: number | null;
   usdcWalletBalance: number;
   currentUSDCSupplyAPY: number;
+  isError?: boolean;
+  errorReason?: string;
 };
 
 /**
+ * Standalone USDC balanceOf helper — reads balance of ANY address, reusing ERC20_ABI.
+ * Returns 0 on RPC failure so callers don't need to guard.
+ */
+export async function getUsdcBalance(address: string): Promise<number> {
+  try {
+    const provider = await getProvider();
+    const usdc = new Contract(USDC_SEPOLIA, ERC20_ABI, provider);
+    const [raw, decimals] = await Promise.all([
+      usdc.balanceOf(address),
+      usdc.decimals(),
+    ]);
+    return Number(formatUnits(raw, Number(decimals)));
+  } catch {
+    return 0;
+  }
+}
+
+/**
  * Fetches the live Aave V3 position for a wallet from Sepolia.
- * Returns real collateral, debt, health factor, and wallet USDC balance.
+ *
+ * Semantic returns:
+ *   • RPC throws             → { isError: true,  healthFactor: null, ... }
+ *   • No active loan         → { isError: false, healthFactor: null, collateralUSD: 0, debtUSD: 0, ... }
+ *   • Active loan            → { isError: false, healthFactor: <number>, ... }
  */
 export async function getAavePosition(walletAddress: string): Promise<AavePosition> {
   try {
@@ -50,18 +75,35 @@ export async function getAavePosition(walletAddress: string): Promise<AavePositi
     const debtUSD             = Number(accountData.totalDebtBase) / BASE;
     const availableBorrowsUSD = Number(accountData.availableBorrowsBase) / BASE;
     const ltv                 = Number(accountData.ltv) / 100; // basis points → %
-    // Aave healthFactor has 18 decimal places
-    const healthFactor        = Number(accountData.healthFactor) / 1e18;
 
     // Wallet USDC balance (actual tokens held, not deposited)
     const usdcWalletBalance = Number(usdcRaw) / Math.pow(10, Number(usdcDecimals));
 
-    // USDC Supply APY from reserve data (ray = 1e27)
+    // USDC Supply APY from reserve data.
+    // currentLiquidityRate is in RAY (1e27) and represents the PER-SECOND interest rate.
+    // Correct compounding: (1 + ratePerSecond)^secondsPerYear - 1
     const RAY = 1e27;
-    const liquidityRateRay = Number(reserveData.currentLiquidityRate);
-    // Convert ray per-second rate to APY
-    const currentUSDCSupplyAPY = ((liquidityRateRay / RAY) * 100);
+    const SECONDS_PER_YEAR = 365 * 24 * 3600;
+    const ratePerSecond = Number(reserveData.currentLiquidityRate) / RAY;
+    const currentUSDCSupplyAPY = (Math.pow(1 + ratePerSecond, SECONDS_PER_YEAR) - 1) * 100;
 
+    // No active loan: both collateral and debt are zero
+    if (collateralUSD === 0 && debtUSD === 0) {
+      console.log(`[AAVE] Wallet ${walletAddress.slice(0, 8)}: No active Aave position. USDC Balance=$${usdcWalletBalance.toFixed(2)}`);
+      return {
+        collateralUSD: 0,
+        debtUSD: 0,
+        availableBorrowsUSD: 0,
+        ltv: 0,
+        healthFactor: null,
+        usdcWalletBalance,
+        currentUSDCSupplyAPY,
+        isError: false,
+      };
+    }
+
+    // Aave healthFactor has 18 decimal places
+    const healthFactor = Number(accountData.healthFactor) / 1e18;
     console.log(`[AAVE] Wallet ${walletAddress.slice(0, 8)}: HF=${healthFactor.toFixed(2)} Collateral=$${collateralUSD.toFixed(0)} Debt=$${debtUSD.toFixed(0)} USDC Balance=$${usdcWalletBalance.toFixed(2)}`);
 
     return {
@@ -72,18 +114,22 @@ export async function getAavePosition(walletAddress: string): Promise<AavePositi
       healthFactor,
       usdcWalletBalance,
       currentUSDCSupplyAPY,
+      isError: false,
     };
-  } catch {
-    // Wallet has no Aave position — contract returns empty data (0x). This is normal.
-    // Guardian will log "No Aave position found — skipping." which is sufficient.
+  } catch (err) {
+    // RPC failure — return error sentinel so callers can display "Degraded / RPC Error"
+    const errorReason = err instanceof Error ? err.message : "RPC Error";
+    console.error(`[AAVE] RPC error for ${walletAddress.slice(0, 8)}:`, errorReason);
     return {
       collateralUSD: 0,
       debtUSD: 0,
       availableBorrowsUSD: 0,
       ltv: 0,
-      healthFactor: 99,
+      healthFactor: null,
       usdcWalletBalance: 0,
-      currentUSDCSupplyAPY: 4.2,
+      currentUSDCSupplyAPY: 0,
+      isError: true,
+      errorReason,
     };
   }
 }

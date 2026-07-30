@@ -5,35 +5,52 @@ import { db } from "../db/client.js";
 import { repaymentCycles, executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow } from "../lib/mcp-client.js";
-import { getAavePosition } from "../lib/aave.js";
+import { getAavePosition, getUsdcBalance } from "../lib/aave.js";
 import {
   encodeAaveRepay,
   encodeAaveSupply,
   AAVE_V3_POOL,
   USDC_SEPOLIA,
-  WETH_SEPOLIA,
 } from "../lib/calldata.js";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 
 const AGENTIC_WALLET = process.env.AGENTIC_WALLET_ADDRESS || "0x0000000000000000000000000000000000000000";
 
 export async function run(userWallet: string): Promise<void> {
   console.log(`[GUARDIAN] Running evaluation for wallet: ${userWallet}`);
 
-  // ── Phase 2: Real Aave V3 data read ──────────────────────────────────────────
+  // ── Step 1: Fetch Aave position ───────────────────────────────────────────
   const position = await getAavePosition(userWallet);
-  const { healthFactor, usdcWalletBalance, collateralUSD, debtUSD } = position;
 
-  // If no Aave position exists, nothing to protect
-  if (collateralUSD === 0 && debtUSD === 0) {
-    console.log("[GUARDIAN] No Aave position found — skipping.");
+  // ── Step 2: Skip on RPC error — don't create phantom cycles ─────────────
+  if (position.isError) {
+    console.warn(`[GUARDIAN] RPC error for ${userWallet.slice(0, 8)} — skipping. Reason: ${position.errorReason}`);
     return;
   }
 
-  // ── DB: read current cycle state ──────────────────────────────────────────────
-  const cycle = await db.query.repaymentCycles.findFirst({
+  // ── Step 3: Skip if no active Aave position (no debt, no collateral) ─────
+  // healthFactor === null + isError === false means no active loan
+  if (position.healthFactor === null && position.collateralUSD === 0) {
+    console.log("[GUARDIAN] No active Aave position — skipping.");
+    return;
+  }
+
+  // ── Step 4: Idempotent default cycle creation — ONLY for wallets with a loan
+  let cycle = await db.query.repaymentCycles.findFirst({
     where: eq(repaymentCycles.userWallet, userWallet),
   });
+
+  if (!cycle) {
+    console.log(`[GUARDIAN] No repayment cycle found for ${userWallet.slice(0, 8)} — creating default 30-day $1000 cycle.`);
+    const inserted = await db.insert(repaymentCycles).values({
+      userWallet,
+      cycleLimitUSD: 1000,
+      cycleStart: new Date(),
+      cycleEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      totalRepaidThisCycleUSD: 0,
+    }).returning();
+    cycle = inserted[0];
+  }
 
   const pendingTx = await db.query.executionsLog.findFirst({
     where: and(
@@ -44,16 +61,21 @@ export async function run(userWallet: string): Promise<void> {
 
   const cycleRemaining = (cycle?.cycleLimitUSD ?? 0) - (cycle?.totalRepaidThisCycleUSD ?? 0);
 
-  // ── AI Brain: real inputs, real decision ──────────────────────────────────────
+  // ── Step 5: Read AGENTIC_WALLET USDC balance for clamping ────────────────
+  // Execution spends from AGENTIC_WALLET, not user wallet — clamp against it.
+  const agenticBalance = await getUsdcBalance(AGENTIC_WALLET);
+
+  // ── Step 6: AI Brain — pass agentic wallet balance as walletBalance ───────
   const { object: decision } = await generateObject({
     model: githubModels(BRAIN_MODEL),
     schema: GuardianDecisionSchema,
     system: GUARDIAN_SYSTEM_PROMPT,
     prompt: JSON.stringify({
-      healthFactor,
-      walletBalance: usdcWalletBalance,
-      collateralValueUSD: collateralUSD,
-      debtValueUSD: debtUSD,
+      healthFactor: position.healthFactor,
+      // walletBalance = agentic wallet USDC — this is what the agent can actually spend
+      walletBalance: agenticBalance,
+      collateralValueUSD: position.collateralUSD,
+      debtValueUSD: position.debtUSD,
       cycleRemainingBudget: cycleRemaining,
       executionHistory: pendingTx ? ["pending_transaction_exists"] : [],
       priceTrend: "stable",
@@ -62,7 +84,7 @@ export async function run(userWallet: string): Promise<void> {
 
   console.log(`[GUARDIAN] Brain decision: ${decision.recommendation.action} — ${decision.userExplanation}`);
 
-  // ── Log hold/block without executing ─────────────────────────────────────────
+  // ── Log hold/block without executing ─────────────────────────────────────
   if (
     decision.recommendation.action === "hold" ||
     decision.recommendation.action === "block_transaction"
@@ -78,20 +100,38 @@ export async function run(userWallet: string): Promise<void> {
     return;
   }
 
-  // ── Phase 3: Real calldata ────────────────────────────────────────────────────
+  // ── Step 7: Clamp amount ONCE before action branching ────────────────────
+  // Guards: cycle budget, agentic wallet USDC balance
   const amount = decision.recommendation.amount;
+  const clampedAmount = Math.max(0, Math.min(amount, cycleRemaining, agenticBalance));
+
+  if (clampedAmount <= 0) {
+    console.warn(`[GUARDIAN] Clamped amount is 0 — cycle budget exhausted or agentic wallet empty. Aborting.`);
+    await db.insert(executionsLog).values({
+      userWallet,
+      action: decision.recommendation.action,
+      amount: 0,
+      status: "success",
+      reason: `Budget clamped to 0: cycleRemaining=$${cycleRemaining} agenticBalance=$${agenticBalance.toFixed(2)}`,
+      aiAnalysis: decision.analysis,
+    });
+    return;
+  }
+
+  // ── Step 8: Build calldata using clamped amount ───────────────────────────
   let calldata: string;
   let targetContract: string;
 
   if (decision.recommendation.action === "repay") {
-    calldata = encodeAaveRepay(USDC_SEPOLIA, amount, AGENTIC_WALLET);
+    calldata = encodeAaveRepay(USDC_SEPOLIA, clampedAmount, AGENTIC_WALLET);
     targetContract = AAVE_V3_POOL;
   } else {
-    calldata = encodeAaveSupply(WETH_SEPOLIA, amount, AGENTIC_WALLET);
+    // supply_collateral: supply USDC (6 decimals). WETH supply reserved for Phase 3 with oracle.
+    calldata = encodeAaveSupply(USDC_SEPOLIA, clampedAmount, AGENTIC_WALLET, 6);
     targetContract = AAVE_V3_POOL;
   }
 
-  // ── Pre-flight simulation ─────────────────────────────────────────────────────
+  // ── Step 9: Pre-flight simulation ────────────────────────────────────────
   const sim = await simulate(
     { from: AGENTIC_WALLET, to: targetContract, data: calldata },
     userWallet
@@ -101,23 +141,34 @@ export async function run(userWallet: string): Promise<void> {
     return;
   }
 
-  // ── KeeperHub execution ───────────────────────────────────────────────────────
-  const { workflowId } = await createWorkflow({
+  // ── Step 10: KeeperHub execution ─────────────────────────────────────────
+  const { workflowId, isStub: createStub } = await createWorkflow({
     name: `guardian-${userWallet.slice(0, 8)}-${Date.now()}`,
     triggerType: "manual",
     steps: [{ type: "transaction", to: targetContract, calldata, gasStrategy: "standard" }],
   });
-  const { executionId } = await executeWorkflow(workflowId);
+  const { executionId, isStub: execStub } = await executeWorkflow(workflowId);
+  const isStub = createStub || execStub;
 
-  // ── Write to DB ───────────────────────────────────────────────────────────────
+  // ── Step 11: Write execution log ─────────────────────────────────────────
   await db.insert(executionsLog).values({
     userWallet,
     action: decision.recommendation.action,
-    amount,
-    status: "success",
+    amount: clampedAmount,
+    status: isStub ? "simulated_stub" : "success",
     reason: decision.userExplanation,
     aiAnalysis: decision.analysis,
   });
 
-  console.log(`[GUARDIAN] Executed ${decision.recommendation.action} $${amount} USDC. KeeperHub executionId: ${executionId}`);
+  // ── Step 12: Increment repaid cycle total — ONLY on real repay success ───
+  if (decision.recommendation.action === "repay" && !isStub && cycle) {
+    await db.update(repaymentCycles)
+      .set({
+        totalRepaidThisCycleUSD: sql`${repaymentCycles.totalRepaidThisCycleUSD} + ${clampedAmount}`,
+      })
+      .where(eq(repaymentCycles.id, cycle.id));
+    console.log(`[GUARDIAN] Cycle updated: +$${clampedAmount} repaid (total=${(cycle.totalRepaidThisCycleUSD ?? 0) + clampedAmount}/$${cycle.cycleLimitUSD})`);
+  }
+
+  console.log(`[GUARDIAN] Executed ${decision.recommendation.action} $${clampedAmount} USDC (requested=$${amount}, clamped). KeeperHub executionId: ${executionId} (isStub: ${isStub})`);
 }

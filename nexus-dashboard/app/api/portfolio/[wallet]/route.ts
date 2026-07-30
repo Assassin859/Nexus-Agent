@@ -13,19 +13,20 @@ export async function GET(
     const data = await res.json();
     return NextResponse.json(data);
   } catch (err) {
-    // Fallback: return safe demo data so dashboard never breaks
+    // Agent offline — return error signal so UI shows "Degraded" rather than fake data
     return NextResponse.json({
       walletAddress: params.wallet,
-      healthFactor: 99,
-      collateralUSD: 12400,
-      debtUSD: 6600,
-      availableBorrowsUSD: 2800,
-      ltvPercent: 53.2,
-      usdcWalletBalance: 500,
-      currentUSDCSupplyAPY: 4.2,
+      healthFactor: null,
+      collateralUSD: 0,
+      debtUSD: 0,
+      availableBorrowsUSD: 0,
+      ltvPercent: 0,
+      usdcWalletBalance: 0,
+      currentUSDCSupplyAPY: 0,
+      isError: true,
+      errorReason: err instanceof Error ? err.message : "Agent offline",
       workflows: [],
       _fallback: true,
-      _error: err instanceof Error ? err.message : "Agent offline",
     });
   }
 }

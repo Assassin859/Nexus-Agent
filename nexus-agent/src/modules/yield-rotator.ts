@@ -6,7 +6,7 @@ import { executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow } from "../lib/mcp-client.js";
 import {
-  encodeAaveRepay,
+  encodeAaveWithdraw,
   encodeCompoundSupply,
   AAVE_V3_POOL,
   COMPOUND_V3_USDC,
@@ -32,6 +32,19 @@ export async function run(userWallet: string): Promise<void> {
   const position = await getAavePosition(userWallet);
   const aaveUSDCSupplyAPY = position.currentUSDCSupplyAPY;
 
+  // Skip on RPC error — can't make reliable decisions without real data
+  if (position.isError) {
+    console.warn(`[YIELD] RPC error for ${userWallet.slice(0, 8)} — skipping. Reason: ${position.errorReason}`);
+    return;
+  }
+
+  // Skip if wallet has no Aave collateral — nothing to rotate
+  if (position.collateralUSD === 0) {
+    console.log("[YIELD] No Aave collateral — skipping.");
+    return;
+  }
+
+  const userBalance = position.collateralUSD;
   let compoundUSDCSupplyAPY = 32.59;
   try {
     const provider = await getProvider();
@@ -45,7 +58,6 @@ export async function run(userWallet: string): Promise<void> {
     compoundUSDCSupplyAPY = 32.59;
   }
 
-  const userBalance = position.collateralUSD > 0 ? position.collateralUSD : 1000;
   const estimatedGasUSD = 4.50;
 
   const { object: decision } = await generateObject({
@@ -78,7 +90,7 @@ export async function run(userWallet: string): Promise<void> {
   }
 
   const rotateAmount = decision.recommendation.amount || userBalance;
-  const withdrawCalldata = encodeAaveRepay(USDC_SEPOLIA, rotateAmount, AGENTIC_WALLET);
+  const withdrawCalldata = encodeAaveWithdraw(USDC_SEPOLIA, rotateAmount, AGENTIC_WALLET);
   const supplyCalldata = encodeCompoundSupply(USDC_SEPOLIA, rotateAmount);
 
   const simWithdraw = await simulate(
@@ -99,7 +111,7 @@ export async function run(userWallet: string): Promise<void> {
     return;
   }
 
-  const { workflowId } = await createWorkflow({
+  const { workflowId, isStub: createStub } = await createWorkflow({
     name: `yield-rotate-${userWallet.slice(0, 8)}-${Date.now()}`,
     triggerType: "manual",
     steps: [
@@ -109,16 +121,17 @@ export async function run(userWallet: string): Promise<void> {
     mevProtected: true,
   });
 
-  const { executionId } = await executeWorkflow(workflowId);
+  const { executionId, isStub: execStub } = await executeWorkflow(workflowId);
+  const isStub = createStub || execStub;
 
   await db.insert(executionsLog).values({
     userWallet,
     action: "rotate",
     amount: rotateAmount,
-    status: "success",
+    status: isStub ? "simulated_stub" : "success",
     reason: decision.userExplanation,
     aiAnalysis: decision.analysis,
   });
 
-  console.log(`[YIELD] Rotated ${rotateAmount} USDC (Aave V3 → Compound V3). KeeperHub executionId: ${executionId}`);
+  console.log(`[YIELD] Rotated ${rotateAmount} USDC (Aave V3 → Compound V3). KeeperHub executionId: ${executionId} (isStub: ${isStub})`);
 }

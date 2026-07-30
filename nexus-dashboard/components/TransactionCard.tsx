@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp, Cpu } from "lucide-react";
 
-export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending";
+export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub";
 
 type Props = {
   action: string;
@@ -28,12 +28,15 @@ export default function TransactionCard({
 }: Props) {
   const [expanded, setExpanded] = useState(false);
 
+  const isStubTx = status === "simulated_stub" || !txHash || txHash.includes("11111111") || txHash === "0x" + "1".repeat(64);
+
   const badge = {
     success:             <span className="pill pill-success"><CheckCircle2 size={12} /> Executed</span>,
+    simulated_stub:      <span className="pill pill-warning" style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", borderColor: "rgba(245,158,11,0.3)" }}><AlertTriangle size={12} /> Simulated</span>,
     reverted_simulation: <span className="pill pill-warning"><AlertTriangle size={12} /> Caught Revert</span>,
     reverted_chain:      <span className="pill pill-danger"><XCircle size={12} /> Chain Revert</span>,
     pending:             <span className="pill pill-cyan"><Clock size={12} /> Pending</span>,
-  }[status];
+  }[status] || <span className="pill pill-warning"><AlertTriangle size={12} /> Simulated</span>;
 
   return (
     <div className="card card-interactive" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -118,14 +121,16 @@ export default function TransactionCard({
             View on KeeperHub <ExternalLink size={12} />
           </a>
 
-          <a
-            href={`https://sepolia.etherscan.io/tx/${txHash || "0x" + "1".repeat(64)}`}
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ display: "flex", alignItems: "center", gap: 4, color: "#34d399", fontWeight: 600, textDecoration: "none" }}
-          >
-            Live Etherscan <ExternalLink size={12} />
-          </a>
+          {!isStubTx && (
+            <a
+              href={`https://sepolia.etherscan.io/tx/${txHash}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 4, color: "#34d399", fontWeight: 600, textDecoration: "none" }}
+            >
+              Live Etherscan <ExternalLink size={12} />
+            </a>
+          )}
         </div>
       </div>
     </div>

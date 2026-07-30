@@ -8,7 +8,7 @@ type FeedItem = {
   action: string;
   amount: number;
   asset?: string;
-  status: "success" | "reverted_simulation" | "reverted_chain" | "pending";
+  status: "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub";
   timestamp?: string;
   txHash?: string;
   reason?: string;

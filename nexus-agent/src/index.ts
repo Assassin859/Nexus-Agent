@@ -15,7 +15,7 @@ import { handle as handlePaychain } from "./modules/paychain.js";
 import { syncKeeperHubState } from "./lib/keeperhub-sync.js";
 import { getAavePosition } from "./lib/aave.js";
 import { db } from "./db/client.js";
-import { activeWorkflows, executionsLog, userSettings, payees } from "./db/schema.js";
+import { activeWorkflows, executionsLog, userSettings, payees, repaymentCycles } from "./db/schema.js";
 import { eq, desc, and } from "drizzle-orm";
 
 const app = express();
@@ -238,13 +238,16 @@ app.get("/api/portfolio/:walletAddress", async (req, res) => {
 
     res.json({
       walletAddress,
-      healthFactor: parseFloat(position.healthFactor.toFixed(2)),
+      // healthFactor is null when RPC fails or no active loan — pass through as-is
+      healthFactor: position.healthFactor !== null ? parseFloat(position.healthFactor.toFixed(2)) : null,
       collateralUSD: parseFloat(position.collateralUSD.toFixed(0)),
       debtUSD: parseFloat(position.debtUSD.toFixed(0)),
       availableBorrowsUSD: parseFloat(position.availableBorrowsUSD.toFixed(0)),
       ltvPercent,
       usdcWalletBalance: parseFloat(position.usdcWalletBalance.toFixed(2)),
       currentUSDCSupplyAPY: parseFloat(position.currentUSDCSupplyAPY.toFixed(2)),
+      isError: position.isError ?? false,
+      errorReason: position.errorReason,
       workflows,
     });
   } catch (err) {
@@ -356,17 +359,47 @@ app.post("/api/trigger/yield", async (req, res) => {
     .catch(err => res.status(500).json({ error: err.message }));
 });
 
-function startLoops() {
-  cron.schedule("*/5 * * * *", () => {
-    runGuardian(DEMO_WALLET).catch(err => console.error("[GUARDIAN CRON ERROR]:", err));
+async function startLoops() {
+  // ── Guardian: every 5 minutes — runs for each wallet with a repayment cycle ─
+  cron.schedule("*/5 * * * *", async () => {
+    try {
+      const rows = await db.selectDistinct({ wallet: repaymentCycles.userWallet }).from(repaymentCycles);
+      const wallets = rows.map(r => r.wallet.toLowerCase());
+      if (wallets.length === 0) wallets.push(DEMO_WALLET);
+      for (const wallet of wallets) {
+        try { await runGuardian(wallet); }
+        catch (err) { console.error(`[GUARDIAN CRON] Error for ${wallet.slice(0, 8)}:`, err); }
+      }
+    } catch (err) { console.error("[GUARDIAN CRON] DB query failed:", err); }
   });
 
-  cron.schedule("*/15 * * * *", () => {
-    runYieldRotator(DEMO_WALLET).catch(err => console.error("[YIELD CRON ERROR]:", err));
+  // ── Yield Rotator: every 15 minutes — same wallet source as Guardian ────────
+  cron.schedule("*/15 * * * *", async () => {
+    try {
+      const rows = await db.selectDistinct({ wallet: repaymentCycles.userWallet }).from(repaymentCycles);
+      const wallets = rows.map(r => r.wallet.toLowerCase());
+      if (wallets.length === 0) wallets.push(DEMO_WALLET);
+      for (const wallet of wallets) {
+        try { await runYieldRotator(wallet); }
+        catch (err) { console.error(`[YIELD CRON] Error for ${wallet.slice(0, 8)}:`, err); }
+      }
+    } catch (err) { console.error("[YIELD CRON] DB query failed:", err); }
   });
 
-  cron.schedule("0 * * * *", () => {
-    runDCA(DEMO_WALLET).catch(err => console.error("[DCA CRON ERROR]:", err));
+  // ── DCA: hourly — distinct wallets with active DCA workflows ────────────────
+  // Note: dca.ts uses findFirst, so only one workflow per wallet runs per tick.
+  cron.schedule("0 * * * *", async () => {
+    try {
+      const rows = await db.selectDistinct({ wallet: activeWorkflows.userWallet })
+        .from(activeWorkflows)
+        .where(and(eq(activeWorkflows.type, "dca"), eq(activeWorkflows.status, "active")));
+      const wallets = rows.map(r => r.wallet.toLowerCase());
+      if (wallets.length === 0) wallets.push(DEMO_WALLET);
+      for (const wallet of wallets) {
+        try { await runDCA(wallet); }
+        catch (err) { console.error(`[DCA CRON] Error for ${wallet.slice(0, 8)}:`, err); }
+      }
+    } catch (err) { console.error("[DCA CRON] DB query failed:", err); }
   });
 
   console.log("[NEXUS] Background cron loops initialized (Guardian: 5min, Yield: 15min, DCA: hourly).");

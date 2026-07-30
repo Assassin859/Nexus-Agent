@@ -7,7 +7,7 @@ import { useWallet } from "@/context/WalletContext";
 
 type PortfolioData = {
   walletAddress: string;
-  healthFactor: number;
+  healthFactor: number | null;
   collateralUSD: number;
   debtUSD: number;
   availableBorrowsUSD: number;
@@ -15,6 +15,8 @@ type PortfolioData = {
   usdcWalletBalance: number;
   currentUSDCSupplyAPY: number;
   workflows: Array<{ id: string; type: string; status: string }>;
+  isError?: boolean;
+  errorReason?: string;
   _fallback?: boolean;
 };
 
@@ -52,9 +54,22 @@ export default function PortfolioPage() {
   }, [wallet]);
 
   const short = `${wallet.slice(0, 6)}...${wallet.slice(-4)}`;
-  const hf = data?.healthFactor ?? 99;
-  const hfColor = hf > 1.5 ? "#34d399" : hf > 1.15 ? "#fbbf24" : "#fb7185";
-  const hfPercent = Math.min(Math.max((hf / 2.5) * 100, 10), 100);
+
+  // Three-branch gauge logic:
+  //   isError → "Degraded / RPC Error" (warning color, no arc math)
+  //   healthFactor === null && !isError → "No Active Loan" (muted, no arc math)
+  //   else → numeric gauge
+  const isError = data?.isError ?? false;
+  const hasNoLoan = !isError && data !== null && data.healthFactor === null;
+  const hf = (typeof data?.healthFactor === "number") ? data.healthFactor : null;
+  const hfColor = isError
+    ? "#f59e0b"                        // amber — degraded
+    : hasNoLoan
+    ? "#64748b"                        // slate — no loan
+    : (hf ?? 0) > 1.5 ? "#34d399"     // green — safe
+    : (hf ?? 0) > 1.15 ? "#fbbf24"   // yellow — warning
+    : "#fb7185";                       // red — liquidation risk
+  const hfPercent = hf !== null ? Math.min(Math.max((hf / 2.5) * 100, 10), 100) : 20;
 
   const metrics = [
     { label: "Collateral Value", value: `$${(data?.collateralUSD ?? 0).toLocaleString()}`, sub: "USDC & WETH Deposited", icon: Shield, color: "#34d399", href: "/resilience", ltv: undefined },
@@ -113,19 +128,28 @@ export default function PortfolioPage() {
               display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
               gap: 4
             }}>
-              <span style={{ fontSize: 38, fontWeight: 900, color: hfColor, letterSpacing: "-0.04em", fontFamily: "var(--font-space-grotesk), sans-serif" }}>
-                {loading ? "..." : hf > 90 ? "∞" : hf.toFixed(2)}
+              <span style={{ fontSize: isError || hasNoLoan ? 14 : 38, fontWeight: 900, color: hfColor, letterSpacing: "-0.04em", fontFamily: "var(--font-space-grotesk), sans-serif", textAlign: "center", lineHeight: 1.2 }}>
+                {loading ? "..."
+                  : isError ? "Degraded"
+                  : hasNoLoan ? "No Loan"
+                  : hf !== null && hf > 90 ? "∞"
+                  : hf !== null ? hf.toFixed(2)
+                  : "—"}
               </span>
-              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.05em" }}>
-                {hf > 1.5 ? "Safe Zone" : hf > 1.15 ? "Warning Zone" : "Liquidation Risk"}
+              <span style={{ fontSize: 11, fontWeight: 700, color: "var(--text-2)", textTransform: "uppercase", letterSpacing: "0.05em", textAlign: "center" }}>
+                {isError ? "RPC Error"
+                  : hasNoLoan ? "No Active Loan"
+                  : hf !== null && hf > 1.5 ? "Safe Zone"
+                  : hf !== null && hf > 1.15 ? "Warning Zone"
+                  : "Liquidation Risk"}
               </span>
             </div>
           </div>
           <div style={{ display: "flex", gap: 8 }}>
-            <span className={`pill ${hf > 1.5 ? "pill-success" : "pill-danger"}`}>
-              {hf > 1.5 ? "Healthy" : "At Risk"}
+            <span className={`pill ${isError ? "pill-warning" : hasNoLoan ? "pill-muted" : (hf ?? 0) > 1.5 ? "pill-success" : "pill-danger"}`}>
+              {isError ? "Degraded / RPC Error" : hasNoLoan ? "No Active Loan" : (hf ?? 0) > 1.5 ? "Healthy" : "At Risk"}
             </span>
-            <span className="pill pill-muted">Liquidation @ 1.0</span>
+            {!isError && !hasNoLoan && <span className="pill pill-muted">Liquidation @ 1.0</span>}
           </div>
         </div>
 

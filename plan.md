@@ -1,11 +1,41 @@
-﻿# NexusAgent — Module Build Plan
+# NexusAgent — Module Build Plan
 
 **Hackathon:** Agents Onchain (DoraHacks) · **Dates:** July 27 – Aug 13, 2026
 **Stack:** Node.js (nexus-agent) + Next.js 14 (nexus-dashboard) + Postgres (Railway)
 **Chain:** Ethereum Sepolia (build/test) -> Mainnet (final sponsored tx)
 
-> **Rule:** No `git init`, no `npm install` in this folder before July 27.
-> All files here are pre-written drafts. Copy into the cloned repo on July 27.
+---
+
+## Production Audit Remediation Roadmap (44 Issues Fix Plan)
+
+We will execute the audit fixes sequentially, step-by-step:
+
+### Phase 1: P0 Critical Calldata, Math & Database Integrity
+- [ ] **Task 1.1:** Add `encodeAaveWithdraw()` to `calldata.ts` and update `yield-rotator.ts` to call `encodeAaveWithdraw()` instead of `encodeAaveRepay()`.
+- [ ] **Task 1.2:** Update `encodeAaveSupply()` in `calldata.ts` and `guardian.ts` to handle token-specific decimals (18 decimals for WETH, 6 for USDC).
+- [ ] **Task 1.3:** Add `updatedAt` column to `activeWorkflows` in `schema.ts` and generate/apply updated Drizzle migrations.
+- [ ] **Task 1.4:** Update `paychain.ts` `onConflictDoUpdate` targets and remove dangerous 200 USDC fallback auto-creation.
+- [ ] **Task 1.5:** Distinguish MCP stub/simulated mode from real executions (`status: "simulated_stub"`) across all modules.
+- [ ] **Task 1.6:** Wire `/templates` "Use Template" button to pre-fill prompt input on `/chat` page via `sessionStorage`.
+
+### Phase 2: P1 Trust, Safety & Logic Correctness
+- [ ] **Task 2.1:** Fix `cancelPayrolls` to cancel target workflow ID or recipient and sync cancellation with KeeperHub MCP.
+- [ ] **Task 2.2:** Update background cron loops in `index.ts` to iterate through all active monitored wallets in database.
+- [ ] **Task 2.3:** Normalize monitored wallet vs signing agentic wallet across simulation, execution, and UI reads.
+- [ ] **Task 2.4:** Fix Aave APY compounding formula in `aave.ts` and handle RPC errors cleanly (`isError: true` instead of `healthFactor: 99`).
+- [ ] **Task 2.5:** Enforce repayment cycle budget limits in code during Guardian execution.
+- [ ] **Task 2.6:** Add configurable slippage tolerance to Uniswap DCA swaps in `calldata.ts`.
+
+### Phase 3: P2 API Security & Multi-Tenant Isolation
+- [ ] **Task 3.1:** Add authentication middleware to agent API endpoints (`index.ts`).
+- [ ] **Task 3.2:** Wire per-user KeeperHub API keys saved in user settings into `mcp-client.ts`.
+- [ ] **Task 3.3:** Restrict CORS configuration on Express backend.
+- [ ] **Task 3.4:** Implement real SIWE challenge/signature verification.
+
+### Phase 4: P3 UI Integrity, UX Polish & DevOps Hygiene
+- [ ] **Task 4.1:** Clean up fake `0x1111...1111` transaction hashes in UI components.
+- [ ] **Task 4.2:** Replace static protocol APYs on portfolio page with dynamic live data.
+- [ ] **Task 4.3:** Update `.gitignore` to exclude `.next/`, build outputs, and `env` directory.
 
 ---
 

@@ -21,6 +21,8 @@ export const activeWorkflows = pgTable("active_workflows", {
   amount: integer("amount").notNull(), // Amount in stablecoins/USD equivalent
   cronSchedule: varchar("cron_schedule", { length: 100 }),
   status: varchar("status", { length: 20 }).default("active"), // 'active' | 'paused' | 'completed'
+  keeperhubWorkflowId: varchar("keeperhub_workflow_id", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow(),
 }, (table) => ({
   userWalletIdx: index("active_workflows_user_wallet_idx").on(table.userWallet),
   uniquePayroll: uniqueIndex("unique_active_payroll").on(

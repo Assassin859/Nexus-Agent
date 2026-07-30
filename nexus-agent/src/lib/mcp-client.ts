@@ -45,27 +45,33 @@ async function tryGetMcpClient(): Promise<Client | null> {
 }
 
 // 1. Create Workflow
-export async function createWorkflow(config: WorkflowConfig): Promise<{ workflowId: string }> {
+export async function createWorkflow(config: WorkflowConfig): Promise<{ workflowId: string; isStub: boolean }> {
   const client = await tryGetMcpClient();
-  if (!client) return { workflowId: `wf-stub-${Date.now()}` };
+  if (!client) return { workflowId: `wf-stub-${Date.now()}`, isStub: true };
   try {
     const result = await client.callTool({ name: "create_workflow", arguments: { ...config, apiKey: process.env.KEEPERHUB_API_KEY } });
-    return result.content as { workflowId: string };
+    const content = result.content as any;
+    const workflowId = typeof content === "object" && content?.workflowId ? content.workflowId : `wf-stub-${Date.now()}`;
+    const isStub = workflowId.startsWith("wf-stub-");
+    return { workflowId, isStub };
   } catch {
-    return { workflowId: `wf-stub-${Date.now()}` };
+    return { workflowId: `wf-stub-${Date.now()}`, isStub: true };
   }
 }
 
 // 2. Execute Workflow
-export async function executeWorkflow(workflowId: string): Promise<{ executionId: string }> {
-  if (workflowId.startsWith("wf-stub-")) return { executionId: `exec-stub-${Date.now()}` };
+export async function executeWorkflow(workflowId: string): Promise<{ executionId: string; isStub: boolean }> {
+  if (workflowId.startsWith("wf-stub-")) return { executionId: `exec-stub-${Date.now()}`, isStub: true };
   const client = await tryGetMcpClient();
-  if (!client) return { executionId: `exec-stub-${Date.now()}` };
+  if (!client) return { executionId: `exec-stub-${Date.now()}`, isStub: true };
   try {
     const result = await client.callTool({ name: "execute_workflow", arguments: { workflowId, apiKey: process.env.KEEPERHUB_API_KEY } });
-    return result.content as { executionId: string };
+    const content = result.content as any;
+    const executionId = typeof content === "object" && content?.executionId ? content.executionId : `exec-stub-${Date.now()}`;
+    const isStub = executionId.startsWith("exec-stub-");
+    return { executionId, isStub };
   } catch {
-    return { executionId: `exec-stub-${Date.now()}` };
+    return { executionId: `exec-stub-${Date.now()}`, isStub: true };
   }
 }
 
@@ -169,3 +175,27 @@ export async function getFailoverRPC(): Promise<string> {
     return envRpc || "";
   }
 }
+
+// 11. Cancel / Delete Workflow on KeeperHub
+export async function cancelWorkflow(workflowId: string): Promise<{ ok: boolean; isStub: boolean }> {
+  // Stub IDs were never registered remotely — local-only cancel is always safe
+  if (workflowId.startsWith("wf-stub-")) return { ok: true, isStub: true };
+
+  const client = await tryGetMcpClient();
+  if (!client) {
+    console.warn("[MCP] cancelWorkflow: no MCP client available. Local cancel only.");
+    return { ok: false, isStub: true };
+  }
+
+  try {
+    await client.callTool({
+      name: "delete_workflow",
+      arguments: { workflowId, apiKey: process.env.KEEPERHUB_API_KEY },
+    });
+    return { ok: true, isStub: false };
+  } catch (err) {
+    console.warn("[MCP] delete_workflow failed:", err instanceof Error ? err.message : err);
+    return { ok: false, isStub: false };
+  }
+}
+

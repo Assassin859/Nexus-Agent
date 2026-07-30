@@ -5,7 +5,9 @@ import { Send, Bot, User, Sparkles, Cpu } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 
 type PortfolioData = {
-  healthFactor: number;
+  healthFactor: number | null;
+  isError?: boolean;
+  errorReason?: string;
   workflows: any[];
 };
 
@@ -23,7 +25,7 @@ export default function ChatPage() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const isLoadedRef = useRef(false);
 
-  // 1. Load chat history on client mount safely
+  // 1. Load chat history and check for pending template prompt on client mount safely
   useEffect(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("nexus_chat_history");
@@ -36,6 +38,12 @@ export default function ChatPage() {
         } catch {}
       }
       isLoadedRef.current = true;
+
+      const pendingPrompt = sessionStorage.getItem("pending_chat_prompt");
+      if (pendingPrompt) {
+        setInput(pendingPrompt);
+        sessionStorage.removeItem("pending_chat_prompt");
+      }
     }
   }, []);
 
@@ -50,8 +58,14 @@ export default function ChatPage() {
     fetch(`/api/portfolio/${walletAddress}`)
       .then((res) => res.json())
       .then((data) => {
-        if (data && typeof data.healthFactor === "number") {
-          setPortfolio({ healthFactor: data.healthFactor, workflows: data.workflows || [] });
+        if (data) {
+          // Accept all states: numeric HF, null (no loan), or isError (degraded)
+          setPortfolio({
+            healthFactor: typeof data.healthFactor === "number" ? data.healthFactor : null,
+            isError: data.isError ?? false,
+            errorReason: data.errorReason,
+            workflows: data.workflows || [],
+          });
         }
       })
       .catch(() => {});
@@ -104,12 +118,33 @@ export default function ChatPage() {
     setMessages([DEFAULT_WELCOME]);
   }
 
-  const hf = portfolio?.healthFactor ?? 99;
-  const isSafe = hf > 1.3;
+  const isPortfolioError = portfolio?.isError ?? false;
+  const hasNoLoan = !isPortfolioError && portfolio !== null && portfolio.healthFactor === null;
+  const hf = typeof portfolio?.healthFactor === "number" ? portfolio.healthFactor : null;
+  const isSafe = hf !== null ? hf > 1.3 : true;
   const activeWorkflowsCount = portfolio?.workflows?.filter((w) => w.status === "active").length ?? 0;
   const lastWorkflow = portfolio?.workflows && portfolio.workflows.length > 0
     ? portfolio.workflows[portfolio.workflows.length - 1]
     : null;
+
+  // Sidebar health factor display
+  const hfDisplay = isPortfolioError
+    ? "Degraded"
+    : hasNoLoan
+    ? "No Loan"
+    : hf !== null && hf > 90
+    ? "∞"
+    : hf !== null
+    ? hf.toFixed(2)
+    : "—";
+  const hfLabel = isPortfolioError
+    ? "RPC Error"
+    : hasNoLoan
+    ? "No Active Loan"
+    : isSafe
+    ? "Safe Zone"
+    : "Risk Zone";
+  const hfColor = isPortfolioError ? "#f59e0b" : hasNoLoan ? "#64748b" : isSafe ? "#34d399" : "#f87171";
 
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -222,11 +257,11 @@ export default function ChatPage() {
 
             <div style={{ padding: 12, borderRadius: 8, background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)" }}>
               <div style={{ fontSize: 11, color: "var(--text-muted)" }}>Aave V3 Health Factor</div>
-              <div style={{ fontSize: 20, fontWeight: 800, color: isSafe ? "#34d399" : "#f87171", marginTop: 2 }}>
-                {hf === 99 ? "∞" : hf.toFixed(2)}
+              <div style={{ fontSize: isPortfolioError || hasNoLoan ? 14 : 20, fontWeight: 800, color: hfColor, marginTop: 2 }}>
+                {hfDisplay}
               </div>
-              <span className={`pill ${isSafe ? "pill-success" : "pill-danger"}`} style={{ marginTop: 6, fontSize: 10 }}>
-                {isSafe ? "Safe Zone" : "Risk Zone"}
+              <span className={`pill ${isPortfolioError ? "pill-warning" : hasNoLoan ? "pill-muted" : isSafe ? "pill-success" : "pill-danger"}`} style={{ marginTop: 6, fontSize: 10 }}>
+                {hfLabel}
               </span>
             </div>
 

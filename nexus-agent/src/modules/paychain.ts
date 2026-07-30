@@ -76,25 +76,35 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     // Case A: Team in Shared Vault Pool Mode
     if (matchedPayee.type === "team" && matchedPayee.payoutMode === "vault_pool") {
       const poolAddr = matchedPayee.vaultPoolAddress || walletAddress;
+      const cronSchedule = parseCronFromMessage(userMessage);
       const calldata = encodeERC20Transfer(poolAddr, amount);
 
-      const { workflowId } = await createWorkflow({
+      const { workflowId, isStub } = await createWorkflow({
         name: `payroll-vault-${matchedPayee.name.replace(/\s+/g, "-")}-${Date.now()}`,
         triggerType: "cron",
-        cronSchedule: parseCronFromMessage(userMessage),
+        cronSchedule,
         steps: [{ type: "transaction", to: USDC_SEPOLIA, calldata, gasStrategy: "standard" }],
       });
+
+      if (isStub) {
+        return {
+          success: false,
+          verification_required: false,
+          message: `⚠️ KeeperHub MCP is unavailable (stub mode). Workflow for vault pool '${matchedPayee.name}' was not registered.`,
+        };
+      }
 
       await db.insert(activeWorkflows).values({
         userWallet: walletAddress,
         type: "payroll",
         recipientAddress: poolAddr,
         amount,
-        cronSchedule: parseCronFromMessage(userMessage),
+        cronSchedule,
         status: "active",
+        keeperhubWorkflowId: workflowId,
       }).onConflictDoUpdate({
         target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
-        set: { amount, updatedAt: new Date() },
+        set: { amount, cronSchedule, keeperhubWorkflowId: workflowId, updatedAt: new Date() },
       });
 
       await db.insert(executionsLog).values({
@@ -102,7 +112,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         action: "payroll",
         amount,
         status: "success",
-        reason: `Deposited ${amount} USDC into '${matchedPayee.name}' Shared Vault Pool (${poolAddr.slice(0, 8)}...). Schedule: ${parseCronFromMessage(userMessage)}.`,
+        reason: `Deposited ${amount} USDC into '${matchedPayee.name}' Shared Vault Pool (${poolAddr.slice(0, 8)}...). Schedule: ${cronSchedule}.`,
         aiAnalysis: { matchedPayee: matchedPayee.name, payoutMode: "vault_pool", memberCount: matchedPayee.memberCount },
       });
 
@@ -120,29 +130,39 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       : [{ name: matchedPayee.name, address: matchedPayee.vaultPoolAddress || walletAddress }];
 
     const createdWfs: string[] = [];
+    const cronSchedule = parseCronFromMessage(userMessage);
 
     for (const member of targets) {
       const targetAddr = (typeof member === "string" ? member : member.address) || walletAddress;
       const memberName = typeof member === "string" ? member : member.name;
       const calldata = encodeERC20Transfer(targetAddr, amount);
 
-      const { workflowId } = await createWorkflow({
+      const { workflowId, isStub } = await createWorkflow({
         name: `payroll-${(memberName || "member").replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
         triggerType: "cron",
-        cronSchedule: parseCronFromMessage(userMessage),
+        cronSchedule,
         steps: [{ type: "transaction", to: USDC_SEPOLIA, calldata, gasStrategy: "standard" }],
       });
+
+      if (isStub) {
+        return {
+          success: false,
+          verification_required: false,
+          message: `⚠️ KeeperHub MCP is unavailable (stub mode). Workflow for member '${memberName}' was not registered.`,
+        };
+      }
 
       await db.insert(activeWorkflows).values({
         userWallet: walletAddress,
         type: "payroll",
         recipientAddress: targetAddr,
         amount,
-        cronSchedule: parseCronFromMessage(userMessage),
+        cronSchedule,
         status: "active",
+        keeperhubWorkflowId: workflowId,
       }).onConflictDoUpdate({
         target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
-        set: { amount, updatedAt: new Date() },
+        set: { amount, cronSchedule, keeperhubWorkflowId: workflowId, updatedAt: new Date() },
       });
 
       await db.insert(executionsLog).values({
@@ -202,22 +222,10 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     });
     decision = res.object;
   } catch {
-    decision = {
-      analysis: {
-        exceedsSpendingCeiling: false,
-        registeredWorkflowCollision: false,
-        recipientAddressValid: true,
-      },
-      userExplanation: "Confirmed! Created recurring payroll workflow.",
-      recommendation: {
-        recipient_address: walletAddress,
-        recipient_name: "payroll-recipient",
-        amount: 200,
-        token: "USDC" as const,
-        frequency: "weekly" as const,
-        cron_schedule: "0 9 * * 5",
-        verification_required: false,
-      }
+    return {
+      success: false,
+      verification_required: true,
+      message: "I couldn't parse that payroll request. Please specify recipient (name or 0x address), amount, and schedule.",
     };
   }
 
@@ -236,7 +244,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     decision.recommendation.amount
   );
 
-  const { workflowId } = await createWorkflow({
+  const { workflowId, isStub } = await createWorkflow({
     name: `payroll-${(decision.recommendation.recipient_name || "payroll").replace(/\s+/g, "-").toLowerCase()}-${Date.now()}`,
     triggerType: "cron",
     cronSchedule: decision.recommendation.cron_schedule,
@@ -247,6 +255,14 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       gasStrategy: "standard",
     }],
   });
+
+  if (isStub) {
+    return {
+      success: false,
+      verification_required: false,
+      message: `⚠️ KeeperHub MCP is unavailable (stub mode). Payroll workflow was not registered on-chain.`,
+    };
+  }
 
   // ── Auto-register Payee in DB if not already present ───────────────────────
   const recipientName = decision.recommendation.recipient_name || "Payee";
@@ -277,9 +293,10 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     amount: decision.recommendation.amount,
     cronSchedule: decision.recommendation.cron_schedule,
     status: "active",
+    keeperhubWorkflowId: workflowId,
   }).onConflictDoUpdate({
     target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
-    set: { amount: decision.recommendation.amount, cronSchedule: decision.recommendation.cron_schedule, updatedAt: new Date() },
+    set: { amount: decision.recommendation.amount, cronSchedule: decision.recommendation.cron_schedule, keeperhubWorkflowId: workflowId, updatedAt: new Date() },
   }).returning();
 
   await db.insert(executionsLog).values({

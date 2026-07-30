@@ -65,7 +65,8 @@ export async function run(userWallet: string): Promise<void> {
     return;
   }
 
-  const calldata = encodeUniswapSwap(workflow.amount, AGENTIC_WALLET);
+  const maxSlippage = decision.recommendation.max_slippage_percentage ?? 0.5;
+  const calldata = encodeUniswapSwap(workflow.amount, AGENTIC_WALLET, maxSlippage);
 
   const sim = await simulate(
     { from: AGENTIC_WALLET, to: UNISWAP_V3_ROUTER, data: calldata },
@@ -76,18 +77,19 @@ export async function run(userWallet: string): Promise<void> {
     return;
   }
 
-  const { workflowId } = await createWorkflow({
+  const { workflowId, isStub: createStub } = await createWorkflow({
     name: `dca-${userWallet.slice(0, 8)}-${Date.now()}`,
     triggerType: "manual",
     steps: [{ type: "transaction", to: UNISWAP_V3_ROUTER, calldata, gasStrategy: "standard" }],
   });
-  const { executionId } = await executeWorkflow(workflowId);
+  const { executionId, isStub: execStub } = await executeWorkflow(workflowId);
+  const isStub = createStub || execStub;
 
   await db.insert(executionsLog).values({
     userWallet,
     action: "swap",
     amount: workflow.amount,
-    status: "success",
+    status: isStub ? "simulated_stub" : "success",
     reason: `DCA: ${workflow.amount} USDC → ETH via Uniswap V3. ${decision.userExplanation}`,
     aiAnalysis: decision.analysis,
   });

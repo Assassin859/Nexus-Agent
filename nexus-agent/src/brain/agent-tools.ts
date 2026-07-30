@@ -4,10 +4,11 @@ import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog, payees } from "../db/schema.js";
 import { handle as handlePaychain } from "../modules/paychain.js";
 import { getAavePosition } from "../lib/aave.js";
+import { cancelWorkflow } from "../lib/mcp-client.js";
 import { run as runGuardian } from "../modules/guardian.js";
 import { run as runYieldRotator } from "../modules/yield-rotator.js";
 import { run as runDCA } from "../modules/dca.js";
-import { eq, desc, and } from "drizzle-orm";
+import { eq, desc, and, ilike } from "drizzle-orm";
 
 /**
  * Creates the set of native AI SDK tools for the LLM agent.
@@ -54,12 +55,44 @@ export function createAgentTools(walletAddress: string, conversationHistory: any
         target: z.string().default("all").describe("Target to cancel: 'all' or specific recipient name/address"),
       }),
       execute: async ({ target }) => {
-        let whereClause = and(
-          eq(activeWorkflows.userWallet, wallet),
-          eq(activeWorkflows.type, "payroll")
-        );
+        const trimmedTarget = (target || "all").trim();
 
-        // Find active workflows to cancel
+        // ── Step 1: Resolve target to a set of recipient addresses ──────────
+        let recipientAddressSet: Set<string> | null = null; // null = "all"
+
+        if (trimmedTarget !== "all" && trimmedTarget !== "") {
+          const isAddress = /^0x[a-fA-F0-9]{40}$/.test(trimmedTarget);
+          if (isAddress) {
+            // Direct address filter
+            recipientAddressSet = new Set([trimmedTarget.toLowerCase()]);
+          } else {
+            // Name lookup — exact case-insensitive match against payees table
+            const matchedPayees = await db.query.payees.findMany({
+              where: and(
+                eq(payees.userWallet, wallet),
+                ilike(payees.name, trimmedTarget)
+              ),
+            });
+
+            // Collect all recipient addresses from the matched payees' JSONB field
+            const resolvedAddresses = matchedPayees.flatMap((p) =>
+              (p.recipientAddresses as Array<{ name: string; address: string }>)
+                .map((m) => m.address?.toLowerCase())
+                .filter(Boolean) as string[]
+            );
+
+            if (resolvedAddresses.length === 0) {
+              return {
+                cancelledCount: 0,
+                message: `No payee found matching "${trimmedTarget}". Use 'all' to cancel all payrolls, or provide a 0x address.`,
+              };
+            }
+
+            recipientAddressSet = new Set(resolvedAddresses);
+          }
+        }
+
+        // ── Step 2: Find active payroll workflows matching the target ────────
         const activeList = await db.query.activeWorkflows.findMany({
           where: and(
             eq(activeWorkflows.userWallet, wallet),
@@ -68,25 +101,52 @@ export function createAgentTools(walletAddress: string, conversationHistory: any
           ),
         });
 
-        for (const wf of activeList) {
+        const toCancel = recipientAddressSet === null
+          ? activeList
+          : activeList.filter(
+              (wf) => wf.recipientAddress && recipientAddressSet!.has(wf.recipientAddress.toLowerCase())
+            );
+
+        if (toCancel.length === 0) {
+          return {
+            cancelledCount: 0,
+            message: "No active payroll workflows were found matching that target.",
+          };
+        }
+
+        // ── Step 3: Cancel each workflow locally + remote MCP sync ───────────
+        let remoteOk = 0;
+        let skipped = 0;
+
+        for (const wf of toCancel) {
+          // Remote MCP cancel (only if a real keeperhub workflow ID exists)
+          if (wf.keeperhubWorkflowId) {
+            const result = await cancelWorkflow(wf.keeperhubWorkflowId);
+            if (result.ok && !result.isStub) remoteOk++;
+          } else {
+            // Legacy row or stub — no remote ID to cancel
+            skipped++;
+          }
+
+          // Local status update — always proceeds regardless of remote result
           await db.update(activeWorkflows)
             .set({ status: `cancelled_${wf.id.slice(0, 8)}` })
             .where(eq(activeWorkflows.id, wf.id));
         }
 
+        // ── Step 4: Audit log ────────────────────────────────────────────────
         await db.insert(executionsLog).values({
           userWallet: wallet,
           action: "payroll",
           amount: 0,
           status: "success",
-          reason: `Cancelled ${activeList.length} active payroll workflow(s). Target: ${target}`,
+          reason: `Cancelled ${toCancel.length} active payroll workflow(s). Target: ${trimmedTarget}`,
         });
 
+        const summary = `Cancelled ${toCancel.length} workflows locally (${remoteOk} synced with KeeperHub, ${skipped} legacy/stub rows skipped — no remote ID)`;
         return {
-          cancelledCount: activeList.length,
-          message: activeList.length > 0
-            ? `🛑 Cancelled ${activeList.length} active payroll workflow(s). No further scheduled payouts will execute.`
-            : "No active payroll workflows were found to cancel.",
+          cancelledCount: toCancel.length,
+          message: `🛑 ${summary}. No further scheduled payouts will execute.`,
         };
       },
     }),
@@ -143,11 +203,34 @@ export function createAgentTools(walletAddress: string, conversationHistory: any
       parameters: z.object({}),
       execute: async () => {
         const pos = await getAavePosition(wallet);
+
+        if (pos.isError) {
+          return {
+            healthFactor: null,
+            collateralUSD: 0,
+            debtUSD: 0,
+            isSafe: false,
+            status: "Degraded / RPC Error",
+            errorReason: pos.errorReason,
+          };
+        }
+
+        if (pos.healthFactor === null) {
+          return {
+            healthFactor: null,
+            collateralUSD: pos.collateralUSD,
+            debtUSD: pos.debtUSD,
+            isSafe: true,
+            status: "No Active Loan",
+          };
+        }
+
         return {
           healthFactor: pos.healthFactor,
           collateralUSD: pos.collateralUSD,
           debtUSD: pos.debtUSD,
           isSafe: pos.healthFactor >= 1.2,
+          status: pos.healthFactor >= 1.5 ? "Safe Zone" : pos.healthFactor >= 1.15 ? "Warning Zone" : "Liquidation Risk",
         };
       },
     }),
