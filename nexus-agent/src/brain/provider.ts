@@ -2,8 +2,14 @@ import { createOpenAI } from "@ai-sdk/openai";
 
 // Initialize the OpenAI-compatible GitHub Models provider dynamically
 export function getGithubModels() {
+  if (process.env.OPENAI_API_KEY) {
+    return createOpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+  }
+  const baseURL = process.env.GITHUB_MODELS_URL || "https://models.github.ai/inference";
   return createOpenAI({
-    baseURL: "https://models.inference.ai.azure.com",
+    baseURL,
     apiKey: process.env.GITHUB_TOKEN,
   });
 }

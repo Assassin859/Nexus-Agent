@@ -155,20 +155,54 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     limit: 5,
   });
 
-  const { object: decision } = await generateObject({
-    model: githubModels(BRAIN_MODEL),
-    schema: GuardianDecisionSchema,
-    system: GUARDIAN_SYSTEM_PROMPT,
-    prompt: JSON.stringify({
-      healthFactor: position.healthFactor,
-      walletBalance: agenticBalance,
-      collateralValueUSD: position.collateralUSD,
-      debtValueUSD: position.debtUSD,
-      cycleRemainingBudget: cycleRemaining,
-      executionHistory: recentExecutions.map(r => `${r.status}:${r.action}:${r.amount}`),
-      priceTrend,
-    }),
-  });
+  let decision;
+  try {
+    const res = await generateObject({
+      model: githubModels(BRAIN_MODEL),
+      schema: GuardianDecisionSchema,
+      system: GUARDIAN_SYSTEM_PROMPT,
+      prompt: JSON.stringify({
+        healthFactor: position.healthFactor,
+        walletBalance: agenticBalance,
+        collateralValueUSD: position.collateralUSD,
+        debtValueUSD: position.debtUSD,
+        cycleRemainingBudget: cycleRemaining,
+        executionHistory: recentExecutions.map(r => `${r.status}:${r.action}:${r.amount}`),
+        priceTrend,
+      }),
+    });
+    decision = res.object;
+  } catch (llmErr) {
+    log.warn({ err: String(llmErr) }, "LLM brownout/error — using deterministic quantitative safety fallback");
+    decision = {
+      analysis: {
+        collateralValueUSD: position.collateralUSD,
+        debtValueUSD: position.debtUSD,
+        requiredRepaymentToTargetHF: 0,
+        walletLimitExceeded: false,
+        cycleRemainingBudgetUSD: cycleRemaining,
+        safetyStatus: (position.healthFactor ?? 99) < 1.1 ? "critical_liquidation_risk" : (position.healthFactor ?? 99) < 1.3 ? "warning" : "safe",
+      },
+      candidateActions: [
+        {
+          action: "hold" as const,
+          amount: 0,
+          expectedHealthFactor: position.healthFactor ?? 99,
+          estimatedGasUSD: 0,
+          riskScore: 0,
+          pros: "Health factor is safe",
+          cons: "None",
+        }
+      ],
+      userExplanation: "Deterministic Quantitative Rule: Position Health Factor is healthy.",
+      recommendation: {
+        action: "hold" as const,
+        asset: "USDC",
+        amount: 0,
+        reason: "Position Health Factor is safe; no immediate action required.",
+      }
+    };
+  }
 
   const selectedRecommendation = selectBestCandidate(
     decision.candidateActions,
