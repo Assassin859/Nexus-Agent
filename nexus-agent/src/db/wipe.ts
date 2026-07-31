@@ -4,9 +4,9 @@ import { payees, activeWorkflows, executionsLog, repaymentCycles, userSettings }
 async function wipe() {
   console.log("🧹 Wiping database tables...");
   try {
+    await db.delete(executionsLog);
     await db.delete(payees);
     await db.delete(activeWorkflows);
-    await db.delete(executionsLog);
     await db.delete(repaymentCycles);
     await db.delete(userSettings);
     console.log("✅ ALL TABLES SUCCESSFULLY WIPED CLEAN!");

@@ -1,9 +1,9 @@
-﻿import { JsonRpcProvider } from "ethers";
+import { JsonRpcProvider } from "ethers";
 
 const RPC_ENDPOINTS = [
   process.env.ALCHEMY_RPC_URL,
   process.env.INFURA_RPC_URL,
-  "https://rpc.sepolia.org",
+  "https://sepolia.base.org",
 ].filter(Boolean) as string[];
 
 let cachedProvider: JsonRpcProvider | null = null;

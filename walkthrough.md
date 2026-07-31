@@ -1,5 +1,8 @@
 # NexusAgent — System Architecture & Remediation Walkthrough
 
+- **Chain:** Base Sepolia (Chain ID 84532)
+- **Status:** All P0, P1, P2 features complete & verified.
+
 ## Summary of Accomplishments
 
 All 17 original audit items plus 9 final polish items are complete and verified across the codebase:

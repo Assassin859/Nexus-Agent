@@ -122,14 +122,18 @@ Rather than passing unstructured text to an LLM or relying on flat single-shot o
 ┌───────────────────────────┐
 │     ExecutedDecision      │  (KeeperHub Payload + Postgres Audit Log Entry)
 └───────────────────────────┘
+└─────────────┬─────────────┘
 ```
 
-> **Market Oracle — `priceTrend`**: Derived at runtime from the Chainlink ETH/USD aggregator (Sepolia) by comparing the latest round to the previous round (approximate short-term move; on Sepolia, typically ~1h apart when markets are calm). `crash` is emitted if delta ≤ −7%; `volatile` if |delta| ≥ 3%; otherwise `stable`. Graceful fallback to `"stable"` on any RPC error so Guardian evaluation is never blocked.
+> **Market Oracle — `priceTrend`**: Derived at runtime from the Chainlink ETH/USD aggregator (Base Sepolia) by comparing the latest round to the previous round (approximate short-term move; on Base Sepolia, typically ~1h apart when markets are calm). `crash` is emitted if delta ≤ −7%; `volatile` if |delta| ≥ 3%; otherwise `stable`. Graceful fallback to `"stable"` on any RPC error so Guardian evaluation is never blocked.
 
 ### 2. Candidate Action Evaluation & Ranking Rules
 In every decision cycle, the brain generates an array of 4 distinct **Candidate Actions** (`CandidateActionSchema`):
-- **Option A**: Full Repay (to target HF 1.30)
-- **Option B**: Partial Repay (capped to available balance)
+- **Network**: Base Sepolia Testnet (Chain ID `84532`)
+- **Aave V3.2 Pool**: `0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27`
+- **Aave Test USDC**: `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f`
+- **Block Explorer**: BaseScan (`https://sepolia.basescan.org`)
+- **Note**: Legacy pool `0x07eA79...` is a separate deployment — not used by Aave app frontend.
 - **Option C**: Supply Collateral
 - **Option D**: Hold / Do Nothing
 

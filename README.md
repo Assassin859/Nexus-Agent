@@ -127,8 +127,11 @@ DATABASE_URL=postgresql://...     # PostgreSQL database URL
 KEEPERHUB_API_KEY=kh_...          # KeeperHub MCP API key
 AGENTIC_WALLET_ADDRESS=0x89f9...  # KeeperHub MPC signer wallet
 JWT_SECRET=your_jwt_secret_here   # Required in production
-ALCHEMY_RPC_URL=https://eth-sepolia.g.alchemy.com/v2/YOUR_KEY
+ALCHEMY_RPC_URL=https://base-sepolia.g.alchemy.com/v2/YOUR_KEY
 ```
+
+- **Primary Network:** Base Sepolia (Chain ID `84532`)
+- **RPC Endpoint:** Base Sepolia Alchemy (`https://base-sepolia.g.alchemy.com/v2/YOUR_KEY`) or `https://sepolia.base.org`
 
 ### 2. Database Setup & Seed Data
 ```bash

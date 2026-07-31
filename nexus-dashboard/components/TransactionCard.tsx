@@ -146,12 +146,12 @@ export default function TransactionCard({
 
           {!isStubTx && (
             <a
-              href={`https://sepolia.etherscan.io/tx/${txHash}`}
+              href={`https://sepolia.basescan.org/tx/${txHash}`}
               target="_blank"
               rel="noopener noreferrer"
               style={{ display: "flex", alignItems: "center", gap: 4, color: "#34d399", fontWeight: 600, textDecoration: "none" }}
             >
-              Live Etherscan <ExternalLink size={12} />
+              Live BaseScan <ExternalLink size={12} />
             </a>
           )}
         </div>

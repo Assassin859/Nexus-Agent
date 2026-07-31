@@ -2,10 +2,10 @@ import { AbiCoder, parseUnits } from "ethers";
 
 const abi = new AbiCoder();
 
-// ─── Contract Addresses (Ethereum Sepolia) ────────────────────────────────────
-export const AAVE_V3_POOL       = "0x6aE43d3271fF68408378A467c62b15264c8d77E4";
+// ─── Contract Addresses (Aave V3.2 Base Sepolia) ──────────────────────────────
+export const AAVE_V3_POOL       = "0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27";
 export const UNISWAP_V3_ROUTER  = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
-export const USDC_SEPOLIA       = "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8";
+export const USDC_SEPOLIA       = "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f";
 export const WETH_SEPOLIA       = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
 // Compound V3 cUSDCv3 on Sepolia (replaces Morpho which has no stable Sepolia deployment)
 export const COMPOUND_V3_USDC  = "0xAec1F48e02Cfb822Be958B68C7957156EB3F0b6e";

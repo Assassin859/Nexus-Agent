@@ -1,11 +1,7 @@
 import { getProvider } from "./rpc.js";
-import { Contract, formatUnits } from "ethers";
+import { Contract } from "ethers";
+import { AAVE_V3_POOL, USDC_SEPOLIA } from "./calldata.js";
 
-// Aave V3 Pool on Ethereum Sepolia (checksummed)
-const AAVE_V3_POOL = "0x6aE43d3271fF68408378A467c62b15264c8d77E4";
-const USDC_SEPOLIA  = "0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8"; // Aave testnet USDC
-
-// Minimal ABI — only the functions we need
 const POOL_ABI = [
   "function getUserAccountData(address user) view returns (uint256 totalCollateralBase, uint256 totalDebtBase, uint256 availableBorrowsBase, uint256 currentLiquidationThreshold, uint256 ltv, uint256 healthFactor)",
   "function getReserveData(address asset) view returns (tuple(uint256 configuration, uint128 liquidityIndex, uint128 currentLiquidityRate, uint128 variableBorrowIndex, uint128 currentVariableBorrowRate, uint128 currentStableBorrowRate, uint40 lastUpdateTimestamp, uint16 id, address aTokenAddress, address stableDebtTokenAddress, address variableDebtTokenAddress, address interestRateStrategyAddress, uint128 accruedToTreasury, uint128 unbacked, uint128 isolationModeTotalDebt))",
@@ -30,10 +26,6 @@ export type AavePosition = {
   errorReason?: string;
 };
 
-/**
- * Standalone USDC balanceOf helper — reads balance of ANY address, reusing ERC20_ABI.
- * Returns 0 on RPC failure so callers don't need to guard.
- */
 export async function getUsdcBalance(address: string): Promise<number> {
   if (!address) return 0;
   const target = address.toLowerCase();
@@ -51,9 +43,6 @@ export async function getUsdcBalance(address: string): Promise<number> {
   }
 }
 
-/**
- * Fetches the live Aave V3 position for a wallet from Sepolia.
- */
 export async function getAavePosition(walletAddress: string): Promise<AavePosition> {
   const targetWallet = (walletAddress || "").toLowerCase();
   try {
@@ -61,38 +50,41 @@ export async function getAavePosition(walletAddress: string): Promise<AavePositi
     const pool = new Contract(AAVE_V3_POOL, POOL_ABI, provider);
     const usdc = new Contract(USDC_SEPOLIA, ERC20_ABI, provider);
 
-    // Get reserve data to locate aToken address
-    const reserveData = await pool.getReserveData(USDC_SEPOLIA);
-    const aTokenAddress = reserveData.aTokenAddress;
-    const aUsdc = new Contract(aTokenAddress, ERC20_ABI, provider);
-
-    // Fetch account data, USDC wallet balance, aUSDC supply balance, and USDC decimals in parallel
-    const [accountData, usdcRaw, aUsdcRaw, usdcDecimals] = await Promise.all([
+    // Primary RPC call: getUserAccountData (returns collateral, debt, borrow capacity, HF)
+    const [accountData, usdcRaw, usdcDecimals] = await Promise.all([
       pool.getUserAccountData(targetWallet),
-      usdc.balanceOf(targetWallet),
-      aUsdc.balanceOf(targetWallet),
-      usdc.decimals(),
+      usdc.balanceOf(targetWallet).catch(() => 0n),
+      usdc.decimals().catch(() => 6),
     ]);
 
-    // Aave returns values in USD base units (8 decimals)
     const BASE = 1e8;
     const collateralUSD       = Number(accountData.totalCollateralBase) / BASE;
     const debtUSD             = Number(accountData.totalDebtBase) / BASE;
     const availableBorrowsUSD = Number(accountData.availableBorrowsBase) / BASE;
     const ltv                 = Number(accountData.ltv) / 100;
+    const decFactor           = Math.pow(10, Number(usdcDecimals));
+    const usdcWalletBalance   = Number(usdcRaw) / decFactor;
 
-    // Token & USD amounts for supplied USDC
-    const decFactor = Math.pow(10, Number(usdcDecimals));
-    const usdcWalletBalance = Number(usdcRaw) / decFactor;
-    const usdcSuppliedAmount = Number(aUsdcRaw) / decFactor;
-    // 1 USDC ~ $1 USD on Sepolia testnet
+    // Optional reserve data for USDC aToken & APY
+    let usdcSuppliedAmount = 0;
+    let currentUSDCSupplyAPY = 0;
+    try {
+      const reserveData = await pool.getReserveData(USDC_SEPOLIA);
+      if (reserveData && reserveData.aTokenAddress) {
+        const aUsdc = new Contract(reserveData.aTokenAddress, ERC20_ABI, provider);
+        const aUsdcRaw = await aUsdc.balanceOf(targetWallet).catch(() => 0n);
+        usdcSuppliedAmount = Number(aUsdcRaw) / decFactor;
+
+        const RAY = 1e27;
+        const SECONDS_PER_YEAR = 365 * 24 * 3600;
+        const ratePerSecond = Number(reserveData.currentLiquidityRate) / RAY;
+        currentUSDCSupplyAPY = (Math.pow(1 + ratePerSecond, SECONDS_PER_YEAR) - 1) * 100;
+      }
+    } catch {
+      // Reserve query fallback
+    }
+
     const usdcSuppliedUSD = usdcSuppliedAmount;
-
-    // USDC Supply APY from reserve data
-    const RAY = 1e27;
-    const SECONDS_PER_YEAR = 365 * 24 * 3600;
-    const ratePerSecond = Number(reserveData.currentLiquidityRate) / RAY;
-    const currentUSDCSupplyAPY = (Math.pow(1 + ratePerSecond, SECONDS_PER_YEAR) - 1) * 100;
 
     // No active loan: both collateral and debt are zero
     if (collateralUSD === 0 && debtUSD === 0 && usdcSuppliedAmount === 0) {

@@ -313,9 +313,9 @@ export function createAgentTools(
       },
     }),
 
-    // ── Tool 7: Get Live Transactions & Etherscan Links ──────────────────────
+    // ── Tool 7: Get Live Transactions & BaseScan Links ────────────────────────
     getLiveTransactions: tool({
-      description: "Query recent on-chain transactions, execution logs, and live Sepolia Etherscan verification links (e.g. 'show live tx', 'recent transactions', 'etherscan links')",
+      description: "Query recent on-chain transactions, execution logs, and live BaseScan verification links (e.g. 'show live tx', 'recent transactions', 'basescan links')",
       parameters: z.object({}),
       execute: async () => {
         const logs = await db.query.executionsLog.findMany({
@@ -333,7 +333,7 @@ export function createAgentTools(
             reason: l.reason,
             txHash: l.txHash ?? null,
             ...(l.txHash && l.status !== "simulated_stub" && {
-              etherscanUrl: `https://sepolia.etherscan.io/tx/${l.txHash}`,
+              basescanUrl: `https://sepolia.basescan.org/tx/${l.txHash}`,
             }),
             timestamp: l.timestamp ? new Date(l.timestamp).toISOString() : new Date().toISOString(),
           })),

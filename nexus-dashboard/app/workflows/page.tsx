@@ -184,8 +184,8 @@ export default function WorkflowsPage() {
             const color = typeColors[wf.type] ?? typeColors.default;
             const isExpanded = expandedId === wf.id;
             const verifyUrl = wf.recipientAddress
-              ? `https://sepolia.etherscan.io/address/${wf.recipientAddress}`
-              : `https://sepolia.etherscan.io/`;
+              ? `https://sepolia.basescan.org/address/${wf.recipientAddress}`
+              : `https://sepolia.basescan.org/`;
 
             return (
               <div key={wf.id} className="card" style={{ display: "flex", flexDirection: "column", gap: 16, padding: "20px 24px" }}>
@@ -215,12 +215,12 @@ export default function WorkflowsPage() {
                           <span>
                             Recipient:{" "}
                             <a
-                              href={`https://sepolia.etherscan.io/address/${wf.recipientAddress}`}
+                              href={verifyUrl}
                               target="_blank"
                               rel="noopener noreferrer"
                               style={{ color: "#818cf8", textDecoration: "none", fontFamily: "monospace" }}
                             >
-                              {wf.recipientAddress.slice(0, 8)}...{wf.recipientAddress.slice(-6)} ↗
+                              {wf.recipientAddress.slice(0, 8)}...{wf.recipientAddress.slice(-6)} <ExternalLink size={10} style={{ display: "inline" }} />
                             </a>
                           </span>
                         )}
@@ -273,13 +273,13 @@ export default function WorkflowsPage() {
                   }}>
                     <div style={{ display: "flex", justifyContent: "space-between", color: "#818cf8", fontWeight: 700 }}>
                       <span>🛠️ KeeperHub Turnkey MPC Payload &amp; Calldata</span>
-                      <span>Network: Sepolia (11155111)</span>
+                      <span>Network: Base Sepolia (84532)</span>
                     </div>
 
                     <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 12, color: "var(--text-muted)" }}>
                       <div>
                         <span style={{ color: "var(--text-muted)" }}>Target Contract:</span>
-                        <div style={{ color: "var(--text)", marginTop: 2 }}>0x94a9D9AC8a22534E3FaCa9F4e7F2E2cf85d5E4C8 (USDC)</div>
+                        <div style={{ color: "var(--text)", marginTop: 2 }}>0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f (USDC)</div>
                       </div>
 
                       <div>

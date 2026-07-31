@@ -2,8 +2,8 @@ import { getProvider } from "./rpc.js";
 import { Contract, formatUnits } from "ethers";
 import { childLogger } from "./logger.js";
 
-// Chainlink ETH/USD aggregator on Sepolia
-const CHAINLINK_ETH_USD = "0x694AA1769357215DE4FAC081bf1f309aDC325306";
+// Chainlink ETH / USD Data Feed on Base Sepolia
+const CHAINLINK_ETH_USD = "0x4aDC67696bA383F43DD60A9e78F2C97Fbbfc7cb1";
 const AGG_ABI = [
   "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
   "function getRoundData(uint80 _roundId) view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",

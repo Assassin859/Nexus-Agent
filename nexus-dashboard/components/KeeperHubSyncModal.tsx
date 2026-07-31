@@ -147,52 +147,30 @@ export default function KeeperHubSyncModal({ isOpen, onClose, walletAddress, onK
 
         {error && <span style={{ fontSize: 12, color: "#f87171" }}>{error}</span>}
 
-        {/* Primary — KeeperHub OAuth */}
-        <button
-          onClick={signInWithKeeperHub}
-          className="btn btn-primary"
-          style={{ fontSize: 14, padding: "13px 16px", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}
-        >
-          <ExternalLink size={16} />
-          Sign in via KeeperHub
-        </button>
-
-        {/* Secondary — WFB webhook key (trigger-only, not general auth) */}
-        <div>
+        {/* Direct API Key Sync Form */}
+        <form onSubmit={handleSaveWfbKey} style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 4 }}>
+          <label style={{ fontSize: 12, fontWeight: 600, color: "var(--text)" }}>
+            Enter KeeperHub API Key (<code style={{ color: "#818cf8" }}>kh_...</code>):
+          </label>
+          <input
+            type="password"
+            placeholder="kh_xxxxxxxxxxxxxxxxxxxxxxxx"
+            value={wfbKeyInput}
+            onChange={e => setWfbKeyInput(e.target.value)}
+            style={{
+              padding: "10px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)",
+              border: "1px solid var(--border)", color: "var(--text)", fontSize: 13, fontFamily: "monospace"
+            }}
+          />
           <button
-            onClick={() => setShowWfbSection(v => !v)}
-            style={{ background: "none", border: "none", color: "var(--text-muted)", fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", gap: 6 }}
+            type="submit"
+            disabled={savingWfb || !wfbKeyInput.trim()}
+            className="btn btn-primary"
+            style={{ fontSize: 13, padding: "11px 16px" }}
           >
-            <Key size={12} />
-            {showWfbSection ? "Hide" : "Advanced"}: Configure WFB webhook trigger key
+            {savingWfb ? "Syncing..." : "Save & Sync KeeperHub Key"}
           </button>
-
-          {showWfbSection && (
-            <form onSubmit={handleSaveWfbKey} style={{ display: "flex", flexDirection: "column", gap: 8, marginTop: 12 }}>
-              <p style={{ fontSize: 11, color: "var(--text-muted)", margin: 0 }}>
-                ⚠️ <strong>WFB keys are for webhook triggers only</strong>, not general authentication.
-              </p>
-              <input
-                type="text"
-                placeholder="wfb_xxxxxxxxxxxxxxxxxxxxxxxx"
-                value={wfbKeyInput}
-                onChange={e => setWfbKeyInput(e.target.value)}
-                style={{
-                  padding: "10px 14px", borderRadius: 8, background: "rgba(255,255,255,0.05)",
-                  border: "1px solid var(--border)", color: "var(--text)", fontSize: 13, fontFamily: "monospace"
-                }}
-              />
-              <button
-                type="submit"
-                disabled={savingWfb || !wfbKeyInput.trim()}
-                className="btn"
-                style={{ background: "rgba(255,255,255,0.06)", border: "1px solid var(--border)", color: "var(--text)", fontSize: 12 }}
-              >
-                {savingWfb ? "Saving..." : "Save WFB Trigger Key"}
-              </button>
-            </form>
-          )}
-        </div>
+        </form>
       </div>
     </div>
   );
