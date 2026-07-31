@@ -1,4 +1,7 @@
 import { getProvider } from "./rpc.js";
+import { childLogger } from "./logger.js";
+
+const simLog = childLogger({ module: "simulate" });
 
 export type TxPayload = {
   from: string;
@@ -29,7 +32,7 @@ export async function simulate(
     return { wouldRevert: false, gasEstimate };
   } catch (error: unknown) {
     const revertReason = error instanceof Error ? error.message : "Unknown simulation revert";
-    console.warn(`[SIMULATE] Caught revert (gas saved): ${revertReason}`);
+    simLog.warn({ revertReason }, "[SIMULATE] Caught revert (gas saved)");
     return { wouldRevert: true, gasEstimate: 0n, revertReason };
   }
 }

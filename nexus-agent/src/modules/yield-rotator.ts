@@ -21,6 +21,7 @@ import { childLogger } from "../lib/logger.js";
 import { shouldAlert } from "../lib/alert-throttle.js";
 import { getProvider } from "../lib/rpc.js";
 import { Contract } from "ethers";
+import { eq, and, lt } from "drizzle-orm";
 
 const COMPOUND_ABI = [
   "function supplyRatePerSecond() view returns (uint256)",
@@ -118,6 +119,37 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
+  // ── Step 1b: Stale Pending Lock Expiry & Active Guard (TTL 15m) ───────────
+  const cutoff15m = new Date(Date.now() - 15 * 60 * 1000);
+  const expiredPendingRows = await db.query.executionsLog.findMany({
+    where: and(
+      eq(executionsLog.userWallet, monitoredWallet),
+      eq(executionsLog.action, "rotate"),
+      eq(executionsLog.status, "pending"),
+      lt(executionsLog.timestamp, cutoff15m)
+    ),
+  });
+
+  if (expiredPendingRows.length > 0) {
+    for (const stale of expiredPendingRows) {
+      await db.update(executionsLog)
+        .set({ status: "reverted_chain", reason: "Yield rotation pending lock expired (TTL 15m)" })
+        .where(eq(executionsLog.id, stale.id));
+    }
+  }
+
+  const activePendingTx = await db.query.executionsLog.findFirst({
+    where: and(
+      eq(executionsLog.userWallet, monitoredWallet),
+      eq(executionsLog.action, "rotate"),
+      eq(executionsLog.status, "pending")
+    ),
+  });
+  if (activePendingTx) {
+    log.warn({ logId: activePendingTx.id }, "Active yield rotation pending transaction exists (<15m) — skipping.");
+    return;
+  }
+
   const rotateAmount = Math.min(decision.recommendation.amount || userBalance, userBalance);
   // Step 1: Withdraw from Aave to signer wallet
   const withdrawCalldata = encodeAaveWithdraw(USDC_SEPOLIA, rotateAmount, context.signerWallet);
@@ -172,50 +204,77 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
   steps.push({ type: "transaction", to: COMPOUND_V3_USDC, calldata: supplyCalldata, gasStrategy: "standard" });
 
-  const { workflowId, isStub: createStub } = await createWorkflow({
-    name: `yield-rotate-${monitoredWallet.slice(0, 8)}-${Date.now()}`,
-    triggerType: "manual",
-    steps,
-    mevProtected: true,
-  }, effectiveKey);
-
-  const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
-  const isStub = createStub || execStub;
-
-  let finalStatus: string;
-  let txHash: string | undefined;
-  let executionIdForLog: string | undefined;
-
-  if (isStub) {
-    finalStatus = "simulated_stub";
-  } else {
-    const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
-    executionIdForLog = executionId;
-    finalStatus = poll.timedOut
-      ? "reverted_chain"
-      : poll.status === "mined" ? "success"
-      : "reverted_chain";
-    txHash = poll.txHash;
-  }
-
-  await db.insert(executionsLog).values({
+  // Insert pending row before execution
+  const [pendingRow] = await db.insert(executionsLog).values({
     userWallet: monitoredWallet,
     action: "rotate",
     amount: Math.round(rotateAmount),
-    status: finalStatus,
-    txHash,
+    status: "pending",
     reason: decision.userExplanation,
-    aiAnalysis: { ...decision.analysis, executionId: executionIdForLog },
-  });
+    aiAnalysis: decision.analysis,
+  }).returning({ id: executionsLog.id });
 
-  log.info({ executionId, isStub, finalStatus, rotateAmount }, "Rotated USDC (Aave V3 → Compound V3)");
+  try {
+    const { workflowId, isStub: createStub } = await createWorkflow({
+      name: `yield-rotate-${monitoredWallet.slice(0, 8)}-${Date.now()}`,
+      triggerType: "manual",
+      steps,
+      mevProtected: true,
+    }, effectiveKey);
 
-  // ── Alert ONLY on confirmed mined success with txHash (throttled) ─────────
-  if (finalStatus === "success" && txHash && shouldAlert(`${monitoredWallet.slice(0, 8)}:yield_success`)) {
-    await sendKeeperNotification(
-      ALERT_CHANNEL,
-      `🔄 Yield rotated: ${rotateAmount} USDC → Compound V3 for ${monitoredWallet.slice(0, 8)}`,
-      effectiveKey
-    ).catch(() => {});
+    const { executionId, isStub: execStub } = await executeWorkflow(workflowId, effectiveKey);
+    const isStub = createStub || execStub;
+
+    let finalStatus: string;
+    let txHash: string | undefined;
+    let executionIdForLog: string | undefined;
+
+    if (isStub) {
+      finalStatus = "simulated_stub";
+      await db.update(executionsLog)
+        .set({
+          status: "simulated_stub",
+          reason: `Yield Rotate (Simulated Stub): ${decision.userExplanation}`,
+          aiAnalysis: { ...decision.analysis, executionId },
+        })
+        .where(eq(executionsLog.id, pendingRow.id));
+    } else {
+      const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
+      executionIdForLog = executionId;
+      finalStatus = poll.timedOut
+        ? "reverted_chain"
+        : poll.status === "mined" ? "success"
+        : "reverted_chain";
+      txHash = poll.txHash;
+
+      await db.update(executionsLog)
+        .set({
+          status: finalStatus,
+          txHash: poll.txHash,
+          reason: decision.userExplanation,
+          aiAnalysis: { ...decision.analysis, executionId: executionIdForLog },
+        })
+        .where(eq(executionsLog.id, pendingRow.id));
+    }
+
+    log.info({ executionId, isStub, finalStatus, rotateAmount }, "Rotated USDC (Aave V3 → Compound V3)");
+
+    // ── Alert ONLY on confirmed mined success with txHash (throttled) ─────────
+    if (finalStatus === "success" && txHash && shouldAlert(`${monitoredWallet.slice(0, 8)}:yield_success`)) {
+      await sendKeeperNotification(
+        ALERT_CHANNEL,
+        `🔄 Yield rotated: ${rotateAmount} USDC → Compound V3 for ${monitoredWallet.slice(0, 8)}`,
+        effectiveKey
+      ).catch(() => {});
+    }
+  } catch (err) {
+    await db.update(executionsLog)
+      .set({
+        status: "reverted_chain",
+        reason: `Yield rotation execution failed: ${err instanceof Error ? err.message : String(err)}`,
+        aiAnalysis: { ...decision.analysis, error: err instanceof Error ? err.message : String(err) },
+      })
+      .where(eq(executionsLog.id, pendingRow.id));
+    log.error({ err }, "Yield rotation pipeline failed — pending row cleared to reverted_chain");
   }
 }

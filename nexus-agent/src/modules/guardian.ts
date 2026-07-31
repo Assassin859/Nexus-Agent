@@ -19,7 +19,7 @@ import { getAgenticWallet, getWalletContext } from "../lib/agentic-wallet.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
 import { childLogger } from "../lib/logger.js";
 import { shouldAlert } from "../lib/alert-throttle.js";
-import { eq, and, sql, lt } from "drizzle-orm";
+import { eq, and, sql, lt, desc } from "drizzle-orm";
 
 const ALLOWED_CHANNELS = ["telegram", "discord", "email"] as const;
 type AlertChannel = typeof ALLOWED_CHANNELS[number];
@@ -149,6 +149,12 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   const priceTrend = await getPriceTrend();
   log.info({ priceTrend }, "Market price trend for Guardian prompt");
 
+  const recentExecutions = await db.query.executionsLog.findMany({
+    where: eq(executionsLog.userWallet, monitoredWallet),
+    orderBy: [desc(executionsLog.timestamp)],
+    limit: 5,
+  });
+
   const { object: decision } = await generateObject({
     model: githubModels(BRAIN_MODEL),
     schema: GuardianDecisionSchema,
@@ -159,6 +165,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
       collateralValueUSD: position.collateralUSD,
       debtValueUSD: position.debtUSD,
       cycleRemainingBudget: cycleRemaining,
+      executionHistory: recentExecutions.map(r => `${r.status}:${r.action}:${r.amount}`),
       priceTrend,
     }),
   });
@@ -326,7 +333,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
           status: finalStatus,
           txHash: poll.txHash,
           reason: finalReason,
-          aiAnalysis: { ...decision.analysis, executionId }, // stored for Slice C sync
+          aiAnalysis: { ...aiAnalysisPayload, executionId },
         })
         .where(eq(executionsLog.id, pendingRow.id));
 
@@ -352,6 +359,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
       .set({
         status: "reverted_chain",
         reason: `Execution error: ${err instanceof Error ? err.message : String(err)}`,
+        aiAnalysis: aiAnalysisPayload,
       })
       .where(eq(executionsLog.id, pendingRow.id));
     log.error({ err }, "Execution pipeline failed — pending row cleared to reverted_chain");

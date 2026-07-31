@@ -1,6 +1,9 @@
 import { Contract } from "ethers";
 import { getProvider } from "./rpc.js";
-import { encodeERC20Approve, USDC_SEPOLIA } from "./calldata.js";
+import { encodeERC20Approve } from "./calldata.js";
+import { childLogger } from "./logger.js";
+
+const alLog = childLogger({ module: "allowance" });
 
 const ERC20_ALLOWANCE_ABI = [
   "function allowance(address owner, address spender) view returns (uint256)",
@@ -8,7 +11,7 @@ const ERC20_ALLOWANCE_ABI = [
 
 /**
  * Checks if signerWallet has sufficient ERC20 allowance for spender.
- * Returns approval calldata targeting uint256.max if allowance is insufficient, or null if sufficient.
+ * Returns approval calldata capped at (amount * 1.10) if allowance is insufficient, or null if sufficient.
  */
 export async function ensureAllowance(
   signerWallet: string,
@@ -27,11 +30,14 @@ export async function ensureAllowance(
     const requiredUnits = BigInt(Math.ceil(amountUSD * 1.10 * 1e6));
 
     if (BigInt(currentAllowance) < requiredUnits) {
-      console.log(`[ALLOWANCE] ${signerWallet.slice(0, 8)} allowance for ${spenderAddress.slice(0, 8)} is ${currentAllowance} < ${requiredUnits}. Generating exact capped approve calldata ($${(amountUSD * 1.1).toFixed(2)} USDC).`);
+      alLog.info(
+        { wallet: signerWallet.slice(0, 8), spender: spenderAddress.slice(0, 8), currentAllowance: String(currentAllowance), requiredUnits: String(requiredUnits) },
+        `[ALLOWANCE] Generating exact capped approve calldata ($${(amountUSD * 1.1).toFixed(2)} USDC)`
+      );
       return encodeERC20Approve(tokenAddress, spenderAddress, requiredUnits);
     }
   } catch (err) {
-    console.warn(`[ALLOWANCE] Failed to query allowance for ${signerWallet.slice(0, 8)}:`, err);
+    alLog.warn({ wallet: signerWallet.slice(0, 8), err }, "[ALLOWANCE] Failed to query allowance");
   }
 
   return null;

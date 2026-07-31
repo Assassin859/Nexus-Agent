@@ -20,8 +20,9 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   const context = getWalletContext(userWallet);
   if (!context || !context.signerWallet) return;
 
-  const log = childLogger({ module: "dca", wallet: userWallet.slice(0, 8) });
-  const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(userWallet));
+  const monitoredWallet = context.monitoredWallet;
+  const log = childLogger({ module: "dca", wallet: monitoredWallet.slice(0, 8) });
+  const effectiveKey = options?.apiKey || (await resolveKeeperHubApiKey(monitoredWallet));
 
   const workflow = await db.query.activeWorkflows.findFirst({
     where: and(
@@ -173,7 +174,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
   try {
     const { workflowId, isStub: createStub } = await createWorkflow({
-      name: `dca-${userWallet.slice(0, 8)}-${Date.now()}`,
+      name: `dca-${monitoredWallet.slice(0, 8)}-${Date.now()}`,
       triggerType: "manual",
       steps,
     }, effectiveKey);

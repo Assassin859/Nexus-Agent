@@ -16,8 +16,8 @@ All 17 original audit items plus 9 final polish items are complete and verified 
 3. **DCA Single Pending Row Execution Pattern (`dca.ts`)**:
    - Follows Guardian's single pending row pattern: inserts `pending` row before execution using `context.monitoredWallet`, executes/polls workflow, and updates `pendingRow.id` with top-level `status`, `txHash`, `reason`, and `aiAnalysis`.
 
-4. **ERC20 Max-Uint256 Approvals Prepend**:
-   - Integrated `ensureAllowance` in Guardian (`repay`/`supply`), DCA (`swap`), and Yield Rotator (`Compound supply`) modules to prepend approval steps whenever allowance is insufficient.
+4. **Capped ERC20 Approvals Helper (`lib/allowance.ts`)**:
+   - Integrated `ensureAllowance` in Guardian (`repay`/`supply`), DCA (`swap`), and Yield Rotator (`Compound supply`) modules to prepend approval steps capped strictly at `(amount * 1.10)` whenever allowance is insufficient.
 
 5. **Centralized Cron Resolution (`lib/cron.ts`)**:
    - Exported `resolveCronSchedule(cronSchedule, message)` in `lib/cron.ts` and called it inside `registerDcaWorkflow` in `dca-schedule.ts`, resolving natural language and 5-part cron expressions across agent tools, REST endpoints, and template cards.
@@ -37,10 +37,18 @@ All 17 original audit items plus 9 final polish items are complete and verified 
    - Reused `<KeeperHubSyncModal>` on `app/workflows/page.tsx` for real API key saving via `agentFetch("/api/user/settings")`.
    - Typed `expiresIn` as `SignOptions["expiresIn"]` in `nexus-agent/src/middleware/auth.ts`.
 
+10. **Phase 11–13 & P1 Architecture & Safety Harness**:
+    - **Canonical Technical Spec (`docs/TECHNICAL_SPEC.md`)**: Full technical documentation created and linked in `README.md`.
+    - **Decision Ontology & Pure Candidate Harness (`lib/guardian-candidate-select.ts`)**: Brain generates 4 structured candidate options (A–D); `selectBestCandidate()` deterministically filters (HF ≥ 1.25, risk ≤ 5) and ranks options before execution.
+    - **Live Market Volatility (`price-feed.ts`)**: `getPriceTrend()` computes inter-round Chainlink price delta (`crash` ≤ -7%, `volatile` ≥ 3%, `stable`).
+    - **Audit Persistence Across All Paths**: `aiAnalysisPayload` (candidate array, LLM vs harness recommendation, override flag, `priceTrend`) preserved across mined, stub, timeout, caught revert, and exception paths in `guardian.ts`.
+    - **Yield Rotator Single-Flight Pending Lock**: Added 15m TTL pending lock & active pending check after `should_rotate === true` to prevent double-rotation race conditions under overlapping triggers.
+    - **Full Wallet Address Normalization**: Normalized `walletAddress` / `monitoredWallet` lowercasing across `guardian.ts`, `dca.ts`, `yield-rotator.ts`, and `paychain.ts`.
+
 ---
 
 ## Final Build & Verification Log
 
-- ✅ `pnpm --prefix nexus-agent run verify` passed with **15 passed | 0 failed**.
-- ✅ `pnpm --prefix nexus-agent run build` compiled with **0 errors**.
-- ✅ `pnpm --prefix nexus-dashboard run build` compiled with **0 errors** (14/14 static & API routes).
+- ✅ `pnpm --prefix nexus-agent run build` — **0 TypeScript errors**.
+- ✅ `pnpm --prefix nexus-agent run verify` — **16 mandatory Tier A unit tests passed** (+ optional Tier B RPC tests when `ALCHEMY_RPC_URL` configured).
+- ✅ `pnpm --prefix nexus-dashboard run build` — **0 Next.js build errors**.

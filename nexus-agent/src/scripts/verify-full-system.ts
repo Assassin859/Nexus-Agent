@@ -121,10 +121,14 @@ async function main() {
   // ── Tier C: Database & KeeperHub MCP Integration (Optional --integration) ─
   console.log("\n── Tier C: Database & Remote MCP Integration (Optional — skipped in CI fast-track) ──");
   if (isIntegration && process.env.DATABASE_URL) {
-    assert(true, "Integration — Database connected");
+    assert(true, "Integration — Database connected (connectivity only)");
+    // NOTE: Named integration tests (pending TTL rollover, compensating cancel) are not yet implemented.
+    // Add db.query assertions here when Tier C coverage is needed.
+    logSkip("Guardian Cycle Rollover & Pending TTL Cleanup", "Not yet implemented — add db assertions for Tier C coverage");
+    logSkip("Multi-Member Compensating Cancel Workflow", "Not yet implemented — add db assertions for Tier C coverage");
   } else {
-    logSkip("Guardian Cycle Rollover & Pending TTL Cleanup", "Run with --integration and valid DATABASE_URL");
-    logSkip("Multi-Member Compensating Cancel Workflow", "Run with --integration and valid DATABASE_URL");
+    logSkip("Guardian Cycle Rollover & Pending TTL Cleanup", "Requires --integration flag and valid DATABASE_URL");
+    logSkip("Multi-Member Compensating Cancel Workflow", "Requires --integration flag and valid DATABASE_URL");
   }
 
   console.log(`\n==================================================`);

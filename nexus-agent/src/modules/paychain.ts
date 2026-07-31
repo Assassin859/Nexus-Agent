@@ -8,6 +8,7 @@ import { encodeERC20Transfer, USDC_SEPOLIA } from "../lib/calldata.js";
 import { parseCronFromMessage } from "../lib/cron.js";
 import { splitTeamPayroll } from "../lib/payroll-split.js";
 import { eq, and, ilike } from "drizzle-orm";
+import { childLogger } from "../lib/logger.js";
 
 
 export type PaychainRequest = {
@@ -28,13 +29,15 @@ export type PaychainResponse = {
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
 
 export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
-  const { userMessage, conversationHistory = [], walletAddress } = req;
+  const walletAddress = req.walletAddress.toLowerCase();
+  const { userMessage, conversationHistory = [] } = req;
   const effectiveKey = req.apiKey || (await resolveKeeperHubApiKey(walletAddress));
+  const log = childLogger({ module: "paychain", wallet: walletAddress.slice(0, 8) });
   const msgLower = userMessage.toLowerCase();
 
   // ── Step 1: Look up registered Payees / Teams in Postgres DB ────────────────
   const savedPayees = await db.query.payees.findMany({
-    where: eq(payees.userWallet, walletAddress.toLowerCase()),
+    where: eq(payees.userWallet, walletAddress),
   });
 
   // Check if user prompt matches a registered payee or team name
@@ -170,7 +173,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         for (const remoteId of createdRemoteIds) {
           if (!remoteId.startsWith("wf-stub-")) {
             await cancelWorkflow(remoteId, effectiveKey).catch(err => {
-              console.warn(`[PAYCHAIN] Compensating cancel failed for ${remoteId}:`, err);
+              log.warn({ remoteId, err }, "[PAYCHAIN] Compensating cancel failed");
             });
           }
         }

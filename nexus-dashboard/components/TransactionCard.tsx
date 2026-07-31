@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp, Cpu } from "lucide-react";
 
-export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub";
+export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub" | "delayed";
 
 type Props = {
   action: string;
@@ -36,6 +36,7 @@ export default function TransactionCard({
     reverted_simulation: <span className="pill pill-warning"><AlertTriangle size={12} /> Caught Revert</span>,
     reverted_chain:      <span className="pill pill-danger"><XCircle size={12} /> Chain Revert</span>,
     pending:             <span className="pill pill-cyan"><Clock size={12} /> Pending</span>,
+    delayed:             <span className="pill pill-warning" style={{ background: "rgba(245,158,11,0.12)", color: "#fbbf24", borderColor: "rgba(245,158,11,0.3)" }}><Clock size={12} /> Delayed</span>,
   }[status] || <span className="pill pill-warning"><AlertTriangle size={12} /> Simulated</span>;
 
   return (
@@ -63,6 +64,28 @@ export default function TransactionCard({
         </div>
         {badge}
       </div>
+
+      {/* Harness Summary Line — Guardian rows only */}
+      {(() => {
+        type Rec = { action?: string };
+        const harnessAction = (aiAnalysis?.harnessRecommendation as Rec | undefined)?.action;
+        const llmAction = (aiAnalysis?.llmRecommendation as Rec | undefined)?.action;
+        const isOverride = aiAnalysis?.harnessOverride === true;
+        if (!harnessAction) return null;
+        return (
+          <div style={{
+            fontSize: 11, fontFamily: "ui-monospace, monospace", padding: "6px 10px", borderRadius: 6,
+            background: "rgba(99,102,241,0.06)", border: "1px solid rgba(99,102,241,0.15)",
+            color: "var(--text-muted)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap"
+          }}>
+            <span>🛡️ Harness: <strong style={{ color: "var(--text)" }}>{harnessAction}</strong></span>
+            <span>· LLM: <strong style={{ color: "var(--text)" }}>{llmAction ?? "—"}</strong></span>
+            {isOverride
+              ? <span style={{ color: "#f87171" }}>· Override: YES</span>
+              : <span style={{ color: "#34d399" }}>· Override: NO</span>}
+          </div>
+        );
+      })()}
 
       {/* Reason block */}
       {reason && (

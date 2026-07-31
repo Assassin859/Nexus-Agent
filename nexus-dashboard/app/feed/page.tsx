@@ -9,10 +9,11 @@ type FeedItem = {
   action: string;
   amount: number;
   asset?: string;
-  status: "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub";
+  status: "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub" | "delayed";
   timestamp?: string;
   txHash?: string;
   reason?: string;
+  aiAnalysis?: Record<string, unknown>;
 };
 
 const STEPS = ["Triggered", "Simulating", "Broadcasting", "Mined"];
@@ -71,7 +72,7 @@ export default function FeedPage() {
           </div>
         ) : (
           feed.map((item, i) => (
-            <TransactionCard key={i} {...item} />
+            <TransactionCard key={i} {...item} aiAnalysis={item.aiAnalysis} />
           ))
         )}
       </div>

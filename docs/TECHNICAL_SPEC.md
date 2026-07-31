@@ -51,7 +51,7 @@ The end user never manually builds calldata, calculates gas limits, or construct
 │   │   • Multi-Candidate Evaluation & Ranking (Expected HF, Gas Cost, Risk Score)                         │     │
 │   │   • Pre-Flight Simulation Intercept via provider.estimateGas()                                       │     │
 │   │   • Capped Exact ERC20 Approvals (Amount + 10% Buffer) — Zero uint256.max Risk                      │     │
-│   │   • 15-Minute Stale Pending Lock TTL Expiry Guard                                                    │     │
+│   │   • Per-Module, Action-Scoped 15-Minute Stale Pending Lock TTL Expiry Guard                        │     │
 │   └──────────────────────────────────────────────────┬───────────────────────────────────────────────────┘     │
 └──────────────────────────────────────────────────────┼─────────────────────────────────────────────────────────┘
                                                        │
@@ -237,61 +237,64 @@ Powered by Vercel AI SDK v4 and `gpt-4o-mini` (via GitHub Models), NexusAgent ru
 
 ## 7. Database Schema Reference (PostgreSQL / Drizzle ORM)
 
+> **Schema Source of Truth**: The authoritative definitions for all database tables are defined in `nexus-agent/src/db/schema.ts`.
 ```typescript
-// 1. active_workflows
+// 1. repayment_cycles — Enforces spending limits per cycle per wallet
+export const repaymentCycles = pgTable("repayment_cycles", {
+  id: uuid("id").defaultRandom().primaryKey(),
+  userWallet: varchar("user_wallet", { length: 42 }).notNull(),
+  cycleStart: timestamp("cycle_start").notNull(),        // ← cycleStart, not cycleStartDate
+  cycleEnd: timestamp("cycle_end").notNull(),
+  cycleLimitUSD: integer("cycle_limit_usd").notNull(),   // ← integer, not doublePrecision
+  totalRepaidThisCycleUSD: integer("total_repaid_this_cycle_usd").default(0),
+});
+
+// 2. active_workflows — Tracks scheduled triggers (DCA, Payroll, Guardian, Yield)
 export const activeWorkflows = pgTable("active_workflows", {
   id: uuid("id").defaultRandom().primaryKey(),
   userWallet: varchar("user_wallet", { length: 42 }).notNull(),
-  type: text("type").notNull(), // "payroll" | "dca" | "guardian" | "yield"
-  recipientAddress: text("recipient_address"),
-  amount: doublePrecision("amount").notNull(),
-  cronSchedule: text("cron_schedule"),
-  status: text("status").notNull(), // "active" | "paused" | "cancelled_xxxx"
-  keeperhubWorkflowId: text("keeperhub_workflow_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-  updatedAt: timestamp("updated_at").defaultNow(),
+  type: varchar("type").notNull(),                       // 'dca' | 'payroll' | 'guardian' | 'yield'
+  recipientAddress: varchar("recipient_address", { length: 42 }),
+  amount: integer("amount").notNull(),                   // ← integer, not doublePrecision
+  cronSchedule: varchar("cron_schedule", { length: 100 }),
+  status: varchar("status", { length: 20 }).default("active"),
+  keeperhubWorkflowId: varchar("keeperhub_workflow_id", { length: 255 }),
+  updatedAt: timestamp("updated_at").defaultNow(),       // ← updatedAt only; no createdAt
 });
 
-// 2. executions_log
+// 3. executions_log — Audit log for all transactions, simulations, and dry runs
 export const executionsLog = pgTable("executions_log", {
   id: uuid("id").defaultRandom().primaryKey(),
   userWallet: varchar("user_wallet", { length: 42 }).notNull(),
   workflowId: uuid("workflow_id").references(() => activeWorkflows.id),
-  action: text("action").notNull(), // "repay" | "supply_collateral" | "swap" | "rotate" | "payroll"
-  amount: doublePrecision("amount").notNull(),
-  status: text("status").notNull(), // "pending" | "success" | "delayed" | "reverted_simulation" | "reverted_chain" | "simulated_stub"
-  txHash: text("tx_hash"),
-  reason: text("reason").notNull(),
-  aiAnalysis: jsonb("ai_analysis"),
+  action: varchar("action").notNull(),                   // 'repay' | 'swap' | 'rotate' | 'payroll' | 'hold'
+  amount: integer("amount").notNull(),                   // ← integer, not doublePrecision
+  status: varchar("status").notNull(),                   // 'pending' | 'success' | 'delayed' | 'reverted_simulation' | 'reverted_chain' | 'simulated_stub'
+  reason: varchar("reason"),                             // ← varchar nullable, not text.notNull()
+  aiAnalysis: jsonb("ai_analysis"),                      // Full harness audit payload
+  txHash: varchar("tx_hash", { length: 66 }),
   timestamp: timestamp("timestamp").defaultNow(),
 });
 
-// 3. payees
+// 4. user_settings — Per-user KeeperHub credentials
+export const userSettings = pgTable("user_settings", {
+  userWallet: varchar("user_wallet", { length: 42 }).primaryKey(),
+  keeperhubApiKey: varchar("keeperhub_api_key", { length: 255 }), // ← varchar(255), not text
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// 5. payees — Payee directory (single recipients, teams, vault pools)
 export const payees = pgTable("payees", {
   id: uuid("id").defaultRandom().primaryKey(),
   userWallet: varchar("user_wallet", { length: 42 }).notNull(),
-  name: text("name").notNull(),
-  type: text("type").notNull(), // "single" | "team"
+  name: varchar("name").notNull(),
+  type: varchar("type").notNull(),                       // 'single' | 'team'
+  payoutMode: varchar("payout_mode").default("direct"),  // 'direct' | 'vault_pool'
+  vaultPoolAddress: varchar("vault_pool_address", { length: 42 }),
   recipientAddresses: jsonb("recipient_addresses").notNull(),
   memberCount: integer("member_count").default(1),
-  vaultPoolAddress: text("vault_pool_address"),
+  parentTeamId: uuid("parent_team_id"),
   createdAt: timestamp("created_at").defaultNow(),
-});
-
-// 4. repayment_cycles
-export const repaymentCycles = pgTable("repayment_cycles", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userWallet: varchar("user_wallet", { length: 42 }).notNull(),
-  cycleStartDate: timestamp("cycle_start_date").notNull(),
-  totalRepaidUSD: doublePrecision("total_repaid_usd").default(0).notNull(),
-  monthlyCapUSD: doublePrecision("monthly_cap_usd").default(1000).notNull(),
-});
-
-// 5. user_settings
-export const userSettings = pgTable("user_settings", {
-  userWallet: varchar("user_wallet", { length: 42 }).primaryKey(),
-  keeperhubApiKey: text("keeperhub_api_key"),
-  updatedAt: timestamp("updated_at").defaultNow(),
 });
 ```
 
