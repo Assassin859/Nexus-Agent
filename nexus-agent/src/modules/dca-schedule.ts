@@ -1,10 +1,11 @@
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog } from "../db/schema.js";
 import { resolveCronSchedule } from "../lib/cron.js";
-import { createWorkflow } from "../lib/mcp-client.js";
-import { encodeUniswapSwap, UNISWAP_V3_ROUTER, USDC_SEPOLIA } from "../lib/calldata.js";
+import { createWorkflow, cancelWorkflow } from "../lib/mcp-client.js";
+import { encodeUniswapSwap, UNISWAP_V3_ROUTER } from "../lib/calldata.js";
 import { getEthPriceUSD } from "../lib/price-feed.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
+import { childLogger } from "../lib/logger.js";
 import { eq, and } from "drizzle-orm";
 
 export async function registerDcaWorkflow({
@@ -21,6 +22,7 @@ export async function registerDcaWorkflow({
   const wallet = userWallet.toLowerCase();
   const schedule = resolveCronSchedule(cronSchedule, message);
   const effectiveKey = await resolveKeeperHubApiKey(wallet);
+  const log = childLogger({ module: "dca-schedule", wallet: wallet.slice(0, 8) });
 
   const existing = await db.query.activeWorkflows.findFirst({
     where: and(
@@ -31,22 +33,29 @@ export async function registerDcaWorkflow({
   });
 
   let workflowId: string;
-  let keeperhubWorkflowId: string | undefined = existing?.keeperhubWorkflowId ?? undefined;
+  let keeperhubWorkflowId: string | undefined;
 
-  if (!keeperhubWorkflowId || keeperhubWorkflowId.startsWith("wf-stub-")) {
-    const ethPriceUSD = await getEthPriceUSD();
-    const calldata = encodeUniswapSwap(amount, wallet, 0.5, ethPriceUSD);
-    const { workflowId: khId, isStub } = await createWorkflow(
-      {
-        name: `dca-${wallet.slice(0, 8)}-${Date.now()}`,
-        triggerType: "cron",
-        cronSchedule: schedule,
-        steps: [{ type: "transaction", to: UNISWAP_V3_ROUTER, calldata, gasStrategy: "standard" }],
-      },
-      effectiveKey
-    );
-    if (!isStub) keeperhubWorkflowId = khId;
+  const priorKhId = existing?.keeperhubWorkflowId;
+  if (priorKhId && !priorKhId.startsWith("wf-stub-")) {
+    const cancel = await cancelWorkflow(priorKhId, effectiveKey);
+    if (!cancel.ok) {
+      log.warn({ keeperhubWorkflowId: priorKhId }, "Failed to cancel prior DCA KeeperHub workflow — remote cron may still fire until replaced");
+    }
   }
+
+  const ethPriceUSD = await getEthPriceUSD();
+  const calldata = encodeUniswapSwap(amount, wallet, 0.5, ethPriceUSD);
+  const { workflowId: khId, isStub } = await createWorkflow(
+    {
+      name: `dca-${wallet.slice(0, 8)}-${Date.now()}`,
+      triggerType: "cron",
+      cronSchedule: schedule,
+      remoteCronEnabled: false,
+      steps: [{ type: "transaction", to: UNISWAP_V3_ROUTER, calldata, gasStrategy: "standard" }],
+    },
+    effectiveKey
+  );
+  if (!isStub) keeperhubWorkflowId = khId;
 
   if (existing) {
     await db.update(activeWorkflows)
@@ -76,9 +85,9 @@ export async function registerDcaWorkflow({
     amount,
     status: keeperhubWorkflowId ? "success" : "simulated_stub",
     reason: keeperhubWorkflowId
-      ? `DCA workflow registered on KeeperHub (${keeperhubWorkflowId}): ${amount} USDC into ETH (${schedule})`
+      ? `DCA registered on KeeperHub (${keeperhubWorkflowId}, schedule disabled; executed locally): ${amount} USDC into ETH (${schedule})`
       : `DCA registered locally only (KeeperHub unavailable): ${amount} USDC into ETH (${schedule})`,
-    aiAnalysis: keeperhubWorkflowId ? { keeperhubWorkflowId } : undefined,
+    aiAnalysis: keeperhubWorkflowId ? { keeperhubWorkflowId, remoteCronEnabled: false } : undefined,
   });
 
   return {
@@ -86,7 +95,7 @@ export async function registerDcaWorkflow({
     workflowId,
     keeperhubWorkflowId,
     message: keeperhubWorkflowId
-      ? `Successfully registered recurring DCA of ${amount} USDC into ETH (${schedule}) on KeeperHub.`
+      ? `Successfully registered recurring DCA of ${amount} USDC into ETH (${schedule}) on KeeperHub (local executor; remote schedule disabled).`
       : `Registered DCA schedule locally (${schedule}). KeeperHub sync pending.`,
   };
 }

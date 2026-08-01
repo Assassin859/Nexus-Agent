@@ -14,6 +14,8 @@ export type WorkflowConfig = {
   cronSchedule?: string;
   steps: WorkflowStep[];
   mevProtected?: boolean;
+  /** When false, cron workflows register on KeeperHub but do not auto-fire remotely. Default true. */
+  remoteCronEnabled?: boolean;
 };
 
 const DEFAULT_CHAIN_ID = process.env.KEEPERHUB_CHAIN_ID || "84532";
@@ -228,6 +230,6 @@ export function buildWorkflowGraph(config: WorkflowConfig) {
   return {
     nodes,
     edges,
-    enabled: config.triggerType === "cron",
+    enabled: config.triggerType === "cron" && config.remoteCronEnabled !== false,
   };
 }

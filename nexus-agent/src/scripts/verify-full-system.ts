@@ -9,6 +9,7 @@ import { getCompoundUsdcSupplyAPY } from "../lib/compound.js";
 import { ensureAllowance } from "../lib/allowance.js";
 import { selectBestCandidate, enforceCriticalHfFloor } from "../lib/guardian-candidate-select.js";
 import { getCycleRemaining, shouldReleaseCycleBudget, resolveExecutionLogStatus } from "../lib/repayment-cycle.js";
+import { buildWorkflowGraph } from "../lib/workflow-graph.js";
 
 async function main() {
   const isIntegration = process.argv.includes("--integration");
@@ -168,6 +169,30 @@ async function main() {
     mcpCacheKey("kh_a") !== mcpCacheKey("kh_b"),
     "MCP Key — distinct cache keys per wallet key",
   );
+
+  // 6g. DCA remote cron disabled on registration graphs
+  const sampleStep = {
+    type: "transaction" as const,
+    to: USDC_SEPOLIA,
+    calldata: encodeERC20Approve(USDC_SEPOLIA, AAVE_V3_POOL, 100),
+    gasStrategy: "standard" as const,
+  };
+  const cronEnabledDefault = buildWorkflowGraph({
+    name: "payroll-test",
+    triggerType: "cron",
+    cronSchedule: "0 9 * * 1",
+    steps: [sampleStep],
+  });
+  assert(cronEnabledDefault.enabled === true, "Workflow Graph — cron default remoteCronEnabled → enabled true");
+
+  const cronDisabledRemote = buildWorkflowGraph({
+    name: "dca-test",
+    triggerType: "cron",
+    cronSchedule: "0 * * * *",
+    remoteCronEnabled: false,
+    steps: [sampleStep],
+  });
+  assert(cronDisabledRemote.enabled === false, "Workflow Graph — remoteCronEnabled false → enabled false");
 
   // 7. Repayment cycle remaining (never negative)
   assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: 2000 }) === 0, "Cycle Remaining — Clamps negative to 0 when over budget");
