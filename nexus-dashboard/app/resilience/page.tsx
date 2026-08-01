@@ -5,11 +5,15 @@ import { CheckCircle2, Clock, ShieldX, Activity } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 
+import DecisionMatrixCard, { ExecutionLogItem } from "@/components/DecisionMatrixCard";
+
 type LogItem = {
+  id?: string;
   action: string;
   amount: number;
   status: string;
   reason?: string;
+  aiAnalysis?: Record<string, unknown>;
 };
 
 type ScenarioCard = {
@@ -64,6 +68,8 @@ const INITIAL_SCENARIOS: ScenarioCard[] = [
 export default function ResiliencePage() {
   const { walletAddress: wallet, authToken } = useWallet();
   const [scenarios, setScenarios] = useState(INITIAL_SCENARIOS);
+  const [feed, setFeed] = useState<ExecutionLogItem[]>([]);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     async function loadResilience() {
@@ -71,6 +77,7 @@ export default function ResiliencePage() {
         const res = await proxyFetch(`/api/feed/${wallet}`, {}, authToken);
         const data: LogItem[] = await res.json();
         if (Array.isArray(data) && data.length > 0) {
+          setFeed(data as ExecutionLogItem[]);
           const happy = data.find(d => d.status === "success");
           const delayed = data.find(d => d.status === "delayed");
           const pending = data.find(d => d.status === "pending");
@@ -103,6 +110,8 @@ export default function ResiliencePage() {
         }
       } catch (err) {
         console.error("Resilience fetch error:", err);
+      } finally {
+        setLoading(false);
       }
     }
     loadResilience();
@@ -114,6 +123,9 @@ export default function ResiliencePage() {
         <h1 className="page-title">Resilience &amp; Simulation Log</h1>
         <p className="page-subtitle">Every action is simulated prior to broadcast. Zero gas wasted on reverts.</p>
       </div>
+
+      {/* AI Decision Matrix Component */}
+      <DecisionMatrixCard items={feed} loading={loading} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
         {scenarios.map((s) => {

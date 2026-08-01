@@ -25,12 +25,12 @@ import { agentFetch } from "@/lib/agent-fetch";
 
 const NAV_ITEMS = [
   { href: "/",            label: "Portfolio",   icon: LayoutDashboard },
-  { href: "/payees",      label: "Payees",      icon: Users },
+  { href: "/chat",        label: "AI Chat",     icon: MessageSquare },
   { href: "/workflows",   label: "Workflows",   icon: GitFork },
+  { href: "/payees",      label: "Payees",      icon: Users },
   { href: "/feed",        label: "Live Feed",   icon: Activity },
   { href: "/resilience",  label: "Resilience",  icon: ShieldCheck },
   { href: "/alerts",      label: "Alerts",      icon: Bell },
-  { href: "/chat",        label: "AI Chat",     icon: MessageSquare },
   { href: "/templates",   label: "Templates",   icon: Store },
 ];
 

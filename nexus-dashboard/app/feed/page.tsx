@@ -5,7 +5,10 @@ import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 import TransactionCard from "@/components/TransactionCard";
 
+import DecisionMatrixCard from "@/components/DecisionMatrixCard";
+
 type FeedItem = {
+  id?: string;
   action: string;
   amount: number;
   asset?: string;
@@ -48,6 +51,9 @@ export default function FeedPage() {
         <h1 className="page-title">Live Execution Feed</h1>
         <p className="page-subtitle">Real-time audit log of autonomous transactions managed by KeeperHub MCP</p>
       </div>
+
+      {/* Decision Matrix & Execution Proofs Card */}
+      <DecisionMatrixCard items={feed} loading={loading} />
 
       {/* Stepper */}
       <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>

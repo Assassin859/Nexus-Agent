@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp, Cpu } from "lucide-react";
+import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp, Cpu, Copy, Check } from "lucide-react";
 
 export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub" | "delayed";
 
@@ -27,8 +27,31 @@ export default function TransactionCard({
   aiAnalysis,
 }: Props) {
   const [expanded, setExpanded] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const isStubTx = status === "simulated_stub" || !txHash || txHash.includes("11111111") || txHash === "0x" + "1".repeat(64);
+
+  function copyTxHash() {
+    if (!txHash) return;
+    navigator.clipboard.writeText(txHash);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  }
+
+  // Provider Badge
+  const providerBadge = isStubTx ? (
+    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "rgba(245,158,11,0.12)", color: "#f59e0b", border: "1px solid rgba(245,158,11,0.25)", textTransform: "uppercase" }}>
+      ⚡ Simulated
+    </span>
+  ) : status === "pending" ? (
+    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "rgba(6,182,212,0.12)", color: "#22d3ee", border: "1px solid rgba(6,182,212,0.25)", textTransform: "uppercase" }}>
+      ⏳ In-Flight
+    </span>
+  ) : (
+    <span style={{ fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 4, background: "rgba(52,211,153,0.12)", color: "#34d399", border: "1px solid rgba(52,211,153,0.25)", textTransform: "uppercase" }}>
+      🛡️ KeeperHub MPC
+    </span>
+  );
 
   const badge = {
     success:             <span className="pill pill-success"><CheckCircle2 size={12} /> Executed</span>,
@@ -54,8 +77,11 @@ export default function TransactionCard({
             {action.slice(0, 3).toUpperCase()}
           </div>
           <div>
-            <div style={{ fontFamily: "var(--font-space-grotesk), sans-serif", fontWeight: 800, fontSize: 15, color: "var(--text)", textTransform: "capitalize" }}>
-              {action} Action
+            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <span style={{ fontFamily: "var(--font-space-grotesk), sans-serif", fontWeight: 800, fontSize: 15, color: "var(--text)", textTransform: "capitalize" }}>
+                {action} Action
+              </span>
+              {providerBadge}
             </div>
             <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, fontWeight: 500 }}>
               {amount > 0 ? `${amount} ${asset}` : "Simulation Run"}
@@ -64,6 +90,24 @@ export default function TransactionCard({
         </div>
         {badge}
       </div>
+
+      {/* Copyable Tx Hash Row */}
+      {txHash && (
+        <div style={{
+          fontSize: 11, fontFamily: "ui-monospace, monospace", padding: "6px 10px", borderRadius: 6,
+          background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)",
+          color: "var(--text-muted)", display: "flex", alignItems: "center", justifyContent: "space-between"
+        }}>
+          <span>Tx Hash: <strong style={{ color: "var(--text)" }}>{txHash.slice(0, 10)}...{txHash.slice(-8)}</strong></span>
+          <button
+            onClick={copyTxHash}
+            style={{ background: "none", border: "none", color: "#818cf8", cursor: "pointer", display: "flex", alignItems: "center", gap: 4, fontSize: 11 }}
+          >
+            {copied ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+            {copied ? "Copied" : "Copy"}
+          </button>
+        </div>
+      )}
 
       {/* Harness Summary Line — Guardian rows only */}
       {(() => {

@@ -2,7 +2,7 @@
 
 > **Hackathon:** Agents Onchain (DoraHacks) · **Dates:** July 27 – Aug 13, 2026  
 > **Built for:** Grand Prize ($2,000) + Best Onboarding UX Improvement Bounty ($1,000)  
-> **Tech Stack:** Node.js + Next.js 14 + Vercel AI SDK (Native Tool Calling) + GitHub Models (gpt-4o-mini) + KeeperHub MCP + SIWE (Web3 Wallet Sign-In) + Postgres (Drizzle ORM)
+> **Tech Stack:** Node.js + Next.js 14 + Vercel AI SDK (Native Tool Calling) + OpenRouter (Free AI Brain Models) + KeeperHub MPC + SIWE (Web3 Wallet Sign-In) + Postgres (Drizzle ORM)
 
 ---
 
@@ -27,7 +27,7 @@ User Message ("dca 50 usdc into eth weekly", "pay dev team 20 usdc every thursda
                                 ▼
          ┌──────────────────────────────────────────────┐
          │       NexusAgent Conversational Agent        │
-         │generateText(model: gpt-4o-mini, maxSteps: 5) │
+         │  generateText(model: OpenRouter, maxSteps: 5)│
          │     Powered by Vercel AI SDK Native Tools    │
          └──────────────────────┬───────────────────────┘
                                 │
@@ -48,7 +48,7 @@ User Message ("dca 50 usdc into eth weekly", "pay dev team 20 usdc every thursda
 │                 KeeperHub MCP Execution                 │
 │  • Turnkey MPC Wallet Signing (AGENTIC_WALLET)          │
 │  • Flashbots MEV-Protected Swaps & Gas Sponsorship      │
-│  • Etherscan Live Tx Verification Links                 │
+│  • Base Sepolia Etherscan Live Verification Links       │
 └─────────────────────────────────────────────────────────┘
 ```
 
@@ -56,113 +56,89 @@ User Message ("dca 50 usdc into eth weekly", "pay dev team 20 usdc every thursda
 
 ## Key Features & Architecture
 
-1. **Native AI SDK Tool Calling Loop**: Powered by `gpt-4o-mini` with `maxSteps: 5`. Handles typos (`cancle`), natural language schedules, and multi-step user prompts without rigid keyword shortcuts.
-2. **Dual-Wallet Scoping & Signer Alignment**:
+1. **OpenRouter & Fallback AI Brain Layer**: Integrated OpenRouter with `@ai-sdk/openai` (`google/gemini-2.0-flash-exp:free`, `meta-llama/llama-3.3-70b-instruct:free`, `openai/gpt-oss-20b:free`) with seamless failover to Google AI Studio or GitHub Models.
+2. **AI Decision Matrix & 5 Execution Paths**:
+   - 🟢 **Hold Path**: Health Factor > 1.40 (Healthy passive monitoring)
+   - 🟡 **Partial Repay**: 1.10 ≤ Health Factor ≤ 1.40 (Preemptive deleveraging)
+   - 🔴 **Full Repay**: Health Factor < 1.10 (Critical liquidation defense)
+   - 🔵 **Yield Rotate**: APY Arbitrage optimization (Aave V3.2 ↔ Compound V3)
+   - ⚪ **Guarded**: Risk rule blocked or gas delay threshold active
+3. **Dual-Wallet Scoping & Signer Alignment**:
    - `monitoredWallet` (`userWallet`): Read-only target account monitored by the agent.
    - `signerWallet` (`AGENTIC_WALLET_ADDRESS`): KeeperHub Turnkey MPC wallet executing on-chain transactions on behalf of the user (supported for Aave repay/supply via `onBehalfOf`).
-   - Yield Rotation is cleanly scoped to positions owned directly by `AGENTIC_WALLET`.
-3. **Agent-Cron DCA Engine**:
+4. **Agent-Cron DCA Engine**:
    - Direct agent-cron hourly evaluation for scheduled token swaps (`active_workflows`).
    - Single-active DCA constraint per wallet with automatic upsert semantics.
-4. **Resilience & Pre-Flight Intercept Engine**:
+5. **Resilience & Pre-Flight Intercept Engine**:
    - Every transaction is pre-flight simulated prior to broadcast, wasting **0 gas** on contract reverts.
    - 15-minute pending lock TTL cleanup ensures stuck executions never block future strategy cycles.
-5. **PayChain Team Remainder & Compensating Cancel Pattern**:
+6. **PayChain Team Remainder & Compensating Cancel Pattern**:
    - Distributes exact remainder cents to final team members ($100 / 3 => $33, $33, $34).
    - Remote KeeperHub workflows created prior to a failure are automatically rolled back via compensating `cancelWorkflow()` calls.
-6. **3-Tier Connection UI Model**:
-   - **Tier 1 (MCP Connected):** Full remote execution with active API key.
-   - **Tier 2 (OAuth Session Active):** Connected via OAuth, prompt to add API key.
-   - **Tier 3 (Unlinked / SIWE Auth Required):** Prompt to authenticate via Web3 wallet.
+7. **Enhanced Audit & Transaction Proof Badging**:
+   - Direct links to **Base Sepolia Etherscan** (`https://sepolia.basescan.org/tx/...`).
+   - Provider badges: `🛡️ KeeperHub MPC` (Real on-chain tx), `⚡ Simulated` (Pre-flight stub), `⏳ In-Flight` (Pending).
 
 ---
 
 ## Modules Reference
 
-### 🛡️ Guardian — Liquidation Protection (`modules/guardian.ts`)
+### 🛡️ Guardian — Liquidation Protection (`nexus-agent/src/modules/guardian.ts`)
 - **Cron:** every 5 minutes
 - Evaluates live Aave V3 Health Factor, collateral, debt, and 30-day budget cycles.
 - Automatically repays debt or supplies collateral before liquidation threshold (HF < 1.15).
 
-### 🔄 Yield Rotator — APY Optimization (`modules/yield-rotator.ts`)
+### 🔄 Yield Rotator — APY Optimization (`nexus-agent/src/modules/yield-rotator.ts`)
 - **Cron:** every 15 minutes
-- Monitors live supply rates between Aave V3 and Compound V3 on Sepolia using `lib/compound.ts`.
+- Monitors live supply rates between Aave V3.2 (`0x8bAB6d...`) and Compound V3 on Base Sepolia using `lib/compound.ts`.
 - Rotates deposits only when 90-day APY profit exceeds gas costs (break-even < 45 days).
 
-### 📅 DCA Engine — Dollar-Cost Averaging (`modules/dca.ts` & `modules/dca-schedule.ts`)
+### 📅 DCA Engine — Dollar-Cost Averaging (`nexus-agent/src/modules/dca.ts` & `nexus-agent/src/modules/dca-schedule.ts`)
 - **Cron:** every hour
 - Executes recurring USDC → ETH swaps via Uniswap V3 with gas-price delays if gas > 5% of purchase value.
 
-### 💸 PayChain — Recurring Payroll (`modules/paychain.ts`)
+### 💸 PayChain — Recurring Payroll (`nexus-agent/src/modules/paychain.ts`)
 - Natural language payroll scheduler with duplicate collision detection, payee auto-creation, remainder cent distribution, and spending ceiling enforcement.
 
 ---
 
-## 7-Page Dashboard & Template Store (`nexus-dashboard/`)
+## Quickstart & Environment Setup
 
-| Page | Route | Features |
-|---|---|---|
-| Portfolio | `/` | Live Aave V3 health factor gauge, collateral, debt, and Compound APYs |
-| Active Workflows | `/workflows` | Registered KeeperHub workflows, MPC payload inspector, Etherscan links |
-| Live Feed | `/feed` | Real-time audit log of broadcasted on-chain transactions |
-| Resilience Log | `/resilience` | 4-card grid log of simulated reverts, gas delays, and pre-flight checks |
-| Alerts | `/alerts` | Health factor warning threshold, repayment success, & gas spike alerts |
-| AI Chat | `/chat` | Conversational command center with SIWE auth guards and tool calling |
-| Payees | `/payees` | Registered single payees, team directories, and shared vault pools |
-| Template Store | `/templates` | Pre-configured KeeperHub automation templates with 1-click deployment |
-
----
-
-## Getting Started
-
-### 1. Environment Setup
+### 1. Clone & Install Dependencies
 ```bash
-cp .env.example .env
+git clone https://github.com/Assassin859/Nexus-Agent.git
+cd Nexus-Agent
+pnpm install
 ```
 
-Set key environment variables in the repo-root `.env`:
-```env
-GITHUB_TOKEN=ghp_...              # GitHub PAT for gpt-4o-mini inference
-DATABASE_URL=postgresql://...     # PostgreSQL database URL
-KEEPERHUB_API_KEY=kh_...          # KeeperHub MCP API key
-AGENTIC_WALLET_ADDRESS=0x89f9...  # KeeperHub MPC signer wallet
-JWT_SECRET=your_jwt_secret_here   # Required in production
-ALCHEMY_RPC_URL=https://base-sepolia.g.alchemy.com/v2/YOUR_KEY
+### 2. Configure Root `.env`
+```bash
+OPENROUTER_API_KEY="sk-or-v1-..."
+BRAIN_MODEL="openai/gpt-oss-20b:free"
+DATABASE_URL="postgresql://postgres:password@localhost:5432/railway"
+NEXT_PUBLIC_AGENT_URL="http://localhost:3001"
 ```
 
-- **Primary Network:** Base Sepolia (Chain ID `84532`)
-- **RPC Endpoint:** Base Sepolia Alchemy (`https://base-sepolia.g.alchemy.com/v2/YOUR_KEY`) or `https://sepolia.base.org`
-
-### 2. Database Setup & Seed Data
+### 3. Run Backend Agent & Next.js Dashboard
 ```bash
-cd nexus-agent
-pnpm db:migrate
-pnpm db:seed           # Seeds demo repayment cycles and active workflows
-```
+# Terminal 1: Backend Agent Server (Port 3001)
+pnpm --prefix nexus-agent dev
 
-### 3. Run System Verification Suite
-```bash
-pnpm verify            # Executes Tier A & Tier B verification checks
-```
-
-### 4. Start Agent Backend & Dashboard
-```bash
-# Terminal 1: Agent Backend
-cd nexus-agent
-pnpm dev               # Runs on http://localhost:3001
-
-# Terminal 2: Next.js Dashboard
-cd nexus-dashboard
-pnpm dev               # Runs on http://localhost:3000
+# Terminal 2: Next.js Dashboard UI (Port 3000)
+pnpm --prefix nexus-dashboard dev
 ```
 
 ---
 
-## Upstream Integration & Friction Notes
+## Verification & Test Harnesses
 
-For detailed documentation on KeeperHub MCP integration friction, upstream pull requests, and protocol edge cases identified during development, see [KEEPERHUB_BUGS.md](./KEEPERHUB_BUGS.md).
+```bash
+# Run 19/19 Unit & Integration Tests
+pnpm --prefix nexus-agent run verify:integration
 
----
+# Run OpenRouter AI Brain Smoke Test
+pnpm --prefix nexus-agent exec tsx src/scripts/test-openrouter-smoke.ts
 
-## License
-MIT
+# Evaluate Live Base Sepolia Guardian Position
+pnpm --prefix nexus-agent exec tsx src/scripts/test-guardian-run.ts
+```

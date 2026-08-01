@@ -222,6 +222,8 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
 
   const aiAnalysisPayload = {
+    healthFactor: position.healthFactor,
+    evaluatedAt: new Date().toISOString(),
     ...decision.analysis,
     priceTrend,
     candidateActions: decision.candidateActions ?? [],
