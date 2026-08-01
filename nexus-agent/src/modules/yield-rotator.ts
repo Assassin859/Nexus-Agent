@@ -57,6 +57,34 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
+  // ── Step 4.1: Expire pending rows older than 15m (wallet-wide) ──────────────
+  const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
+  await db
+    .update(executionsLog)
+    .set({
+      status: "reverted_chain",
+      reason: "Pending lock expired (TTL 15m) — lock released for next cycle.",
+    })
+    .where(
+      and(
+        eq(executionsLog.userWallet, monitoredWallet),
+        eq(executionsLog.status, "pending"),
+        lt(executionsLog.timestamp, fifteenMinutesAgo)
+      )
+    );
+
+  // ── Step 4.2: Hard return on active pending lock (under 15m) ─────────────
+  const activePendingTx = await db.query.executionsLog.findFirst({
+    where: and(
+      eq(executionsLog.userWallet, monitoredWallet),
+      eq(executionsLog.status, "pending")
+    ),
+  });
+  if (activePendingTx) {
+    log.warn({ logId: activePendingTx.id }, "Active pending transaction exists (<15m) — skipping yield evaluation.");
+    return;
+  }
+
   log.info("Evaluating yield opportunities");
 
   const position = await getAavePosition(monitoredWallet);
@@ -119,36 +147,6 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  // ── Step 1b: Stale Pending Lock Expiry & Active Guard (TTL 15m) ───────────
-  const cutoff15m = new Date(Date.now() - 15 * 60 * 1000);
-  const expiredPendingRows = await db.query.executionsLog.findMany({
-    where: and(
-      eq(executionsLog.userWallet, monitoredWallet),
-      eq(executionsLog.action, "rotate"),
-      eq(executionsLog.status, "pending"),
-      lt(executionsLog.timestamp, cutoff15m)
-    ),
-  });
-
-  if (expiredPendingRows.length > 0) {
-    for (const stale of expiredPendingRows) {
-      await db.update(executionsLog)
-        .set({ status: "reverted_chain", reason: "Yield rotation pending lock expired (TTL 15m)" })
-        .where(eq(executionsLog.id, stale.id));
-    }
-  }
-
-  const activePendingTx = await db.query.executionsLog.findFirst({
-    where: and(
-      eq(executionsLog.userWallet, monitoredWallet),
-      eq(executionsLog.action, "rotate"),
-      eq(executionsLog.status, "pending")
-    ),
-  });
-  if (activePendingTx) {
-    log.warn({ logId: activePendingTx.id }, "Active yield rotation pending transaction exists (<15m) — skipping.");
-    return;
-  }
 
   const rotateAmount = Math.min(decision.recommendation.amount || userBalance, userBalance);
   // Step 1: Withdraw from Aave to signer wallet

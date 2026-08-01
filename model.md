@@ -1,7 +1,7 @@
 # NexusAgent AI Brain — Model Reference & Zod Schemas
 
-> Reference for the **Vercel AI SDK + GitHub Models** integration used across all 4 NexusAgent modules.
-> Current model: `gpt-4o-mini` via `https://models.inference.ai.azure.com`
+> Reference for the **Vercel AI SDK + OpenRouter** integration used across all 4 NexusAgent modules.
+> Current provider chain: `OPENROUTER_API_KEY` → `GEMINI_API_KEY` → `OPENAI_API_KEY` → `GITHUB_TOKEN`
 
 ---
 

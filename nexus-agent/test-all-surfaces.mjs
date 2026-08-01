@@ -1,3 +1,5 @@
+import "./src/lib/env.js";
+import { generateAuthToken } from "./src/middleware/auth.js";
 import {
   createWorkflow,
   executeWorkflow,
@@ -18,6 +20,11 @@ async function runTestSuite() {
 
   const wallet = "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
   const agentUrl = "http://localhost:3001";
+  const token = generateAuthToken(wallet);
+  const authHeaders = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${token}`,
+  };
 
   // 1. Health check
   try {
@@ -29,8 +36,13 @@ async function runTestSuite() {
 
   // 2. Portfolio API
   try {
-    const portfolio = await fetch(`${agentUrl}/api/portfolio/${wallet}`).then((r) => r.json());
-    console.log("✅ 2. Portfolio API (Aave V3 Read):", `HF=${portfolio.healthFactor}, Workflows=${portfolio.workflows.length}`);
+    const portfolio = await fetch(`${agentUrl}/api/portfolio/${wallet}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.json());
+    console.log(
+      "✅ 2. Portfolio API (Aave V3 Read):",
+      `HF=${portfolio.healthFactor}, Workflows=${portfolio.workflows.length}`
+    );
   } catch (e) {
     console.error("❌ 2. Portfolio API Failed:", e);
   }
@@ -83,8 +95,7 @@ async function runTestSuite() {
   try {
     const guardianRes = await fetch(`${agentUrl}/api/trigger/guardian`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wallet }),
+      headers: authHeaders,
     }).then((r) => r.json());
     console.log("✅ 13. Guardian Module Trigger:", guardianRes.triggered ? "Triggered" : "Failed");
   } catch (e) {
@@ -95,8 +106,7 @@ async function runTestSuite() {
   try {
     const yieldRes = await fetch(`${agentUrl}/api/trigger/yield`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wallet }),
+      headers: authHeaders,
     }).then((r) => r.json());
     console.log("✅ 14. Yield Rotator Module Trigger:", yieldRes.triggered ? "Triggered" : "Failed");
   } catch (e) {
@@ -107,8 +117,7 @@ async function runTestSuite() {
   try {
     const dcaRes = await fetch(`${agentUrl}/api/trigger/dca`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ wallet }),
+      headers: authHeaders,
     }).then((r) => r.json());
     console.log("✅ 15. DCA Engine Module Trigger:", dcaRes.triggered ? "Triggered" : "Failed");
   } catch (e) {
@@ -119,10 +128,9 @@ async function runTestSuite() {
   try {
     const chatRes = await fetch(`${agentUrl}/api/payroll`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
+      headers: authHeaders,
+body: JSON.stringify({
         userMessage: "Pay 100 USDC to 0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b every Friday",
-        walletAddress: wallet,
       }),
     }).then((r) => r.json());
     console.log("✅ 16. PayChain Natural Language Parser:", chatRes.success ? "Success" : chatRes.message);
@@ -132,7 +140,9 @@ async function runTestSuite() {
 
   // 17. Check Live Execution Feed API
   try {
-    const feed = await fetch(`${agentUrl}/api/feed/${wallet}`).then((r) => r.json());
+    const feed = await fetch(`${agentUrl}/api/feed/${wallet}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    }).then((r) => r.json());
     console.log("✅ 17. Live Execution Feed API:", `${feed.length} log entries retrieved from Postgres`);
   } catch (e) {
     console.error("❌ 17. Feed API Failed:", e);

@@ -2,7 +2,7 @@
 
 > **Target Audience:** Hackathon Judges (DoraHacks / Agents Onchain 2026), AI Engineers, Web3 Protocol Developers  
 > **Repository:** [nexus-agent](https://github.com/Assassin859/Nexus-Agent)  
-> **Tech Stack:** Node.js 22 + Next.js 14 (App Router) + Vercel AI SDK v4 + GitHub Models (`gpt-4o-mini`) + KeeperHub MCP + SIWE (Web3 Wallet Sign-In) + Postgres (Drizzle ORM) + Ethers.js v6
+> **Tech Stack:** Node.js 22 + Next.js 14 (App Router) + Vercel AI SDK v4 + OpenRouter (google/gemini-2.5-flash / openai/gpt-oss-20b:free) + KeeperHub MCP + SIWE (Web3 Wallet Sign-In) + Postgres (Drizzle ORM) + Ethers.js v6
 
 ---
 
