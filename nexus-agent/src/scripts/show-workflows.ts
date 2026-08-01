@@ -10,7 +10,7 @@ const wfs = await db.query.activeWorkflows.findMany({
   where: eq(activeWorkflows.userWallet, WALLET),
 });
 for (const wf of wfs) {
-  console.log(JSON.stringify({ id: wf.id, type: wf.type, keeperhubId: wf.keeperhubId, status: wf.status, amount: wf.amount, schedule: wf.schedule }, null, 2));
+  console.log(JSON.stringify({ id: wf.id, type: wf.type, keeperhubWorkflowId: wf.keeperhubWorkflowId, status: wf.status, amount: wf.amount, cronSchedule: wf.cronSchedule }, null, 2));
 }
 
 console.log("\n=== Last 10 Executions with aiAnalysis ===");

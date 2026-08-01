@@ -88,10 +88,10 @@ async function main() {
   for (const config of PAYCHAIN_CONFIGS) {
     process.stdout.write(`  ⏳ ${config.label} ... `);
     try {
+      const recipient = config.payees[0].address;
       const result = await handlePaychain({
-        userWallet: WALLET,
-        amount: config.amount,
-        payees: config.payees,
+        walletAddress: WALLET,
+        userMessage: `pay ${recipient} ${config.amount} USDC every Friday at 9am`,
       });
       const msg = (result as any).message || JSON.stringify(result);
       paychainResults.push({ label: config.label, success: !!(result as any).success, message: msg });
