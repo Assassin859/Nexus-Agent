@@ -186,7 +186,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
         .set({
           status: "simulated_stub",
           reason: `DCA (Simulated Stub): ${decision.userExplanation}`,
-          aiAnalysis: { ...decision.analysis, executionId },
+          aiAnalysis: { ...decision.analysis, workflowId, executionId },
         })
         .where(eq(executionsLog.id, pendingRow.id));
     } else {
@@ -201,7 +201,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
           status: finalStatus,
           txHash: poll.txHash,
           reason: `DCA: ${workflow.amount} USDC → ETH via Uniswap V3. ${decision.userExplanation}`,
-          aiAnalysis: { ...decision.analysis, executionId },
+          aiAnalysis: { ...decision.analysis, workflowId, executionId, pollStatus: poll.status },
         })
         .where(eq(executionsLog.id, pendingRow.id));
     }

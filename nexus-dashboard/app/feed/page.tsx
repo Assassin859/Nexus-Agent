@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 import TransactionCard from "@/components/TransactionCard";
-
 import DecisionMatrixCard from "@/components/DecisionMatrixCard";
 
 type FeedItem = {
@@ -20,11 +19,16 @@ type FeedItem = {
 };
 
 const STEPS = ["Triggered", "Simulating", "Broadcasting", "Mined"];
+const PAGE_SIZE = 5;
 
 export default function FeedPage() {
   const { walletAddress, authToken } = useWallet();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);
+
+  // Reset page to 1 when wallet changes
+  useEffect(() => { setPage(1); }, [walletAddress]);
 
   useEffect(() => {
     async function loadFeed() {
@@ -45,6 +49,9 @@ export default function FeedPage() {
     return () => clearInterval(interval);
   }, [walletAddress, authToken]);
 
+  const totalPages = Math.max(1, Math.ceil(feed.length / PAGE_SIZE));
+  const pagedFeed = feed.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <div className="page-header">
@@ -52,7 +59,7 @@ export default function FeedPage() {
         <p className="page-subtitle">Real-time audit log of autonomous transactions managed by KeeperHub MCP</p>
       </div>
 
-      {/* Decision Matrix & Execution Proofs Card */}
+      {/* Decision Matrix — always uses full feed for correct aggregate counts */}
       <DecisionMatrixCard items={feed} loading={loading} />
 
       {/* Stepper */}
@@ -66,7 +73,7 @@ export default function FeedPage() {
         ))}
       </div>
 
-      {/* Feed list */}
+      {/* Feed list — paginated 5 per page */}
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {loading ? (
           <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
@@ -77,11 +84,44 @@ export default function FeedPage() {
             No executions logged yet for wallet <span style={{ fontFamily: "monospace", color: "#818cf8" }}>{walletAddress.slice(0, 8)}...</span>. Trigger a workflow in AI Chat or Templates to see live events.
           </div>
         ) : (
-          feed.map((item, i) => (
-            <TransactionCard key={i} {...item} aiAnalysis={item.aiAnalysis} />
+          pagedFeed.map((item, i) => (
+            <TransactionCard key={`${page}-${i}`} {...item} aiAnalysis={item.aiAnalysis} />
           ))
         )}
       </div>
+
+      {/* Pagination controls — only shown when feed has more than PAGE_SIZE rows */}
+      {feed.length > PAGE_SIZE && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 16, paddingBottom: 12 }}>
+          <button
+            onClick={() => setPage(p => Math.max(1, p - 1))}
+            disabled={page === 1}
+            style={{
+              padding: "6px 18px", borderRadius: 8, border: "1px solid var(--border)",
+              background: page === 1 ? "var(--surface)" : "rgba(129,140,248,0.12)",
+              color: page === 1 ? "var(--text-muted)" : "#818cf8",
+              fontWeight: 600, cursor: page === 1 ? "not-allowed" : "pointer", fontSize: 13,
+            }}
+          >
+            ← Previous
+          </button>
+          <span style={{ fontSize: 13, color: "var(--text-muted)", fontWeight: 500 }}>
+            Page {page} of {totalPages}
+          </span>
+          <button
+            onClick={() => setPage(p => Math.min(totalPages, p + 1))}
+            disabled={page === totalPages}
+            style={{
+              padding: "6px 18px", borderRadius: 8, border: "1px solid var(--border)",
+              background: page === totalPages ? "var(--surface)" : "rgba(129,140,248,0.12)",
+              color: page === totalPages ? "var(--text-muted)" : "#818cf8",
+              fontWeight: 600, cursor: page === totalPages ? "not-allowed" : "pointer", fontSize: 13,
+            }}
+          >
+            Next →
+          </button>
+        </div>
+      )}
     </div>
   );
 }

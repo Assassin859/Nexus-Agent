@@ -220,6 +220,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
               amount: item.memberAmount,
               totalAmount: amount,
               keeperhubWorkflowId: item.workflowId,
+              workflowId: item.workflowId,
             },
           });
         }

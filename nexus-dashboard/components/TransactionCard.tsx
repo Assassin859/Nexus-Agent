@@ -29,7 +29,14 @@ export default function TransactionCard({
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const isStubTx = status === "simulated_stub" || !txHash || txHash.includes("11111111") || txHash === "0x" + "1".repeat(64);
+  const isStubTx = status === "simulated_stub" || !txHash || txHash.length !== 66 || txHash.includes("11111111") || txHash === "0x" + "1".repeat(64);
+
+  // Strict workflow ID extraction — no executionId fallback (would 404 on /workflows/...)
+  const rawWfId = aiAnalysis?.workflowId ?? aiAnalysis?.keeperhubWorkflowId;
+  const khWorkflowId: string | null =
+    typeof rawWfId === "string" && rawWfId.length > 0 && !rawWfId.includes("stub")
+      ? rawWfId
+      : null;
 
   function copyTxHash() {
     if (!txHash) return;
@@ -56,7 +63,7 @@ export default function TransactionCard({
   const badge = {
     success:             <span className="pill pill-success"><CheckCircle2 size={12} /> Executed</span>,
     simulated_stub:      <span className="pill pill-warning" style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", borderColor: "rgba(245,158,11,0.3)" }}><AlertTriangle size={12} /> Simulated</span>,
-    reverted_simulation: <span className="pill pill-warning"><AlertTriangle size={12} /> Caught Revert</span>,
+    reverted_simulation: <span className="pill pill-warning"><AlertTriangle size={12} /> ⚡ Pre-Flight Intercept</span>,
     reverted_chain:      <span className="pill pill-danger"><XCircle size={12} /> Chain Revert</span>,
     pending:             <span className="pill pill-cyan"><Clock size={12} /> Pending</span>,
     delayed:             <span className="pill pill-warning" style={{ background: "rgba(245,158,11,0.12)", color: "#fbbf24", borderColor: "rgba(245,158,11,0.3)" }}><Clock size={12} /> Delayed</span>,
@@ -179,9 +186,9 @@ export default function TransactionCard({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)", fontWeight: 500, flexWrap: "wrap", gap: 8 }}>
         <span>{timestamp ? new Date(timestamp).toLocaleString() : "Just now"}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          {aiAnalysis?.workflowId && !aiAnalysis.workflowId.includes("stub") ? (
+          {khWorkflowId ? (
             <a
-              href={`https://app.keeperhub.com/workflows/${aiAnalysis.workflowId}`}
+              href={`https://app.keeperhub.com/workflows/${khWorkflowId}`}
               target="_blank"
               rel="noopener noreferrer"
               style={{ display: "flex", alignItems: "center", gap: 4, color: "#818cf8", fontWeight: 600, textDecoration: "none" }}
@@ -194,7 +201,7 @@ export default function TransactionCard({
             </span>
           )}
 
-          {!isStubTx && (
+          {!isStubTx && txHash && (
             <a
               href={`https://sepolia.basescan.org/tx/${txHash}`}
               target="_blank"

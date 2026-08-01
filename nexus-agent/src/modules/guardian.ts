@@ -352,7 +352,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
     if (isStub) {
       await db.update(executionsLog)
-        .set({ status: "simulated_stub", reason: decision.userExplanation, aiAnalysis: { ...aiAnalysisPayload, executionId } })
+        .set({ status: "simulated_stub", reason: decision.userExplanation, aiAnalysis: { ...aiAnalysisPayload, workflowId, executionId } })
         .where(eq(executionsLog.id, pendingRow.id));
     } else {
       const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
@@ -369,7 +369,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
           status: finalStatus,
           txHash: poll.txHash,
           reason: finalReason,
-          aiAnalysis: { ...aiAnalysisPayload, executionId },
+          aiAnalysis: { ...aiAnalysisPayload, workflowId, executionId, pollStatus: poll.status },
         })
         .where(eq(executionsLog.id, pendingRow.id));
 

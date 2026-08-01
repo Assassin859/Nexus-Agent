@@ -17,8 +17,12 @@ type ToolResult = { toolName: string; result?: unknown };
 
 const DEFAULT_WELCOME = {
   sender: "agent",
-  text: "Hello! I am your NexusAgent AI assistant powered by GitHub Models. How can I assist with your automated wealth strategy today?",
+  text: "Hello! I am your NexusAgent AI assistant powered by OpenRouter. How can I assist with your automated wealth strategy today?",
 };
+
+function chatKey(wallet: string) {
+  return `nexus_chat_history_${wallet.toLowerCase()}`;
+}
 
 export default function ChatPage() {
   const { walletAddress, authToken, signInWithEthereum } = useWallet();
@@ -29,34 +33,40 @@ export default function ChatPage() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const isLoadedRef = useRef(false);
 
-  // 1. Load chat history and check for pending template prompt on client mount safely
+  // 1. Load chat history per wallet (with legacy global key fallback); reload when wallet switches
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("nexus_chat_history");
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            setMessages(parsed);
-          }
-        } catch {}
-      }
-      isLoadedRef.current = true;
-
-      const pendingPrompt = sessionStorage.getItem("pending_chat_prompt");
-      if (pendingPrompt) {
-        setInput(pendingPrompt);
-        sessionStorage.removeItem("pending_chat_prompt");
-      }
+    if (typeof window === "undefined" || !walletAddress) return;
+    const walletSpecificKey = chatKey(walletAddress);
+    const saved =
+      localStorage.getItem(walletSpecificKey) ||
+      localStorage.getItem("nexus_chat_history"); // legacy fallback (one-time)
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setMessages(parsed);
+          isLoadedRef.current = true;
+          return;
+        }
+      } catch {}
     }
-  }, []);
+    setMessages([DEFAULT_WELCOME]);
+    isLoadedRef.current = true;
 
-  // 2. Save chat history ONLY after initial mount load completes
+    const pendingPrompt = sessionStorage.getItem("pending_chat_prompt");
+    if (pendingPrompt) {
+      setInput(pendingPrompt);
+      sessionStorage.removeItem("pending_chat_prompt");
+    }
+  }, [walletAddress]);
+
+  // 2. Save chat history to wallet-scoped key ONLY after initial mount load completes
   useEffect(() => {
-    if (typeof window !== "undefined" && isLoadedRef.current && messages.length > 0) {
-      localStorage.setItem("nexus_chat_history", JSON.stringify(messages));
+    if (typeof window !== "undefined" && isLoadedRef.current && walletAddress && messages.length > 0) {
+      localStorage.setItem(chatKey(walletAddress), JSON.stringify(messages));
     }
-  }, [messages]);
+  }, [messages, walletAddress]);
+
 
   useEffect(() => {
     if (!walletAddress) return;
@@ -131,8 +141,11 @@ export default function ChatPage() {
   }
 
   function clearHistory() {
-    localStorage.removeItem("nexus_chat_history");
+    if (typeof window !== "undefined" && walletAddress) {
+      localStorage.removeItem(chatKey(walletAddress));
+    }
     setMessages([DEFAULT_WELCOME]);
+    isLoadedRef.current = true;
   }
 
   const isPortfolioError = portfolio?.isError ?? false;
@@ -168,7 +181,7 @@ export default function ChatPage() {
       <div className="page-header" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
           <h1 className="page-title">AI Assistant &amp; Natural Language Command Center</h1>
-          <p className="page-subtitle">Interact with the GitHub Models decision engine with full conversational memory</p>
+          <p className="page-subtitle">Interact with the OpenRouter AI decision engine with full conversational memory</p>
         </div>
         <button
           onClick={clearHistory}

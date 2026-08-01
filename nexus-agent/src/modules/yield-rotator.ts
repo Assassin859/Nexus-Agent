@@ -233,7 +233,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
         .set({
           status: "simulated_stub",
           reason: `Yield Rotate (Simulated Stub): ${decision.userExplanation}`,
-          aiAnalysis: { ...decision.analysis, executionId },
+          aiAnalysis: { ...decision.analysis, workflowId, executionId },
         })
         .where(eq(executionsLog.id, pendingRow.id));
     } else {
@@ -250,7 +250,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
           status: finalStatus,
           txHash: poll.txHash,
           reason: decision.userExplanation,
-          aiAnalysis: { ...decision.analysis, executionId: executionIdForLog },
+          aiAnalysis: { ...decision.analysis, workflowId, executionId: executionIdForLog, pollStatus: poll.status },
         })
         .where(eq(executionsLog.id, pendingRow.id));
     }
