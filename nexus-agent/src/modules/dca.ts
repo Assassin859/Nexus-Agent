@@ -3,9 +3,8 @@ import { getBrainModel } from "../brain/provider.js";
 import { DCASchema, DCA_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog } from "../db/schema.js";
-import { simulate } from "../lib/simulate.js";
+import { simulateErc20Action } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow, pollExecutionUntilSettled, type WorkflowStep } from "../lib/mcp-client.js";
-import { ensureAllowance } from "../lib/allowance.js";
 import { getProvider } from "../lib/rpc.js";
 import { encodeUniswapSwap, UNISWAP_V3_ROUTER, USDC_SEPOLIA } from "../lib/calldata.js";
 import { getAavePosition, getUsdcBalance } from "../lib/aave.js";
@@ -137,9 +136,13 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   // Send swapped ETH directly to monitored userWallet
   const calldata = encodeUniswapSwap(workflow.amount, context.monitoredWallet, maxSlippage, ethPriceUSD);
 
-  const sim = await simulate(
+  const sim = await simulateErc20Action(
+    context.signerWallet,
+    context.monitoredWallet,
+    USDC_SEPOLIA,
+    UNISWAP_V3_ROUTER,
+    workflow.amount,
     { from: context.signerWallet, to: UNISWAP_V3_ROUTER, data: calldata },
-    context.monitoredWallet
   );
   if (sim.wouldRevert) {
     log.warn("Simulation caught revert — recording resilience log.");
@@ -154,8 +157,8 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  // Prepend ERC20 max-uint256 approval step for Uniswap router if needed
-  const allowanceCalldata = await ensureAllowance(context.signerWallet, USDC_SEPOLIA, UNISWAP_V3_ROUTER, workflow.amount);
+  // Prepend ERC20 approval step for Uniswap router if needed
+  const { allowanceCalldata } = sim;
   const steps: WorkflowStep[] = [];
   if (allowanceCalldata) {
     steps.push({ type: "transaction", to: USDC_SEPOLIA, calldata: allowanceCalldata, gasStrategy: "standard" });

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp, Cpu, Copy, Check } from "lucide-react";
+import { isKeeperHubWorkflowId, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
 
 export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub" | "delayed";
 
@@ -32,11 +33,9 @@ export default function TransactionCard({
   const isStubTx = status === "simulated_stub" || !txHash || txHash.length !== 66 || txHash.includes("11111111") || txHash === "0x" + "1".repeat(64);
 
   // Strict workflow ID extraction — no executionId fallback (would 404 on /workflows/...)
-  const rawWfId = aiAnalysis?.workflowId ?? aiAnalysis?.keeperhubWorkflowId;
+  const rawWfId = aiAnalysis?.keeperhubWorkflowId ?? aiAnalysis?.workflowId;
   const khWorkflowId: string | null =
-    typeof rawWfId === "string" && rawWfId.length > 0 && !rawWfId.includes("stub")
-      ? rawWfId
-      : null;
+    typeof rawWfId === "string" && isKeeperHubWorkflowId(rawWfId) ? rawWfId : null;
 
   function copyTxHash() {
     if (!txHash) return;
@@ -188,7 +187,7 @@ export default function TransactionCard({
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {khWorkflowId ? (
             <a
-              href={`https://app.keeperhub.com/workflows/${khWorkflowId}`}
+              href={keeperHubWorkflowUrl(khWorkflowId) ?? "#"}
               target="_blank"
               rel="noopener noreferrer"
               style={{ display: "flex", alignItems: "center", gap: 4, color: "#818cf8", fontWeight: 600, textDecoration: "none" }}

@@ -15,7 +15,9 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit push",
     "db:seed": "tsx src/db/seed.ts",
-    "db:studio": "drizzle-kit studio"
+    "db:studio": "drizzle-kit studio",
+    "trigger-workflows": "tsx src/scripts/trigger-many-workflows.ts",
+    "chat-workflows": "tsx src/scripts/sign-and-chat.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.0.12",

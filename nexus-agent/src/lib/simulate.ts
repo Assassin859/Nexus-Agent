@@ -1,4 +1,5 @@
 import { getProvider } from "./rpc.js";
+import { ensureAllowance } from "./allowance.js";
 import { childLogger } from "./logger.js";
 
 const simLog = childLogger({ module: "simulate" });
@@ -14,6 +15,10 @@ export type SimulationResult = {
   wouldRevert: boolean;
   gasEstimate: bigint;
   revertReason?: string;
+};
+
+export type Erc20SimulationResult = SimulationResult & {
+  allowanceCalldata: string | null;
 };
 
 export async function simulate(
@@ -35,4 +40,34 @@ export async function simulate(
     simLog.warn({ revertReason }, "[SIMULATE] Caught revert (gas saved)");
     return { wouldRevert: true, gasEstimate: 0n, revertReason };
   }
+}
+
+/**
+ * Pre-flight simulation for ERC20-backed actions (repay, supply, swap).
+ * Checks allowance first; simulates approve when needed, otherwise simulates the main tx.
+ */
+export async function simulateErc20Action(
+  signerWallet: string,
+  monitoredWallet: string,
+  token: string,
+  spender: string,
+  amountUSD: number,
+  mainTx: TxPayload,
+): Promise<Erc20SimulationResult> {
+  const allowanceCalldata = await ensureAllowance(signerWallet, token, spender, amountUSD);
+
+  if (allowanceCalldata) {
+    const approveSim = await simulate(
+      { from: signerWallet, to: token, data: allowanceCalldata },
+      monitoredWallet,
+    );
+    if (approveSim.wouldRevert) {
+      return { ...approveSim, allowanceCalldata };
+    }
+    simLog.info("Skipping main tx simulation; approve step will be prepended.");
+    return { wouldRevert: false, gasEstimate: approveSim.gasEstimate, allowanceCalldata };
+  }
+
+  const mainSim = await simulate(mainTx, monitoredWallet);
+  return { ...mainSim, allowanceCalldata: null };
 }

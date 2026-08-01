@@ -1,21 +1,8 @@
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
+import { buildWorkflowGraph, type WorkflowConfig, type WorkflowStep } from "./workflow-graph.js";
 
-export type WorkflowStep = {
-  type: "transaction";
-  to: string;
-  calldata: string;
-  value?: string;
-  gasStrategy?: "standard" | "fast" | "sponsored";
-};
-
-export type WorkflowConfig = {
-  name: string;
-  triggerType: "cron" | "webhook" | "manual" | "event";
-  cronSchedule?: string;
-  steps: WorkflowStep[];
-  mevProtected?: boolean;
-};
+export type { WorkflowConfig, WorkflowStep };
 
 export type ExecutionStatus = {
   executionId: string;
@@ -34,14 +21,30 @@ export type ExecutionLog = {
 // Singleton Client Cache
 let cachedClient: Client | null = null;
 
+function getMcpUrl(): string {
+  return process.env.KEEPERHUB_MCP_URL || "https://app.keeperhub.com/mcp";
+}
+
+function getMcpAuthHeaders(): Record<string, string> | undefined {
+  const apiKey = process.env.KEEPERHUB_API_KEY;
+  if (!apiKey) return undefined;
+  return { Authorization: `Bearer ${apiKey}` };
+}
+
+function createMcpTransport(): StreamableHTTPClientTransport {
+  const headers = getMcpAuthHeaders();
+  return new StreamableHTTPClientTransport(new URL(getMcpUrl()), {
+    requestInit: headers ? { headers } : undefined,
+  });
+}
+
 /**
  * Connected MCP client singleton with auto-reconnect fallback.
  */
 async function tryGetMcpClient(): Promise<Client | null> {
   if (cachedClient) return cachedClient;
-  const mcpUrl = process.env.KEEPERHUB_MCP_URL || "https://mcp.keeperhub.com";
   try {
-    const transport = new StreamableHTTPClientTransport(new URL(mcpUrl));
+    const transport = createMcpTransport();
     const client = new Client({ name: "nexus-agent", version: "1.0.0" });
     await client.connect(transport);
     cachedClient = client;
@@ -76,6 +79,9 @@ export function parseMcpToolContent<T = any>(result: any, keyName?: string): T |
           try {
             const parsed = JSON.parse(trimmed);
             if (!keyName || parsed[keyName] !== undefined) return parsed as T;
+            if (keyName === "workflowId" && parsed.id) {
+              return { workflowId: parsed.id } as unknown as T;
+            }
           } catch {}
         }
         // Fallback regex matching for workflowId / executionId
@@ -140,18 +146,26 @@ async function executeWithRetry<T>(
 // 1. Create Workflow
 export async function createWorkflow(
   config: WorkflowConfig,
-  apiKey?: string
+  _apiKey?: string
 ): Promise<{ workflowId: string; isStub: boolean }> {
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+  const graph = buildWorkflowGraph(config);
 
   const result = await executeWithRetry(
     async (client) => {
       const raw = await client.callTool({
         name: "create_workflow",
-        arguments: { ...config, apiKey: effectiveKey },
+        arguments: {
+          name: config.name,
+          nodes: graph.nodes,
+          edges: graph.edges,
+          enabled: graph.enabled,
+        },
       });
-      const parsed = parseMcpToolContent<{ workflowId: string }>(raw, "workflowId");
-      const workflowId = parsed?.workflowId || `wf-stub-${Date.now()}`;
+      if ((raw as any)?.isError) {
+        throw new Error((raw as any).content?.[0]?.text || "create_workflow failed");
+      }
+      const parsed = parseMcpToolContent<{ workflowId?: string; id?: string }>(raw, "workflowId");
+      const workflowId = parsed?.workflowId || parsed?.id || `wf-stub-${Date.now()}`;
       const isStub = workflowId.startsWith("wf-stub-");
       return { data: workflowId, isStub };
     },
@@ -164,17 +178,19 @@ export async function createWorkflow(
 // 2. Execute Workflow
 export async function executeWorkflow(
   workflowId: string,
-  apiKey?: string
+  _apiKey?: string
 ): Promise<{ executionId: string; isStub: boolean }> {
   if (workflowId.startsWith("wf-stub-")) return { executionId: `exec-stub-${Date.now()}`, isStub: true };
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
 
   const result = await executeWithRetry(
     async (client) => {
       const raw = await client.callTool({
         name: "execute_workflow",
-        arguments: { workflowId, apiKey: effectiveKey },
+        arguments: { workflowId },
       });
+      if ((raw as any)?.isError) {
+        throw new Error((raw as any).content?.[0]?.text || "execute_workflow failed");
+      }
       const parsed = parseMcpToolContent<{ executionId: string }>(raw, "executionId");
       const executionId = parsed?.executionId || `exec-stub-${Date.now()}`;
       const isStub = executionId.startsWith("exec-stub-");
@@ -186,28 +202,65 @@ export async function executeWorkflow(
   return { executionId: result.data, isStub: result.isStub };
 }
 
+function mapKeeperHubExecution(raw: unknown, executionId: string): ExecutionStatus | null {
+  const parsed = parseMcpToolContent<any>(raw);
+  if (!parsed) return null;
+
+  const execution = parsed.logs?.execution ?? parsed.execution;
+  const statusNode = parsed.status?.status ?? parsed.status;
+  const rawStatus = String(statusNode?.status ?? execution?.status ?? "").toLowerCase();
+  const txHashes: unknown[] =
+    statusNode?.transactionHashes ??
+    execution?.transactionHashes ??
+    [];
+
+  let status: ExecutionStatus["status"] = "pending";
+  if (["completed", "success", "mined"].includes(rawStatus)) status = "mined";
+  else if (["failed", "error", "reverted"].includes(rawStatus)) status = "failed";
+  else if (["running", "broadcasting"].includes(rawStatus)) status = "broadcasting";
+  else if (rawStatus === "simulating") status = "simulating";
+
+  const hashCandidates: string[] = [];
+  for (const entry of txHashes) {
+    if (typeof entry === "string") hashCandidates.push(entry);
+    else if (entry && typeof entry === "object" && typeof (entry as any).hash === "string") {
+      hashCandidates.push((entry as any).hash);
+    }
+  }
+  const outputHash = execution?.output?.transactionHash;
+  if (typeof outputHash === "string") hashCandidates.push(outputHash);
+
+  const txHash = hashCandidates.find((h) => h.startsWith("0x") && h.length === 66);
+
+  return {
+    executionId: execution?.id ?? executionId,
+    status,
+    txHash,
+    simulated: false,
+  };
+}
+
 // 3. Get Execution Status
 export async function getExecutionStatus(
   executionId: string,
-  apiKey?: string
+  _apiKey?: string
 ): Promise<ExecutionStatus> {
   if (executionId.startsWith("exec-stub-")) {
     return { executionId, status: "pending", txHash: undefined, simulated: true };
   }
   const client = await tryGetMcpClient();
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
 
   if (!client) return { executionId, status: "pending", txHash: undefined, simulated: true };
-  try {
-    const raw = await client.callTool({
-      name: "get_execution_status",
-      arguments: { executionId, apiKey: effectiveKey },
-    });
-    const parsed = parseMcpToolContent<ExecutionStatus>(raw);
-    return parsed || { executionId, status: "pending", txHash: undefined, simulated: true };
-  } catch {
-    return { executionId, status: "pending", txHash: undefined, simulated: true };
+  for (const toolName of ["get_execution_status", "get_execution"] as const) {
+    try {
+      const raw = await client.callTool({ name: toolName, arguments: { executionId } });
+      const mapped = mapKeeperHubExecution(raw, executionId);
+      if (mapped) return mapped;
+    } catch {
+      // try legacy/alternate tool name on next iteration
+    }
   }
+  return { executionId, status: "pending", txHash: undefined, simulated: true };
 }
 
 export type PollResult = ExecutionStatus & { timedOut?: boolean };
@@ -241,22 +294,28 @@ export async function pollExecutionUntilSettled(
 // 4. Get Execution Logs
 export async function getExecutionLogs(
   executionId: string,
-  apiKey?: string
+  _apiKey?: string
 ): Promise<ExecutionLog[]> {
   const client = await tryGetMcpClient();
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
 
   if (!client) return [{ timestamp: new Date().toISOString(), message: "Workflow executed via KeeperHub MCP (stub mode)", level: "info" }];
-  try {
-    const raw = await client.callTool({
-      name: "get_execution_logs",
-      arguments: { executionId, apiKey: effectiveKey },
-    });
-    const parsed = parseMcpToolContent<ExecutionLog[]>(raw);
-    return Array.isArray(parsed) ? parsed : [{ timestamp: new Date().toISOString(), message: "Workflow executed via KeeperHub MCP", level: "info" }];
-  } catch {
-    return [{ timestamp: new Date().toISOString(), message: "Workflow executed via KeeperHub MCP", level: "info" }];
+  for (const toolName of ["get_execution_logs", "get_execution"] as const) {
+    try {
+      const raw = await client.callTool({ name: toolName, arguments: { executionId } });
+      const parsed = parseMcpToolContent<any>(raw);
+      const entries = parsed?.logs?.entries ?? parsed?.logs ?? parsed;
+      if (Array.isArray(entries)) {
+        return entries.map((entry: any) => ({
+          timestamp: entry.timestamp ?? entry.startedAt ?? new Date().toISOString(),
+          message: entry.message ?? entry.error ?? entry.nodeName ?? "KeeperHub execution log",
+          level: (entry.level ?? (entry.error ? "error" : "info")) as ExecutionLog["level"],
+        }));
+      }
+    } catch {
+      // try alternate tool
+    }
   }
+  return [{ timestamp: new Date().toISOString(), message: "Workflow executed via KeeperHub MCP", level: "info" }];
 }
 
 // 5. Configure Gas Sponsorship

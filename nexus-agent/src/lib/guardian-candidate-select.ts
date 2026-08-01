@@ -1,20 +1,33 @@
 import type { CandidateAction, GuardianDecision } from "../brain/schemas.js";
 
+export type CandidateSelectOptions = {
+  /** Current on-chain HF — relaxes filters when position is critical */
+  currentHealthFactor?: number | null;
+};
+
 /**
  * Pure Candidate Selection Harness Logic.
  * Evaluates candidate actions against risk thresholds and expected Health Factors.
- * Filters candidates with expectedHealthFactor >= 1.25 and riskScore <= 5,
- * then ranks by riskScore (ASC), expectedHealthFactor (DESC), and estimatedGasUSD (ASC).
  */
 export function selectBestCandidate(
   candidates: CandidateAction[] | undefined,
-  fallback: GuardianDecision["recommendation"]
+  fallback: GuardianDecision["recommendation"],
+  options?: CandidateSelectOptions
 ): GuardianDecision["recommendation"] {
   if (!candidates || candidates.length === 0) return fallback;
 
-  // Filter: expectedHealthFactor >= 1.25 AND riskScore <= 5
+  const hf = options?.currentHealthFactor ?? 99;
+  const critical = hf < 1.15;
+  const minExpectedHf = critical ? 1.0 : 1.25;
+  const maxRisk = critical ? 9 : 5;
+
   const eligible = candidates.filter(
-    (c) => c.expectedHealthFactor >= 1.25 && c.riskScore <= 5
+    (c) =>
+      c.action !== "hold" &&
+      c.action !== "block_transaction" &&
+      c.amount > 0 &&
+      c.expectedHealthFactor >= minExpectedHf &&
+      c.riskScore <= maxRisk
   );
 
   if (eligible.length === 0) return fallback;

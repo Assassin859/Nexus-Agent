@@ -4,9 +4,8 @@ import { GuardianDecisionSchema, GUARDIAN_SYSTEM_PROMPT } from "../brain/schemas
 import { selectBestCandidate } from "../lib/guardian-candidate-select.js";
 import { db } from "../db/client.js";
 import { repaymentCycles, executionsLog } from "../db/schema.js";
-import { simulate } from "../lib/simulate.js";
+import { simulateErc20Action } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled, type WorkflowStep } from "../lib/mcp-client.js";
-import { ensureAllowance } from "../lib/allowance.js";
 import { getAavePosition, getUsdcBalance } from "../lib/aave.js";
 import { getPriceTrend } from "../lib/price-feed.js";
 import {
@@ -174,39 +173,62 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     decision = res.object;
   } catch (llmErr) {
     log.warn({ err: String(llmErr) }, "LLM brownout/error — using deterministic quantitative safety fallback");
+    const hf = position.healthFactor ?? 99;
+    const critical = hf < 1.15;
+    const repayAmount = critical
+      ? Math.max(0, Math.min(agenticBalance, cycleRemaining, position.debtUSD))
+      : 0;
     decision = {
       analysis: {
         collateralValueUSD: position.collateralUSD,
         debtValueUSD: position.debtUSD,
         requiredRepaymentToTargetHF: 0,
-        walletLimitExceeded: false,
+        walletLimitExceeded: agenticBalance < position.debtUSD,
         cycleRemainingBudgetUSD: cycleRemaining,
-        safetyStatus: (position.healthFactor ?? 99) < 1.1 ? "critical_liquidation_risk" : (position.healthFactor ?? 99) < 1.3 ? "warning" : "safe",
+        safetyStatus: hf < 1.1 ? "critical_liquidation_risk" : hf < 1.3 ? "warning" : "safe",
       },
-      candidateActions: [
-        {
-          action: "hold" as const,
-          amount: 0,
-          expectedHealthFactor: position.healthFactor ?? 99,
-          estimatedGasUSD: 0,
-          riskScore: 0,
-          pros: "Health factor is safe",
-          cons: "None",
-        }
-      ],
-      userExplanation: "Deterministic Quantitative Rule: Position Health Factor is healthy.",
-      recommendation: {
-        action: "hold" as const,
-        asset: "USDC",
-        amount: 0,
-        reason: "Position Health Factor is safe; no immediate action required.",
-      }
+      candidateActions: critical
+        ? [{
+            action: "repay" as const,
+            amount: repayAmount,
+            expectedHealthFactor: hf + 0.05,
+            estimatedGasUSD: 1,
+            riskScore: 3,
+            pros: "Reduce liquidation risk",
+            cons: "Uses agentic wallet USDC",
+          }]
+        : [{
+            action: "hold" as const,
+            amount: 0,
+            expectedHealthFactor: hf,
+            estimatedGasUSD: 0,
+            riskScore: 0,
+            pros: "Health factor is safe",
+            cons: "None",
+          }],
+      userExplanation: critical
+        ? `Deterministic fallback: HF ${hf.toFixed(2)} is critical — proposing repay of $${repayAmount.toFixed(2)} USDC.`
+        : "Deterministic Quantitative Rule: Position Health Factor is healthy.",
+      recommendation: critical
+        ? {
+            action: "repay" as const,
+            asset: "USDC",
+            amount: repayAmount,
+            reason: "Critical HF — deterministic repay fallback.",
+          }
+        : {
+            action: "hold" as const,
+            asset: "USDC",
+            amount: 0,
+            reason: "Position Health Factor is safe; no immediate action required.",
+          },
     };
   }
 
   const selectedRecommendation = selectBestCandidate(
     decision.candidateActions,
-    decision.recommendation
+    decision.recommendation,
+    { currentHealthFactor: position.healthFactor }
   );
 
   if (
@@ -249,16 +271,23 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
 
   // ── Log hold/block without executing ─────────────────────────────────────
+  const criticalHf = (position.healthFactor ?? 99) < 1.15;
   if (
     selectedRecommendation.action === "hold" ||
     selectedRecommendation.action === "block_transaction"
   ) {
+    const blockedCritical =
+      criticalHf &&
+      selectedRecommendation.action === "hold" &&
+      agenticBalance <= 0;
     await db.insert(executionsLog).values({
       userWallet: monitoredWallet,
-      action: selectedRecommendation.action,
+      action: blockedCritical ? "repay" : selectedRecommendation.action,
       amount: 0,
-      status: "success",
-      reason: decision.userExplanation,
+      status: blockedCritical ? "delayed" : "success",
+      reason: blockedCritical
+        ? `Critical HF (${position.healthFactor?.toFixed(2)}) — agentic wallet has $0 USDC. Fund ${signerWallet.slice(0, 10)}… to enable repay. ${decision.userExplanation}`
+        : decision.userExplanation,
       aiAnalysis: aiAnalysisPayload,
     });
     return;
@@ -284,8 +313,10 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
       userWallet: monitoredWallet,
       action: selectedRecommendation.action,
       amount: 0,
-      status: "success",
-      reason: `Budget clamped to 0: cycleRemaining=$${cycleRemaining} agenticBalance=$${agenticBalance.toFixed(2)}`,
+      status: (position.healthFactor ?? 99) < 1.15 && agenticBalance <= 0 ? "delayed" : "success",
+      reason: (position.healthFactor ?? 99) < 1.15 && agenticBalance <= 0
+        ? `Critical HF (${position.healthFactor?.toFixed(2)}) — budget/wallet clamped to $0 (cycleRemaining=$${cycleRemaining}, agenticBalance=$${agenticBalance.toFixed(2)}). Fund agentic wallet to execute ${selectedRecommendation.action}.`
+        : `Budget clamped to 0: cycleRemaining=$${cycleRemaining} agenticBalance=$${agenticBalance.toFixed(2)}`,
       aiAnalysis: aiAnalysisPayload,
     });
     return;
@@ -305,10 +336,14 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  // ── Step 9: Pre-flight simulation ─────────────────────────────────────────
-  const sim = await simulate(
+  // ── Step 9: Pre-flight simulation (allowance-aware) ─────────────────────
+  const sim = await simulateErc20Action(
+    signerWallet,
+    monitoredWallet,
+    USDC_SEPOLIA,
+    targetContract,
+    clampedAmount,
     { from: signerWallet, to: targetContract, data: calldata },
-    monitoredWallet
   );
   if (sim.wouldRevert) {
     log.warn({ reason: sim.revertReason }, "Pre-flight simulation reverted — recording resilience log.");
@@ -335,7 +370,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
   try {
     // ── Step 11: KeeperHub execution with ERC20 approval prepended ──────
-    const allowanceCalldata = await ensureAllowance(signerWallet, USDC_SEPOLIA, targetContract, clampedAmount);
+    const { allowanceCalldata } = sim;
     const steps: WorkflowStep[] = [];
     if (allowanceCalldata) {
       steps.push({ type: "transaction", to: USDC_SEPOLIA, calldata: allowanceCalldata, gasStrategy: "standard" });

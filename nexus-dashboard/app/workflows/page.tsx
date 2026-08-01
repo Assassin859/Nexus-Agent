@@ -5,6 +5,7 @@ import { Cpu, RefreshCw, Clock, ExternalLink, ShieldCheck, Key, Code, ChevronDow
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 import KeeperHubSyncModal from "@/components/KeeperHubSyncModal";
+import { isKeeperHubWorkflowId, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
 
 type WorkflowItem = {
   id: string;
@@ -15,6 +16,7 @@ type WorkflowItem = {
   cronSchedule: string;
   status: "active" | "paused" | "completed" | string;
   createdAt?: string;
+  keeperhubWorkflowId?: string | null;
 };
 
 /** Convert a 5-field cron expression to a human-readable string */
@@ -242,11 +244,35 @@ export default function WorkflowsPage() {
                     </button>
 
                     <a
-                      href={`https://app.keeperhub.com/workflows/${wf.id}`}
+                      href={keeperHubWorkflowUrl(wf.keeperhubWorkflowId) ?? "#"}
                       target="_blank"
                       rel="noopener noreferrer"
                       className="btn"
-                      style={{ fontSize: 12, padding: "8px 12px", background: "rgba(99,102,241,0.1)", border: "1px solid rgba(99,102,241,0.3)", color: "#818cf8", textDecoration: "none", display: "flex", alignItems: "center", gap: 6 }}
+                      onClick={(e) => {
+                        if (!isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "")) e.preventDefault();
+                      }}
+                      style={{
+                        fontSize: 12,
+                        padding: "8px 12px",
+                        background: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "")
+                          ? "rgba(99,102,241,0.1)"
+                          : "rgba(255,255,255,0.03)",
+                        border: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "")
+                          ? "1px solid rgba(99,102,241,0.3)"
+                          : "1px solid var(--border)",
+                        color: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "") ? "#818cf8" : "var(--text-muted)",
+                        textDecoration: "none",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 6,
+                        pointerEvents: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "") ? "auto" : "none",
+                        opacity: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "") ? 1 : 0.5,
+                      }}
+                      title={
+                        isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "")
+                          ? "Open on KeeperHub"
+                          : "Not synced to KeeperHub yet"
+                      }
                     >
                       View on KeeperHub <ExternalLink size={12} />
                     </a>
