@@ -18,7 +18,12 @@ import { getAgenticWallet, getWalletContext } from "../lib/agentic-wallet.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
 import { childLogger } from "../lib/logger.js";
 import { shouldAlert } from "../lib/alert-throttle.js";
-import { eq, and, sql, lt, desc } from "drizzle-orm";
+import {
+  getCycleRemaining,
+  reserveCycleBudget,
+  releaseCycleBudget,
+} from "../lib/repayment-cycle.js";
+import { eq, and, lt, desc, gte } from "drizzle-orm";
 
 const ALLOWED_CHANNELS = ["telegram", "discord", "email"] as const;
 type AlertChannel = typeof ALLOWED_CHANNELS[number];
@@ -121,6 +126,9 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   if (expiredPendingRows.length > 0) {
     log.info({ expiredCount: expiredPendingRows.length }, "Expiring stale pending locks older than 15 minutes.");
     for (const stale of expiredPendingRows) {
+      if (stale.action === "repay" && stale.amount > 0 && cycle) {
+        await releaseCycleBudget(cycle.id, stale.amount);
+      }
       await db.update(executionsLog)
         .set({ status: "reverted_chain", reason: "Pending lock expired (TTL 15m)" })
         .where(eq(executionsLog.id, stale.id));
@@ -139,7 +147,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  const cycleRemaining = (cycle?.cycleLimitUSD ?? 0) - (cycle?.totalRepaidThisCycleUSD ?? 0);
+  const cycleRemaining = getCycleRemaining(cycle!);
 
   // ── Step 5: Read signerWallet USDC balance ──────────────────────────────
   const agenticBalance = await getUsdcBalance(signerWallet);
@@ -300,8 +308,11 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   if (clampedAmount <= 0) {
     log.warn({ cycleRemaining, agenticBalance }, "Clamped amount is 0 — aborting.");
 
-    // Alert only when the agentic wallet itself is empty (not just cycle-exhausted)
-    if (agenticBalance === 0 && shouldAlert(`${monitoredWallet.slice(0, 8)}:wallet_empty`)) {
+    const cycleExhausted = cycleRemaining <= 0;
+    const walletEmpty = agenticBalance <= 0;
+    const hfCritical = (position.healthFactor ?? 99) < 1.15;
+
+    if (walletEmpty && shouldAlert(`${monitoredWallet.slice(0, 8)}:wallet_empty`)) {
       await sendKeeperNotification(
         ALERT_CHANNEL,
         `🪙 Agentic wallet empty — cannot execute ${selectedRecommendation.action} for ${monitoredWallet.slice(0, 8)}`,
@@ -309,14 +320,48 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
       ).catch(() => {});
     }
 
+    const cycleEndStr = cycle?.cycleEnd
+      ? new Date(cycle.cycleEnd).toISOString().slice(0, 10)
+      : "next cycle";
+
+    let status: "delayed" | "success" = "success";
+    let reason: string;
+
+    if (cycleExhausted) {
+      status = "delayed";
+      reason = `Monthly repay budget exhausted ($${cycle?.totalRepaidThisCycleUSD ?? 0}/$${cycle?.cycleLimitUSD ?? 0}). Resets ${cycleEndStr}.`;
+    } else if (hfCritical && walletEmpty) {
+      status = "delayed";
+      reason = `Critical HF (${position.healthFactor?.toFixed(2)}) — agentic wallet has $0 USDC. Fund ${signerWallet.slice(0, 10)}… to enable ${selectedRecommendation.action}.`;
+    } else {
+      reason = `Budget clamped to 0: cycleRemaining=$${cycleRemaining} agenticBalance=$${agenticBalance.toFixed(2)}`;
+    }
+
+    // Dedupe noisy cron logs when cycle-exhausted and position is safe
+    const hfSafe = (position.healthFactor ?? 99) >= 1.30;
+    if (cycleExhausted && hfSafe) {
+      const cutoff30m = new Date(Date.now() - 30 * 60 * 1000);
+      const recentDup = await db.query.executionsLog.findFirst({
+        where: and(
+          eq(executionsLog.userWallet, monitoredWallet),
+          eq(executionsLog.action, selectedRecommendation.action),
+          eq(executionsLog.status, "delayed"),
+          gte(executionsLog.timestamp, cutoff30m),
+        ),
+        orderBy: [desc(executionsLog.timestamp)],
+      });
+      if (recentDup?.reason?.includes("budget exhausted")) {
+        log.info("Skipping duplicate cycle-exhausted log (30m dedupe).");
+        return;
+      }
+    }
+
     await db.insert(executionsLog).values({
       userWallet: monitoredWallet,
       action: selectedRecommendation.action,
       amount: 0,
-      status: (position.healthFactor ?? 99) < 1.15 && agenticBalance <= 0 ? "delayed" : "success",
-      reason: (position.healthFactor ?? 99) < 1.15 && agenticBalance <= 0
-        ? `Critical HF (${position.healthFactor?.toFixed(2)}) — budget/wallet clamped to $0 (cycleRemaining=$${cycleRemaining}, agenticBalance=$${agenticBalance.toFixed(2)}). Fund agentic wallet to execute ${selectedRecommendation.action}.`
-        : `Budget clamped to 0: cycleRemaining=$${cycleRemaining} agenticBalance=$${agenticBalance.toFixed(2)}`,
+      status,
+      reason,
       aiAnalysis: aiAnalysisPayload,
     });
     return;
@@ -358,6 +403,29 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
+  // ── Step 9.5: Atomic cycle budget reservation (repay only) ───────────────
+  let budgetReserved = 0;
+  if (action === "repay" && cycle) {
+    const reserved = await reserveCycleBudget(cycle.id, clampedAmount);
+    if (!reserved) {
+      const cycleEndStr = cycle.cycleEnd
+        ? new Date(cycle.cycleEnd).toISOString().slice(0, 10)
+        : "next cycle";
+      log.warn("Cycle budget reservation failed — limit reached.");
+      await db.insert(executionsLog).values({
+        userWallet: monitoredWallet,
+        action: "repay",
+        amount: 0,
+        status: "delayed",
+        reason: `Monthly repay budget exhausted ($${cycle.totalRepaidThisCycleUSD ?? cycle.cycleLimitUSD}/$${cycle.cycleLimitUSD}). Resets ${cycleEndStr}.`,
+        aiAnalysis: aiAnalysisPayload,
+      });
+      return;
+    }
+    cycle = reserved;
+    budgetReserved = Math.round(clampedAmount);
+  }
+
   // ── Step 10: Insert pending row before execution ─────────────────────────
   const [pendingRow] = await db.insert(executionsLog).values({
     userWallet: monitoredWallet,
@@ -386,6 +454,9 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     const isStub = createStub || execStub;
 
     if (isStub) {
+      if (budgetReserved > 0 && cycle) {
+        await releaseCycleBudget(cycle.id, budgetReserved);
+      }
       await db.update(executionsLog)
         .set({ status: "simulated_stub", reason: decision.userExplanation, aiAnalysis: { ...aiAnalysisPayload, workflowId, executionId } })
         .where(eq(executionsLog.id, pendingRow.id));
@@ -399,6 +470,10 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
         ? "Execution poll timeout"
         : decision.userExplanation;
 
+      if (finalStatus !== "success" && budgetReserved > 0 && cycle) {
+        await releaseCycleBudget(cycle.id, budgetReserved);
+      }
+
       await db.update(executionsLog)
         .set({
           status: finalStatus,
@@ -407,24 +482,14 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
           aiAnalysis: { ...aiAnalysisPayload, workflowId, executionId, pollStatus: poll.status },
         })
         .where(eq(executionsLog.id, pendingRow.id));
-
-      // ── Step 12: Increment cycle ONLY on confirmed mined success + txHash ─
-      if (
-        selectedRecommendation.action === "repay" &&
-        finalStatus === "success" &&
-        poll.txHash &&
-        cycle
-      ) {
-        await db.update(repaymentCycles)
-          .set({ totalRepaidThisCycleUSD: sql`${repaymentCycles.totalRepaidThisCycleUSD} + ${clampedAmount}` })
-          .where(eq(repaymentCycles.id, cycle.id));
-        log.info({ clampedAmount, limit: cycle.cycleLimitUSD }, "Cycle updated");
-      }
     }
 
     log.info({ isStub, action: selectedRecommendation.action, clampedAmount, requested: amount }, "Execution complete");
 
   } catch (err) {
+    if (budgetReserved > 0 && cycle) {
+      await releaseCycleBudget(cycle.id, budgetReserved);
+    }
     // Ensure pending lock is never left open on any unexpected error
     await db.update(executionsLog)
       .set({

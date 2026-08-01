@@ -13,9 +13,16 @@
 | Guardian evaluation + Reasoning Harness (`hold` at HF ~3.26) | ✅ Verified |
 | Pre-flight simulation + Resilience logging | ✅ Verified |
 | KeeperHub MCP workflow registration (PayChain cron) | ✅ Verified |
-| Mined on-chain tx with BaseScan proof | ⚠️ **Not guaranteed** — depends on HF, MCP warmth, and agentic wallet funding. UI shows **Simulated** badge when `simulated_stub` or no `txHash`. |
+| Mined on-chain tx with BaseScan proof | ✅ **Verified** — Guardian repay (2 txs, HF 1.05 → 1.32) |
 
-**Do not claim on-chain proof until `executions_log.txHash` is populated and visible on [BaseScan Sepolia](https://sepolia.basescan.org).
+**On-chain proof (Base Sepolia):**
+
+| Tx | Action | BaseScan |
+|----|--------|----------|
+| `0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3` | repay $1000 | [View](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) |
+| `0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127` | repay $1000 | [View](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) |
+
+UI shows **Simulated** badge when `simulated_stub` or no `txHash`.
 
 ---
 
@@ -24,6 +31,7 @@
 | Module | Action | Status | Reason (summary) |
 |--------|--------|--------|------------------|
 | **Guardian** | `hold` | `success` | HF ~3.26 > 1.40 — no broadcast |
+| **Guardian** | `repay` | `success` + txHash | HF ~1.05 → 1.32; agentic wallet funded; KeeperHub approve+repay |
 | **Yield Rotator** | `rotate` | `success` | Dual-wallet ownership guard skip |
 | **DCA Engine** | `swap` | schedule OK | Workflow registered in `active_workflows` |
 | **PayChain** | `payroll` | workflow registered | KeeperHub cron + 2-step confirm |
@@ -36,12 +44,14 @@ Re-run: `pnpm --prefix nexus-agent run phase2` then `pnpm --prefix nexus-agent r
 
 ```bash
 pnpm --prefix nexus-agent run verify
-# → 18 passed | 2 skipped | 0 failed
+# → 21 passed | 2 skipped | 0 failed
 
 pnpm --prefix nexus-agent run verify:integration
-# → 19 passed | 2 skipped | 0 failed
+# → 22 passed | 2 skipped | 0 failed
 
 pnpm --prefix nexus-agent exec tsx src/scripts/test-openrouter-smoke.ts
+pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts   # full Postgres audit
+pnpm --prefix nexus-agent exec tsx src/scripts/fix-repayment-cycle.ts  # cap over-repaid cycles
 pnpm --prefix nexus-agent run surfaces    # 17 KeeperHub MCP surfaces
 pnpm --prefix nexus-agent run phase2      # 4 autonomous modules
 pnpm --prefix nexus-agent run logs
@@ -55,14 +65,14 @@ Skipped Tier C tests: Guardian cycle TTL rollover, PayChain compensating cancel 
 
 | Time | Scene | Action | Say |
 |------|-------|--------|-----|
-| 0:00 | **Portfolio** | Show HF ~3.26, collateral, debt | "Real Aave V3.2 position on Base Sepolia — not mock data." |
+| 0:00 | **Portfolio** | Show HF ~1.32 (post-repay) or replay earlier ~1.05 state | "Real Aave V3.2 position on Base Sepolia — not mock data." |
 | 0:30 | **AI Chat** | *"What is my health factor?"* | "Natural language → live chain read via tool calling." |
-| 1:00 | **Live Feed** | Expand latest `hold` row → AI Reasoning panel | "Multi-candidate harness: LLM proposes, software ranks and can override." |
-| 1:30 | **Decision Matrix** | Point at Hold bucket count | "At safe HF the agent correctly holds — no wasted gas." |
-| 2:00 | **Resilience** | Show simulation / stub cards if present | "Every broadcast path is simulated first; reverts cost zero gas." |
-| 2:30 | **KeeperHub** | Green badge + mention manual `kh_...` key | "Execution layer is KeeperHub MCP + Turnkey MPC wallet." |
+| 1:00 | **Live Feed** | Expand latest `repay` row with txHash → BaseScan link | "Critical HF triggered autonomous repay — two mined txs, HF recovered." |
+| 1:30 | **Decision Matrix** | Point at Repay + Hold buckets | "Harness ranked repay when HF critical; holds when safe." |
+| 2:00 | **Resilience** | Show `reverted_simulation` then success after allowance fix | "Pre-flight simulation saves gas; approve+repay workflow." |
+| 2:30 | **KeeperHub** | Open workflow link (`iu0toy0…` or repay execution) | "Execution layer is KeeperHub MCP + Turnkey MPC wallet." |
 
-**Do not live-trigger Guardian expecting a repay tx** at HF 3.26 — it will `hold`. Use Feed rows already captured.
+**Live demo tip:** At HF ~1.32 Guardian will `hold`. Use **Feed history** for repay proof, or temporarily lower HF for a live trigger.
 
 **De-emphasize in pitch:** DCA (secondary), Yield (blocked by dual-wallet unless wallets aligned).
 

@@ -8,6 +8,7 @@ import { encodeERC20Approve, USDC_SEPOLIA, AAVE_V3_POOL } from "../lib/calldata.
 import { getCompoundUsdcSupplyAPY } from "../lib/compound.js";
 import { ensureAllowance } from "../lib/allowance.js";
 import { selectBestCandidate } from "../lib/guardian-candidate-select.js";
+import { getCycleRemaining } from "../lib/repayment-cycle.js";
 
 async function main() {
   const isIntegration = process.argv.includes("--integration");
@@ -96,6 +97,11 @@ async function main() {
   ];
   const rankedResult = selectBestCandidate(mixedCandidates, fallbackRec);
   assert(rankedResult.action === "repay", "Candidate Select — Lower riskScore candidate wins ranking (riskScore=2 > riskScore=3)");
+
+  // 7. Repayment cycle remaining (never negative)
+  assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: 2000 }) === 0, "Cycle Remaining — Clamps negative to 0 when over budget");
+  assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: 600 }) === 400, "Cycle Remaining — Returns correct positive remainder");
+  assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: null }) === 1000, "Cycle Remaining — Treats null repaid as 0");
 
   // ── Tier B: On-Chain RPC Integrations (Optional) ──────────────────────────
   console.log("\n── Tier B: On-Chain RPC Queries (Optional) ──");
