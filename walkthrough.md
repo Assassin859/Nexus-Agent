@@ -66,7 +66,7 @@ pnpm --prefix nexus-agent run logs
 | 4 | Guardian | `repay` | `success` + txHash | [0xd2d8ce6…](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) — HF ~1.32 |
 | 5 | Guardian | `hold` | `success` | Latest cron — safe HF |
 | — | Yield | `rotate` | `success` | Ownership guard skip |
-| — | DCA | `swap` | scheduled | KeeperHub `3fd2ctluvz7rdtf5yj0va` |
+| — | DCA | `swap` | scheduled | KeeperHub `xle0r4d0ozhhxd1rqeb28` (local executor) |
 | — | PayChain | `payroll` | workflow | KeeperHub `iu0toy0rena606e07ikxu` |
 
 Demo: [submission_runbook.md](submission_runbook.md)

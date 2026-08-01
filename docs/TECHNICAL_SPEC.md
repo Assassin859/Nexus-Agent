@@ -42,7 +42,7 @@ Judges can replay this arc in `/resilience` and `/feed` — all rows are real DB
 | 4 | **Guardian** | `repay` | `success` + txHash | [0xd2d8ce6…a4f127](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) — second $1000 repay; HF ~1.05 → ~1.32 |
 | 5 | **Guardian** | `hold` | `success` | Latest cron — HF ~1.32, no broadcast |
 | — | **Yield** | `rotate` | `success` | Dual-wallet ownership guard skip (documented constraint) |
-| — | **DCA** | `swap` | schedule OK | KeeperHub workflow `3fd2ctluvz7rdtf5yj0va` registered |
+| — | **DCA** | `swap` | schedule OK | KeeperHub workflow `xle0r4d0ozhhxd1rqeb28` (remote cron disabled; local executor) |
 | — | **PayChain** | `payroll` | workflow registered | KeeperHub cron `iu0toy0rena606e07ikxu` |
 
 Re-run audit: `pnpm --prefix nexus-agent run logs` · Full runbook: [submission_runbook.md](../submission_runbook.md)

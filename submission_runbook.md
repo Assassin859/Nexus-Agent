@@ -38,7 +38,7 @@ UI shows **Simulated** badge when `simulated_stub` or no `txHash`.
 | 4 | **Guardian** | `repay` | `success` + txHash | [0xd2d8ce6…](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) — HF ~1.05 → ~1.32 |
 | 5 | **Guardian** | `hold` | `success` | Latest cron — HF ~1.32, no broadcast |
 | — | **Yield Rotator** | `rotate` | `success` | Dual-wallet ownership guard skip |
-| — | **DCA Engine** | `swap` | schedule OK | Workflow `3fd2ctluvz7rdtf5yj0va` in `active_workflows` |
+| — | **DCA Engine** | `swap` | schedule OK | Workflow `xle0r4d0ozhhxd1rqeb28` in `active_workflows` (remote cron disabled) |
 | — | **PayChain** | `payroll` | workflow registered | KeeperHub cron `iu0toy0rena606e07ikxu` |
 
 Re-run: `pnpm --prefix nexus-agent run phase2` then `pnpm --prefix nexus-agent run logs`
@@ -137,7 +137,7 @@ Use these **real** `executions_log` rows (timestamps UTC, 2026-08-01):
 |--------|-------------------|----------------|
 | **Guardian** | Flagship — autonomous liquidation protection | 2 mined repay txs + simulation intercepts |
 | **PayChain** | Scheduling proof — KeeperHub cron payroll | Workflow `iu0toy0rena606e07ikxu` |
-| **DCA** | Registered workflow; swap scaffolding | KeeperHub `3fd2ctluvz7rdtf5yj0va`; live swap blocked on testnet |
+| **DCA** | Registered workflow; swap scaffolding | KeeperHub `xle0r4d0ozhhxd1rqeb28`; remote cron disabled; local executor |
 | **Yield** | Documented constraint | Dual-wallet guard skip (roadmap: unified wallet) |
 
 ## Known limitations (tell judges proactively)
@@ -162,7 +162,7 @@ Use these **real** `executions_log` rows (timestamps UTC, 2026-08-01):
 - [ ] KeeperHub `kh_...` key saved (green sidebar)
 - [ ] Railway: `BRAIN_MODEL=google/gemini-2.5-flash`, `JWT_SECRET` set
 - [ ] Feed UI: repay rows show **KeeperHub MPC** badge + BaseScan links (not Simulated)
-- [ ] Workflows page: KeeperHub links use `iu0toy0…` / `3fd2ctl…` (not Postgres UUID)
+- [ ] Workflows page: KeeperHub links use `iu0toy0…` / `xle0r4d0…` (not Postgres UUID)
 - [ ] Resilience page: `reverted_simulation` cards visible for allowance arc
 - [ ] BaseScan tab pre-opened: `https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3`
 - [ ] Timed screen recording under 3 minutes

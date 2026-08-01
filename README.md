@@ -455,7 +455,7 @@ Label submissions with BaseScan links when `executions_log.txHash` is populated 
 | 4 | **Guardian** | `repay` | `success` + txHash | [0xd2d8ce6…](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) — HF ~1.32 |
 | 5 | **Guardian** | `hold` | `success` | Latest — safe HF, no broadcast |
 | — | **Yield** | `rotate` | `success` | Dual-wallet ownership guard skip |
-| — | **DCA** | `swap` | schedule OK | KeeperHub `3fd2ctluvz7rdtf5yj0va` |
+| — | **DCA** | `swap` | schedule OK | KeeperHub `xle0r4d0ozhhxd1rqeb28` (remote cron disabled; local executor) |
 | — | **PayChain** | `payroll` | workflow registered | KeeperHub `iu0toy0rena606e07ikxu` |
 
 Re-run: `pnpm --prefix nexus-agent run phase2` then `pnpm --prefix nexus-agent run logs`
