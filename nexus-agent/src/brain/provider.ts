@@ -1,21 +1,49 @@
 import { createOpenAI } from "@ai-sdk/openai";
+import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
-// Initialize the OpenAI-compatible GitHub Models provider dynamically
-export function getGithubModels() {
-  if (process.env.OPENAI_API_KEY) {
-    return createOpenAI({
-      apiKey: process.env.OPENAI_API_KEY,
-    });
+const GEMINI_MODEL = process.env.BRAIN_MODEL ?? "gemini-flash-latest";
+const OPENAI_COMPAT_MODEL = process.env.OPENAI_BRAIN_MODEL ?? "gpt-4o-mini";
+
+export function getActiveBrainProvider(): { provider: string; model: string } {
+  if (process.env.GEMINI_API_KEY) {
+    return { provider: "gemini", model: GEMINI_MODEL };
   }
-  const baseURL = process.env.GITHUB_MODELS_URL || "https://models.github.ai/inference";
-  return createOpenAI({
-    baseURL,
-    apiKey: process.env.GITHUB_TOKEN,
-  });
+  if (process.env.OPENAI_API_KEY) {
+    return { provider: "openai", model: OPENAI_COMPAT_MODEL };
+  }
+  if (process.env.GITHUB_TOKEN) {
+    return { provider: "github-models", model: OPENAI_COMPAT_MODEL };
+  }
+  return { provider: "none", model: "none" };
 }
 
-export const githubModels = (model: string) => getGithubModels()(model);
+export function getBrainModel(): any {
+  if (process.env.GEMINI_API_KEY) {
+    const google = createGoogleGenerativeAI({
+      apiKey: process.env.GEMINI_API_KEY,
+    });
+    return google(GEMINI_MODEL);
+  }
 
-// Primary model for zero local RAM overhead and free inference
-export const BRAIN_MODEL = "gpt-4o-mini";
+  if (process.env.OPENAI_API_KEY) {
+    const openai = createOpenAI({
+      apiKey: process.env.OPENAI_API_KEY,
+    });
+    return openai(OPENAI_COMPAT_MODEL);
+  }
 
+  if (process.env.GITHUB_TOKEN) {
+    const baseURL = process.env.GITHUB_MODELS_URL ?? "https://models.github.ai/inference";
+    const github = createOpenAI({
+      baseURL,
+      apiKey: process.env.GITHUB_TOKEN,
+    });
+    return github(OPENAI_COMPAT_MODEL);
+  }
+
+  throw new Error("No AI provider configured: set GEMINI_API_KEY (preferred) or GITHUB_TOKEN/OPENAI_API_KEY");
+}
+
+// Deprecated wrapper for backwards compatibility during migration
+export const githubModels = (model?: string) => getBrainModel();
+export const BRAIN_MODEL = GEMINI_MODEL;

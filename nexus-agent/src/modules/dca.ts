@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { githubModels, BRAIN_MODEL } from "../brain/provider.js";
+import { getBrainModel } from "../brain/provider.js";
 import { DCASchema, DCA_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog } from "../db/schema.js";
@@ -78,7 +78,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
 
   const { object: decision } = await generateObject({
-    model: githubModels(BRAIN_MODEL),
+    model: getBrainModel(),
     schema: DCASchema,
     system: DCA_SYSTEM_PROMPT,
     prompt: JSON.stringify({

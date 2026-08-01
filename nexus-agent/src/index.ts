@@ -20,7 +20,8 @@ import rateLimit from "express-rate-limit";
 import cron from "node-cron";
 import { verifyMessage } from "ethers";
 import { generateText } from "ai";
-import { githubModels, BRAIN_MODEL } from "./brain/provider.js";
+import { getBrainModel, getActiveBrainProvider } from "./brain/provider.js";
+import { createAgentTools } from "./brain/agent-tools.js";
 import { run as runGuardian } from "./modules/guardian.js";
 import { run as runYieldRotator } from "./modules/yield-rotator.js";
 import { run as runDCA } from "./modules/dca.js";
@@ -33,7 +34,6 @@ import { shouldRunCronNow } from "./lib/cron-evaluator.js";
 import { db } from "./db/client.js";
 import { activeWorkflows, executionsLog, userSettings, payees, repaymentCycles } from "./db/schema.js";
 import { eq, desc, and } from "drizzle-orm";
-import { createAgentTools } from "./brain/agent-tools.js";
 import {
   requireAuth,
   assertWalletScope,
@@ -483,7 +483,7 @@ app.post("/api/chat", requireAuth, async (req: express.Request, res: express.Res
     const tools = createAgentTools(wallet, conversationHistory, apiKey);
 
     const result = await generateText({
-      model: githubModels(BRAIN_MODEL),
+      model: getBrainModel(),
       system: `You are NexusAgent, an intelligent, autonomous DeFi and automated payroll manager powered by KeeperHub MPC.
 You talk naturally like ChatGPT or Claude. You are smart, conversational, helpful, and understand informal language, typos, slang, and complex instructions.
 
@@ -661,6 +661,8 @@ async function startLoops() {
 
 const PORT = parseInt(process.env.PORT || "3001", 10);
 app.listen(PORT, () => {
+  const brainInfo = getActiveBrainProvider();
+  logger.info({ provider: brainInfo.provider, model: brainInfo.model }, "AI brain provider initialized");
   logger.info({ port: PORT, demoWallet: DEMO_WALLET }, "nexus-agent API started");
   startLoops();
 });

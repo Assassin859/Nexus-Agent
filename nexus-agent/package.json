@@ -15,6 +15,7 @@
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
+    "@ai-sdk/google": "^1.0.12",
     "@ai-sdk/openai": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.0.0",
     "@types/express-rate-limit": "^6.0.2",

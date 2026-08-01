@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { githubModels, BRAIN_MODEL } from "../brain/provider.js";
+import { getBrainModel } from "../brain/provider.js";
 import { GuardianDecisionSchema, GUARDIAN_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { selectBestCandidate } from "../lib/guardian-candidate-select.js";
 import { db } from "../db/client.js";
@@ -158,7 +158,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   let decision;
   try {
     const res = await generateObject({
-      model: githubModels(BRAIN_MODEL),
+      model: getBrainModel(),
       schema: GuardianDecisionSchema,
       system: GUARDIAN_SYSTEM_PROMPT,
       prompt: JSON.stringify({

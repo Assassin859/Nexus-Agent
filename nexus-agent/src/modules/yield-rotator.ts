@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { githubModels, BRAIN_MODEL } from "../brain/provider.js";
+import { getBrainModel } from "../brain/provider.js";
 import { YieldRotatorSchema, YIELD_ROTATOR_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { db } from "../db/client.js";
 import { executionsLog } from "../db/schema.js";
@@ -91,7 +91,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   const estimatedGasUSD = Number(process.env.ESTIMATED_GAS_USD_FALLBACK) || 4.5;
 
   const { object: decision } = await generateObject({
-    model: githubModels(BRAIN_MODEL),
+    model: getBrainModel(),
     schema: YieldRotatorSchema,
     system: YIELD_ROTATOR_SYSTEM_PROMPT,
     prompt: JSON.stringify({

@@ -1,5 +1,5 @@
 import { generateObject } from "ai";
-import { githubModels, BRAIN_MODEL } from "../brain/provider.js";
+import { getBrainModel } from "../brain/provider.js";
 import { PayChainSchema, PAYCHAIN_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog, payees } from "../db/schema.js";
@@ -275,8 +275,8 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
 
   let decision;
   try {
-    const res = await generateObject({
-      model: githubModels(BRAIN_MODEL),
+    const { object: plan } = await generateObject({
+      model: getBrainModel(),
       schema: PayChainSchema,
       system: PAYCHAIN_SYSTEM_PROMPT,
       prompt: JSON.stringify({
@@ -286,7 +286,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
           .filter(Boolean),
       }),
     });
-    decision = res.object;
+    decision = plan;
   } catch {
     return {
       success: false,
