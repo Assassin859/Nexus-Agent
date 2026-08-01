@@ -17,6 +17,16 @@
 
 The end user never manually builds calldata, calculates gas limits, or constructs complex multi-step workflows. They simply interact in natural language via a conversational AI interface or sign in with their Web3 wallet.
 
+### 1.1 Submission narrative (DoraHacks 2026)
+
+**Flagship — Guardian:** Autonomous Aave V3 liquidation protection with a multi-candidate Reasoning Harness, allowance-aware pre-flight simulation, and **two mined repay transactions** on Base Sepolia (HF ~1.05 → ~1.32).
+
+**Scheduling proof — PayChain:** Natural-language payroll registration with KeeperHub cron workflows (`iu0toy0rena606e07ikxu`).
+
+**Documented scaffolding — DCA / Yield:** DCA workflow registered on KeeperHub; live Uniswap swap blocked on testnet liquidity. Yield rotator skips on-chain when monitored wallet ≠ agentic MPC signer (dual-wallet constraint — stated roadmap for unified-wallet deployments).
+
+**Brain:** OpenRouter `google/gemini-2.5-flash` via `getBrainModel()` in [`nexus-agent/src/brain/provider.ts`](../nexus-agent/src/brain/provider.ts) — not GitHub Models.
+
 ---
 
 ## 2. System Architecture & High-Level Flow

@@ -1,6 +1,6 @@
 # NexusAgent — Complete Project Goal & Specification
 
-> ⚠️ **Stale sections below** — AI provider migrated to **OpenRouter (`google/gemini-2.5-flash`)**. See [README.md](README.md) and [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) for current architecture.
+> **Authoritative docs:** [README.md](README.md) · [submission_runbook.md](submission_runbook.md) · [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md). Layer 1 brain uses **OpenRouter (`google/gemini-2.5-flash`)** — legacy GitHub Models text is archived in §Layer 1.
 
 **Hackathon:** Agents Onchain (DoraHacks) · **Dates:** July 27 – Aug 13, 2026  
 **Chain:** **Base Sepolia** (84532)  
@@ -36,8 +36,8 @@ The system operates across four primary modules, isolated per user wallet via a 
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                       LAYER 1: BRAIN                          │
-│          Vercel AI SDK + GitHub Models (Serverless)           │
-│   Meta-Llama-3.3-70B Tool-Calling + Reasoning-First Zod      │
+│     Vercel AI SDK + OpenRouter (google/gemini-2.5-flash)      │
+│   Tool-calling + Reasoning-First Zod (getBrainModel())        │
 └───────────────────────────┬──────────────────────────────────┘
                             │ read/write context
 ┌───────────────────────────▼──────────────────────────────────┐
@@ -92,31 +92,44 @@ The system operates across four primary modules, isolated per user wallet via a 
 
 ---
 
-## Layer 1 — The Brain (Vercel AI SDK + GitHub Models Integration)
+## Layer 1 — The Brain (OpenRouter via Vercel AI SDK)
 
-We use the official `@ai-sdk/openai` provider mapped to the GitHub Models endpoint. We authenticate using a standard GitHub Personal Access Token (PAT). This allows the agent to call massive 70B parameter models (such as `meta-llama-3.3-70b-instruct`) for free with zero local or server RAM overhead.
+Production brain is configured in [`nexus-agent/src/brain/provider.ts`](nexus-agent/src/brain/provider.ts):
+
+- **Primary:** OpenRouter → `google/gemini-2.5-flash` (paid; set `OPENROUTER_API_KEY` + `BRAIN_MODEL`)
+- **Failover:** `GEMINI_API_KEY` → `OPENAI_API_KEY` → `GITHUB_TOKEN` (legacy last resort)
+- **Chat + modules:** Vercel AI SDK v4 with `generateText` / `generateObject`, native tool calling, `maxSteps: 5`
 
 ```typescript
-import { createOpenAI } from '@ai-sdk/openai';
-import { generateObject } from 'ai';
-import { z } from 'zod';
+// Simplified — see provider.ts for full failover chain
+import { createOpenAI } from "@ai-sdk/openai";
 
-// Initialize the OpenAI-compatible GitHub Models provider
-const githubModels = createOpenAI({
-  baseURL: 'https://models.inference.ai.azure.com',
-  apiKey: process.env.GITHUB_TOKEN, // GitHub Personal Access Token
+const openrouter = createOpenAI({
+  baseURL: "https://openrouter.ai/api/v1",
+  apiKey: process.env.OPENROUTER_API_KEY,
 });
 
-const { object } = await generateObject({
-  model: githubModels('meta-llama-3.3-70b-instruct'),
-  schema: z.object({
-    activate_modules: z.array(z.enum(['guardian', 'dca', 'paychain', 'yield'])),
-    guardian_config: z.object({ protocol: z.string(), hf_threshold: z.number() }).optional(),
-    dca_config: z.object({ asset: z.string(), amount_usdc: z.number(), frequency: z.string() }).optional(),
-  }),
-  prompt: "I want to protect my Aave loan, buy ETH every week, and pay my developer 200 USDC every Friday",
+export function getBrainModel() {
+  return openrouter(process.env.BRAIN_MODEL || "google/gemini-2.5-flash");
+}
+```
+
+> **Note:** Older drafts referenced GitHub Models / Llama-70B — that path is retired. Judges should use [README.md](README.md) and [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) as authoritative.
+
+<details>
+<summary>Legacy GitHub Models draft (archived — do not use)</summary>
+
+We previously evaluated the GitHub Models endpoint with `@ai-sdk/openai` and a GitHub PAT. This is **not** the production brain.
+
+```typescript
+// ARCHIVED — do not use
+const githubModels = createOpenAI({
+  baseURL: "https://models.inference.ai.azure.com",
+  apiKey: process.env.GITHUB_TOKEN,
 });
 ```
+
+</details>
 
 ---
 
@@ -147,7 +160,7 @@ const { object } = await generateObject({
 2. **Live Transaction Feed** — Real-time event logging: `Triggered → Simulating → Pending → Mined`.
 3. **Resilience Log** — Side-by-side transaction run visualizer showing: Happy Path, Gas Adjusted Path, and Caught Revert (zero gas wasted).
 4. **Alerts Panel** — Logging anomalies, gas spikes, and Telegram alerts.
-5. **AI Chat** — Dynamic chat window with the GitHub Models provider.
+5. **AI Chat** — Dynamic chat window with OpenRouter (`gemini-2.5-flash`).
 6. **Workflow Template Store** — Marketplace with one-click deploy configurations.
 
 ---

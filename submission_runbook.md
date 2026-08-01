@@ -1,6 +1,6 @@
 # NexusAgent — Submission Runbook (DoraHacks / Agents Onchain 2026)
 
-> **Last verified:** August 2026 · **Chain:** Base Sepolia (84532)
+> **Last verified:** 2026-08-01 (live harness run) · **Chain:** Base Sepolia (84532)
 
 ---
 
@@ -42,13 +42,27 @@ Re-run: `pnpm --prefix nexus-agent run phase2` then `pnpm --prefix nexus-agent r
 
 ## Verification commands (exact counts)
 
+Live output from `2026-08-01`:
+
 ```bash
 pnpm --prefix nexus-agent run verify
-# → 21 passed | 2 skipped | 0 failed
+```
 
+```
+Summary: ✓ 21 passed | ⚠ 2 skipped | ✗ 0 failed
+```
+
+```bash
 pnpm --prefix nexus-agent run verify:integration
-# → 22 passed | 2 skipped | 0 failed
+```
 
+```
+Summary: ✓ 22 passed | ⚠ 2 skipped | ✗ 0 failed
+```
+
+Other commands:
+
+```bash
 pnpm --prefix nexus-agent exec tsx src/scripts/test-openrouter-smoke.ts
 pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts   # full Postgres audit
 pnpm --prefix nexus-agent exec tsx src/scripts/fix-repayment-cycle.ts  # cap over-repaid cycles
@@ -74,7 +88,26 @@ Skipped Tier C tests: Guardian cycle TTL rollover, PayChain compensating cancel 
 
 **Live demo tip:** At HF ~1.32 Guardian will `hold`. Use **Feed history** for repay proof, or temporarily lower HF for a live trigger.
 
-**De-emphasize in pitch:** DCA (secondary), Yield (blocked by dual-wallet unless wallets aligned).
+**De-emphasize in pitch:** DCA swap (testnet liquidity), Yield (dual-wallet guard). Lead with Guardian + Resilience arc below.
+
+---
+
+## Resilience demo script (~30 seconds)
+
+Use these **real** `executions_log` rows (timestamps UTC, 2026-08-01):
+
+| Order | Time | Status | Action | Notes |
+|-------|------|--------|--------|-------|
+| 1 | 18:41:53 | `reverted_simulation` | repay | Allowance error — zero gas wasted |
+| 2 | 18:45:04 | `reverted_simulation` | repay | Same intercept (pre-fix) |
+| 3 | 18:45:07 | `success` | repay | [Tx 0x23f6424…](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) |
+| 4 | 18:45:11 | `success` | repay | [Tx 0xd2d8ce6…](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) |
+| 5 | (latest) | `success` | hold | HF ~1.32 — no further repay needed |
+
+**On screen:**
+1. Open `/resilience` → expand a `reverted_simulation` card → read `ERC20: transfer amount exceeds allowance`.
+2. Open `/feed` → expand a `success` repay row → click **BaseScan** link.
+3. Say: *"Simulation intercepted the revert before broadcast. After the allowance-aware fix, approve+repay mined on-chain — HF recovered from ~1.05 to ~1.32."*
 
 ---
 
@@ -93,9 +126,18 @@ Skipped Tier C tests: Guardian cycle TTL rollover, PayChain compensating cancel 
 
 ---
 
-## ⚠️ Known limitations (tell judges proactively)
+## Module positioning (submission story)
 
-1. **Dual-wallet:** Monitored MetaMask ≠ agentic MPC signer → Yield rotator skips on-chain (no Aave `withdraw` onBehalfOf).
+| Module | Role in submission | On-chain proof |
+|--------|-------------------|----------------|
+| **Guardian** | Flagship — autonomous liquidation protection | 2 mined repay txs + simulation intercepts |
+| **PayChain** | Scheduling proof — KeeperHub cron payroll | Workflow `iu0toy0rena606e07ikxu` |
+| **DCA** | Registered workflow; swap scaffolding | KeeperHub `3fd2ctluvz7rdtf5yj0va`; live swap blocked on testnet |
+| **Yield** | Documented constraint | Dual-wallet guard skip (roadmap: unified wallet) |
+
+## Known limitations (tell judges proactively)
+
+1. **Dual-wallet:** Monitored MetaMask ≠ agentic MPC signer → Yield rotator skips on-chain (no Aave `withdraw` onBehalfOf). Stated as roadmap, not a silent failure.
 2. **KeeperHub OAuth ≠ API key** ([KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md) BUG-02) — paste `kh_...` in Sync Modal or set env var.
 3. **MCP cold start** — first workflow may return `wf-stub-*`; warm with `pnpm run surfaces`.
 4. **Guardian at safe HF** — logs `hold`, not a mined repay.
@@ -105,7 +147,17 @@ Skipped Tier C tests: Guardian cycle TTL rollover, PayChain compensating cancel 
 
 ## Pre-demo checklist
 
-- [ ] MetaMask on Base Sepolia, SIWE signed in
+**Automated rehearsal (2026-08-01):** `AGENT_URL=https://nexus-agent-production-7783.up.railway.app pnpm --prefix nexus-agent exec tsx src/scripts/full-system-e2e.ts` → **18/18 passed** (HF 1.32, 2 repay txHashes in feed, 2 `reverted_simulation` rows, chat + templates OK). Estimated manual walkthrough from video script: **~2:30** (under 3 min target).
+
+- [x] Production health + portfolio API (HF ~1.32)
+- [x] Feed shows repay rows with txHash (`0x23f6424…`, `0xd2d8ce6…`)
+- [x] Resilience arc rows present in DB (`reverted_simulation` → `success` repay)
+- [x] BaseScan links valid (see on-chain proof table above)
+- [ ] MetaMask on Base Sepolia, SIWE signed in (manual)
 - [ ] KeeperHub `kh_...` key saved (green sidebar)
 - [ ] Railway: `BRAIN_MODEL=google/gemini-2.5-flash`, `JWT_SECRET` set
-- [ ] Optional: `pnpm run clear-db` or filter Feed to recent rows before recording
+- [ ] Feed UI: repay rows show **KeeperHub MPC** badge + BaseScan links (not Simulated)
+- [ ] Workflows page: KeeperHub links use `iu0toy0…` / `3fd2ctl…` (not Postgres UUID)
+- [ ] Resilience page: `reverted_simulation` cards visible for allowance arc
+- [ ] BaseScan tab pre-opened: `https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3`
+- [ ] Timed screen recording under 3 minutes

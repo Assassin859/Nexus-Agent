@@ -174,6 +174,16 @@ Provider logs at startup: `AI brain provider initialized { provider: "openrouter
 
 ---
 
+## Submission focus (DoraHacks 2026)
+
+**Lead with Guardian** — the only module with mined on-chain proof (2 repay txs, HF ~1.05 → ~1.32) plus a documented **simulation → success** resilience arc in `/resilience`.
+
+**PayChain** demonstrates KeeperHub scheduling (payroll workflow on cron). **DCA and Yield** are implemented and template-visible but intentionally **scaffolding**: DCA swap hits testnet liquidity limits; Yield skips when monitored MetaMask ≠ agentic MPC wallet. Frame these as roadmap modules for unified-wallet deployments rather than silent gaps.
+
+Demo order: Portfolio → Feed (BaseScan repay links) → Resilience (reverted_simulation cards) → Chat → Templates (Guardian fork) → KeeperHub workflow link.
+
+---
+
 ## Autonomous Modules
 
 ### Guardian — Liquidation Protection

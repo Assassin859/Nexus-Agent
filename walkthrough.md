@@ -29,10 +29,10 @@ pnpm --prefix nexus-agent run build          # 0 TS errors (Railway tsc)
 pnpm --prefix nexus-dashboard run build      # 0 Next.js errors
 
 pnpm --prefix nexus-agent run verify
-# Summary: ✓ 21 passed | ⚠ 2 skipped | ✗ 0 failed
+# Live 2026-08-01: Summary: ✓ 21 passed | ⚠ 2 skipped | ✗ 0 failed
 
 pnpm --prefix nexus-agent run verify:integration
-# Summary: ✓ 22 passed | ⚠ 2 skipped | ✗ 0 failed
+# Live 2026-08-01: Summary: ✓ 22 passed | ⚠ 2 skipped | ✗ 0 failed
 
 pnpm --prefix nexus-agent run e2e
 # markets + chat + templates + module triggers + feed audit
