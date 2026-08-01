@@ -1,5 +1,5 @@
 import "../lib/env.js";
-import { parseMcpToolContent } from "../lib/mcp-client.js";
+import { parseMcpToolContent, resolveEffectiveMcpApiKey, mcpCacheKey } from "../lib/mcp-client.js";
 import { getWalletContext } from "../lib/agentic-wallet.js";
 import { splitTeamPayroll } from "../lib/payroll-split.js";
 import { resolveCronSchedule } from "../lib/cron.js";
@@ -157,6 +157,17 @@ async function main() {
     txHash: sampleTx,
   });
   assert(withHash.status === "success", "Cycle Budget — txHash present → success log status");
+
+  // 6f. MCP per-wallet API key resolution
+  assert(resolveEffectiveMcpApiKey("kh_user_test") === "kh_user_test", "MCP Key — explicit key wins");
+  assert(
+    resolveEffectiveMcpApiKey(undefined) === process.env.KEEPERHUB_API_KEY,
+    "MCP Key — undefined falls back to env KEEPERHUB_API_KEY",
+  );
+  assert(
+    mcpCacheKey("kh_a") !== mcpCacheKey("kh_b"),
+    "MCP Key — distinct cache keys per wallet key",
+  );
 
   // 7. Repayment cycle remaining (never negative)
   assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: 2000 }) === 0, "Cycle Remaining — Clamps negative to 0 when over budget");

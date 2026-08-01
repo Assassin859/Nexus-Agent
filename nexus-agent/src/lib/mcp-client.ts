@@ -18,39 +18,55 @@ export type ExecutionLog = {
   level: "info" | "warn" | "error";
 };
 
-// Singleton Client Cache
-let cachedClient: Client | null = null;
+// Per-API-key MCP client cache (Bearer auth on transport)
+const clientCache = new Map<string, Client>();
+
+export function resolveEffectiveMcpApiKey(apiKey?: string): string | undefined {
+  return apiKey || process.env.KEEPERHUB_API_KEY;
+}
+
+/** Cache partition key for MCP clients — exported for unit tests. */
+export function mcpCacheKey(apiKey?: string): string {
+  return resolveEffectiveMcpApiKey(apiKey) ?? "__no_key__";
+}
 
 function getMcpUrl(): string {
   return process.env.KEEPERHUB_MCP_URL || "https://app.keeperhub.com/mcp";
 }
 
-function getMcpAuthHeaders(): Record<string, string> | undefined {
-  const apiKey = process.env.KEEPERHUB_API_KEY;
-  if (!apiKey) return undefined;
-  return { Authorization: `Bearer ${apiKey}` };
+function getMcpAuthHeaders(apiKey?: string): Record<string, string> | undefined {
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+  if (!effectiveKey) return undefined;
+  return { Authorization: `Bearer ${effectiveKey}` };
 }
 
-function createMcpTransport(): StreamableHTTPClientTransport {
-  const headers = getMcpAuthHeaders();
+function createMcpTransport(apiKey?: string): StreamableHTTPClientTransport {
+  const headers = getMcpAuthHeaders(apiKey);
   return new StreamableHTTPClientTransport(new URL(getMcpUrl()), {
     requestInit: headers ? { headers } : undefined,
   });
 }
 
+function invalidateMcpClientCache(apiKey?: string): void {
+  clientCache.delete(mcpCacheKey(apiKey));
+}
+
 /**
- * Connected MCP client singleton with auto-reconnect fallback.
+ * Connected MCP client with per-key cache and auto-reconnect fallback.
  */
-async function tryGetMcpClient(): Promise<Client | null> {
-  if (cachedClient) return cachedClient;
+async function tryGetMcpClient(apiKey?: string): Promise<Client | null> {
+  const key = mcpCacheKey(apiKey);
+  const existing = clientCache.get(key);
+  if (existing) return existing;
+
   try {
-    const transport = createMcpTransport();
+    const transport = createMcpTransport(apiKey);
     const client = new Client({ name: "nexus-agent", version: "1.0.0" });
     await client.connect(transport);
-    cachedClient = client;
+    clientCache.set(key, client);
     return client;
   } catch {
-    cachedClient = null;
+    invalidateMcpClientCache(apiKey);
     return null;
   }
 }
@@ -109,11 +125,12 @@ export function parseMcpToolContent<T = any>(result: any, keyName?: string): T |
  */
 async function executeWithRetry<T>(
   action: (client: Client) => Promise<{ data: T; isStub: boolean }>,
-  fallbackStub: T
+  fallbackStub: T,
+  apiKey?: string,
 ): Promise<{ data: T; isStub: boolean }> {
   const maxRetries = 2;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
-    const client = await tryGetMcpClient();
+    const client = await tryGetMcpClient(apiKey);
     if (!client) {
       if (attempt < maxRetries) {
         await new Promise((r) => setTimeout(r, 1000));
@@ -129,11 +146,11 @@ async function executeWithRetry<T>(
       }
     } catch (err: any) {
       const errStr = String(err);
-      // Skip retry on auth failure
       if (errStr.includes("401") || errStr.toLowerCase().includes("unauthorized")) {
+        invalidateMcpClientCache(apiKey);
         return { data: fallbackStub, isStub: true };
       }
-      cachedClient = null; // reset client on network error
+      invalidateMcpClientCache(apiKey);
     }
 
     if (attempt < maxRetries) {
@@ -146,9 +163,10 @@ async function executeWithRetry<T>(
 // 1. Create Workflow
 export async function createWorkflow(
   config: WorkflowConfig,
-  _apiKey?: string
+  apiKey?: string
 ): Promise<{ workflowId: string; isStub: boolean }> {
   const graph = buildWorkflowGraph(config);
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
 
   const result = await executeWithRetry(
     async (client) => {
@@ -159,6 +177,7 @@ export async function createWorkflow(
           nodes: graph.nodes,
           edges: graph.edges,
           enabled: graph.enabled,
+          ...(effectiveKey ? { apiKey: effectiveKey } : {}),
         },
       });
       if ((raw as any)?.isError) {
@@ -169,7 +188,8 @@ export async function createWorkflow(
       const isStub = workflowId.startsWith("wf-stub-");
       return { data: workflowId, isStub };
     },
-    `wf-stub-${Date.now()}`
+    `wf-stub-${Date.now()}`,
+    apiKey,
   );
 
   return { workflowId: result.data, isStub: result.isStub };
@@ -178,15 +198,20 @@ export async function createWorkflow(
 // 2. Execute Workflow
 export async function executeWorkflow(
   workflowId: string,
-  _apiKey?: string
+  apiKey?: string
 ): Promise<{ executionId: string; isStub: boolean }> {
   if (workflowId.startsWith("wf-stub-")) return { executionId: `exec-stub-${Date.now()}`, isStub: true };
+
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
 
   const result = await executeWithRetry(
     async (client) => {
       const raw = await client.callTool({
         name: "execute_workflow",
-        arguments: { workflowId },
+        arguments: {
+          workflowId,
+          ...(effectiveKey ? { apiKey: effectiveKey } : {}),
+        },
       });
       if ((raw as any)?.isError) {
         throw new Error((raw as any).content?.[0]?.text || "execute_workflow failed");
@@ -196,7 +221,8 @@ export async function executeWorkflow(
       const isStub = executionId.startsWith("exec-stub-");
       return { data: executionId, isStub };
     },
-    `exec-stub-${Date.now()}`
+    `exec-stub-${Date.now()}`,
+    apiKey,
   );
 
   return { executionId: result.data, isStub: result.isStub };
@@ -243,17 +269,24 @@ function mapKeeperHubExecution(raw: unknown, executionId: string): ExecutionStat
 // 3. Get Execution Status
 export async function getExecutionStatus(
   executionId: string,
-  _apiKey?: string
+  apiKey?: string
 ): Promise<ExecutionStatus> {
   if (executionId.startsWith("exec-stub-")) {
     return { executionId, status: "pending", txHash: undefined, simulated: true };
   }
-  const client = await tryGetMcpClient();
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+  const client = await tryGetMcpClient(apiKey);
 
   if (!client) return { executionId, status: "pending", txHash: undefined, simulated: true };
   for (const toolName of ["get_execution_status", "get_execution"] as const) {
     try {
-      const raw = await client.callTool({ name: toolName, arguments: { executionId } });
+      const raw = await client.callTool({
+        name: toolName,
+        arguments: {
+          executionId,
+          ...(effectiveKey ? { apiKey: effectiveKey } : {}),
+        },
+      });
       const mapped = mapKeeperHubExecution(raw, executionId);
       if (mapped) return mapped;
     } catch {
@@ -294,14 +327,21 @@ export async function pollExecutionUntilSettled(
 // 4. Get Execution Logs
 export async function getExecutionLogs(
   executionId: string,
-  _apiKey?: string
+  apiKey?: string
 ): Promise<ExecutionLog[]> {
-  const client = await tryGetMcpClient();
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+  const client = await tryGetMcpClient(apiKey);
 
   if (!client) return [{ timestamp: new Date().toISOString(), message: "Workflow executed via KeeperHub MCP (stub mode)", level: "info" }];
   for (const toolName of ["get_execution_logs", "get_execution"] as const) {
     try {
-      const raw = await client.callTool({ name: toolName, arguments: { executionId } });
+      const raw = await client.callTool({
+        name: toolName,
+        arguments: {
+          executionId,
+          ...(effectiveKey ? { apiKey: effectiveKey } : {}),
+        },
+      });
       const parsed = parseMcpToolContent<any>(raw);
       const entries = parsed?.logs?.entries ?? parsed?.logs ?? parsed;
       if (Array.isArray(entries)) {
@@ -324,8 +364,8 @@ export async function setGasSponsorship(
   enabled: boolean,
   apiKey?: string
 ): Promise<boolean> {
-  const client = await tryGetMcpClient();
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+  const client = await tryGetMcpClient(apiKey);
 
   if (!client) return false;
   try {
@@ -345,8 +385,8 @@ export async function setMEVProtection(
   enabled: boolean,
   apiKey?: string
 ): Promise<boolean> {
-  const client = await tryGetMcpClient();
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+  const client = await tryGetMcpClient(apiKey);
 
   if (!client) return false;
   try {
@@ -365,8 +405,8 @@ export async function registerWebhookTrigger(
   workflowId: string,
   apiKey?: string
 ): Promise<{ webhookUrl: string }> {
-  const client = await tryGetMcpClient();
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+  const client = await tryGetMcpClient(apiKey);
 
   if (!client) return { webhookUrl: `https://keeperhub.com/hooks/${workflowId}` };
   try {
@@ -387,8 +427,8 @@ export async function registerEventListener(
   eventSignature: string,
   apiKey?: string
 ): Promise<boolean> {
-  const client = await tryGetMcpClient();
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+  const client = await tryGetMcpClient(apiKey);
 
   if (!client) return false;
   try {
@@ -408,8 +448,8 @@ export async function sendKeeperNotification(
   message: string,
   apiKey?: string
 ): Promise<boolean> {
-  const client = await tryGetMcpClient();
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+  const client = await tryGetMcpClient(apiKey);
 
   if (!client) return false;
   try {
@@ -447,8 +487,8 @@ export async function cancelWorkflow(
 ): Promise<{ ok: boolean; isStub: boolean }> {
   if (workflowId.startsWith("wf-stub-")) return { ok: true, isStub: true };
 
-  const client = await tryGetMcpClient();
-  const effectiveKey = apiKey || process.env.KEEPERHUB_API_KEY;
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+  const client = await tryGetMcpClient(apiKey);
 
   if (!client) {
     console.warn("[MCP] cancelWorkflow: no MCP client available. Local cancel only.");
