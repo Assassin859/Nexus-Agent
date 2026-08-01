@@ -1,7 +1,7 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
-const OPENROUTER_MODEL = process.env.BRAIN_MODEL ?? "google/gemma-4-31b-it:free";
+const OPENROUTER_MODEL = process.env.BRAIN_MODEL ?? "openai/gpt-oss-20b:free";
 const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
 const OPENAI_COMPAT_MODEL = process.env.OPENAI_BRAIN_MODEL ?? "gpt-4o-mini";
 
