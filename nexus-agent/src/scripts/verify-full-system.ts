@@ -8,7 +8,7 @@ import { encodeERC20Approve, USDC_SEPOLIA, AAVE_V3_POOL } from "../lib/calldata.
 import { getCompoundUsdcSupplyAPY } from "../lib/compound.js";
 import { ensureAllowance } from "../lib/allowance.js";
 import { selectBestCandidate, enforceCriticalHfFloor } from "../lib/guardian-candidate-select.js";
-import { getCycleRemaining } from "../lib/repayment-cycle.js";
+import { getCycleRemaining, shouldReleaseCycleBudget, resolveExecutionLogStatus } from "../lib/repayment-cycle.js";
 
 async function main() {
   const isIntegration = process.argv.includes("--integration");
@@ -132,6 +132,31 @@ async function main() {
     debtUSD: 5000,
   });
   assert(floorExistingRepay.action === "repay" && floorExistingRepay.amount === 500, "Safety Floor — Critical HF + existing repay → unchanged");
+
+  // 6e. Cycle budget release on poll outcome
+  const sampleTx = "0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3";
+  assert(shouldReleaseCycleBudget({ status: "mined" }) === false, "Cycle Budget — mined → do not release");
+  assert(
+    shouldReleaseCycleBudget({ timedOut: true, status: "pending" }) === false,
+    "Cycle Budget — inconclusive timeout → do not release",
+  );
+  assert(
+    shouldReleaseCycleBudget({ timedOut: true, status: "pending", txHash: sampleTx }) === false,
+    "Cycle Budget — timeout with txHash → do not release",
+  );
+  assert(shouldReleaseCycleBudget({ status: "failed" }) === true, "Cycle Budget — failed → release");
+
+  const inconclusive = resolveExecutionLogStatus({ timedOut: true, status: "pending" });
+  assert(
+    inconclusive.status === "delayed" && inconclusive.reason.includes("inconclusive"),
+    "Cycle Budget — inconclusive timeout → delayed log status",
+  );
+  const withHash = resolveExecutionLogStatus({
+    timedOut: true,
+    status: "broadcasting",
+    txHash: sampleTx,
+  });
+  assert(withHash.status === "success", "Cycle Budget — txHash present → success log status");
 
   // 7. Repayment cycle remaining (never negative)
   assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: 2000 }) === 0, "Cycle Remaining — Clamps negative to 0 when over budget");

@@ -5,7 +5,7 @@ import { selectBestCandidate, enforceCriticalHfFloor } from "../lib/guardian-can
 import { db } from "../db/client.js";
 import { repaymentCycles, executionsLog } from "../db/schema.js";
 import { simulateErc20Action } from "../lib/simulate.js";
-import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled, type WorkflowStep } from "../lib/mcp-client.js";
+import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled, getExecutionStatus, type WorkflowStep } from "../lib/mcp-client.js";
 import { getAavePosition, getUsdcBalance } from "../lib/aave.js";
 import { getPriceTrend } from "../lib/price-feed.js";
 import {
@@ -22,6 +22,8 @@ import {
   getCycleRemaining,
   reserveCycleBudget,
   releaseCycleBudget,
+  shouldReleaseCycleBudget,
+  resolveExecutionLogStatus,
 } from "../lib/repayment-cycle.js";
 import { eq, and, lt, desc, gte } from "drizzle-orm";
 
@@ -126,6 +128,33 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   if (expiredPendingRows.length > 0) {
     log.info({ expiredCount: expiredPendingRows.length }, "Expiring stale pending locks older than 15 minutes.");
     for (const stale of expiredPendingRows) {
+      const analysis = stale.aiAnalysis as { executionId?: string } | null;
+      const executionId = analysis?.executionId;
+
+      if (stale.action === "repay" && stale.amount > 0 && cycle && executionId) {
+        const repoll = await getExecutionStatus(executionId, effectiveKey);
+        const pollCtx = {
+          timedOut: false,
+          status: repoll.status,
+          txHash: repoll.txHash,
+        };
+        const { status: resolvedStatus, reason: resolvedReason } = resolveExecutionLogStatus(pollCtx);
+
+        if (shouldReleaseCycleBudget(pollCtx)) {
+          await releaseCycleBudget(cycle.id, stale.amount);
+        }
+
+        await db.update(executionsLog)
+          .set({
+            status: resolvedStatus,
+            txHash: repoll.txHash ?? undefined,
+            reason: resolvedReason,
+            aiAnalysis: { ...(analysis ?? {}), ttlRepoll: true, pollStatus: repoll.status },
+          })
+          .where(eq(executionsLog.id, stale.id));
+        continue;
+      }
+
       if (stale.action === "repay" && stale.amount > 0 && cycle) {
         await releaseCycleBudget(cycle.id, stale.amount);
       }
@@ -502,15 +531,15 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
         .where(eq(executionsLog.id, pendingRow.id));
     } else {
       const poll = await pollExecutionUntilSettled(executionId, effectiveKey);
-      const finalStatus = poll.timedOut
-        ? "reverted_chain"
-        : poll.status === "mined" ? "success"
-        : "reverted_chain";
-      const finalReason = poll.timedOut
-        ? "Execution poll timeout"
-        : decision.userExplanation;
+      const { status: finalStatus, reason: pollReason } = resolveExecutionLogStatus(poll);
+      const finalReason =
+        poll.timedOut && pollReason.includes("inconclusive")
+          ? pollReason
+          : finalStatus === "reverted_chain" && poll.status === "failed"
+            ? pollReason
+            : decision.userExplanation;
 
-      if (finalStatus !== "success" && budgetReserved > 0 && cycle) {
+      if (shouldReleaseCycleBudget(poll) && budgetReserved > 0 && cycle) {
         await releaseCycleBudget(cycle.id, budgetReserved);
       }
 
@@ -519,7 +548,13 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
           status: finalStatus,
           txHash: poll.txHash,
           reason: finalReason,
-          aiAnalysis: { ...aiAnalysisPayload, workflowId, executionId, pollStatus: poll.status },
+          aiAnalysis: {
+            ...aiAnalysisPayload,
+            workflowId,
+            executionId,
+            pollStatus: poll.status,
+            pollTimedOut: poll.timedOut ?? false,
+          },
         })
         .where(eq(executionsLog.id, pendingRow.id));
     }

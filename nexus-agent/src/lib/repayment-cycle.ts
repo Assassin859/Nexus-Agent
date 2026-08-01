@@ -78,3 +78,66 @@ export async function capCycleRepaidToLimit(
 
   return fixed ?? null;
 }
+
+export type CycleBudgetPollContext = {
+  timedOut?: boolean;
+  status: string;
+  txHash?: string | null;
+};
+
+const INCONCLUSIVE_STATUSES = new Set(["pending", "broadcasting", "simulating"]);
+
+function hasValidTxHash(txHash?: string | null): boolean {
+  return typeof txHash === "string" && txHash.startsWith("0x") && txHash.length === 66;
+}
+
+/** Whether to undo a prior cycle budget reservation after polling KeeperHub. */
+export function shouldReleaseCycleBudget(poll: CycleBudgetPollContext): boolean {
+  if (poll.status === "mined") return false;
+  if (hasValidTxHash(poll.txHash)) return false;
+  if (poll.status === "failed") return true;
+  if (poll.timedOut) return false;
+  return false;
+}
+
+/** Map poll outcome to executions_log status for Guardian repay flows. */
+export function resolveExecutionLogStatus(poll: CycleBudgetPollContext): {
+  status: "success" | "delayed" | "reverted_chain";
+  reason: string;
+} {
+  if (poll.status === "mined" || hasValidTxHash(poll.txHash)) {
+    const viaHash = poll.timedOut && hasValidTxHash(poll.txHash);
+    return {
+      status: "success",
+      reason: viaHash
+        ? "Execution poll timeout but txHash present — treating as success."
+        : "Execution mined on-chain.",
+    };
+  }
+
+  if (poll.status === "failed") {
+    return {
+      status: "reverted_chain",
+      reason: "KeeperHub execution failed on-chain.",
+    };
+  }
+
+  if (poll.timedOut && INCONCLUSIVE_STATUSES.has(poll.status)) {
+    return {
+      status: "delayed",
+      reason: `Execution poll timeout — status inconclusive (${poll.status}), budget retained pending confirmation.`,
+    };
+  }
+
+  if (poll.timedOut) {
+    return {
+      status: "delayed",
+      reason: `Execution poll timeout — status inconclusive (${poll.status}), budget retained pending confirmation.`,
+    };
+  }
+
+  return {
+    status: "reverted_chain",
+    reason: `Execution ended with status: ${poll.status}.`,
+  };
+}
