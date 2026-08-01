@@ -388,12 +388,12 @@ pnpm --prefix nexus-agent run surfaces # warm KeeperHub MCP (surfaces 3–12)
 ```bash
 # Unit tests (CI fast-track) — requires ALCHEMY_RPC_URL for full Tier B coverage
 pnpm --prefix nexus-agent run verify
-# Full env: 21 passed | 2 skipped | 0 failed
-# Minimal env (no RPC): fewer Tier B runs skipped — paste exact Summary line, do not round
+# Live 2026-08-02: Summary: ✓ 36 passed | ⚠ 2 skipped | ✗ 0 failed
+# Minimal env (no RPC): fewer Tier B runs — paste exact Summary line, do not round
 
 # Integration (+ DB connectivity)
 pnpm --prefix nexus-agent run verify:integration
-# Full env: 22 passed | 2 skipped | 0 failed
+# Live 2026-08-02: Summary: ✓ 37 passed | ⚠ 2 skipped | ✗ 0 failed
 
 # End-to-end module triggers (local or Railway via AGENT_URL)
 pnpm --prefix nexus-agent run e2e        # markets + chat + templates + feed audit
@@ -445,13 +445,18 @@ Label submissions with BaseScan links when `executions_log.txHash` is populated 
 
 ## Phase 2 Verified Proofs (Postgres `executions_log`)
 
-| Module | Action | Status | Notes |
-|--------|--------|--------|-------|
-| **Guardian** | `hold` | `success` | HF ~3.26 > 1.40 — no broadcast (historical) |
-| **Guardian** | `repay` | `success` + txHash | HF ~1.05 → ~1.32; agentic wallet funded; approve+repay via KeeperHub |
-| **Yield** | `rotate` | `success` | Dual-wallet ownership guard skip |
-| **DCA** | `swap` | schedule OK | `active_workflows` row registered |
-| **PayChain** | `payroll` | workflow registered | NL + 2-step confirm → KeeperHub cron |
+**Guardian resilience arc** — simulation intercept → mined repay (see `/resilience` + `/feed`):
+
+| Order | Module | Action | Status | Proof |
+|-------|--------|--------|--------|-------|
+| 1 | **Guardian** | `repay` | `reverted_simulation` | 18:41:53 UTC — allowance error, zero gas |
+| 2 | **Guardian** | `repay` | `reverted_simulation` | 18:45:04 UTC — pre-fix intercept |
+| 3 | **Guardian** | `repay` | `success` + txHash | [0x23f6424…](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) |
+| 4 | **Guardian** | `repay` | `success` + txHash | [0xd2d8ce6…](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) — HF ~1.32 |
+| 5 | **Guardian** | `hold` | `success` | Latest — safe HF, no broadcast |
+| — | **Yield** | `rotate` | `success` | Dual-wallet ownership guard skip |
+| — | **DCA** | `swap` | schedule OK | KeeperHub `3fd2ctluvz7rdtf5yj0va` |
+| — | **PayChain** | `payroll` | workflow registered | KeeperHub `iu0toy0rena606e07ikxu` |
 
 Re-run: `pnpm --prefix nexus-agent run phase2` then `pnpm --prefix nexus-agent run logs`
 
@@ -502,7 +507,7 @@ Details: [submission_runbook.md](submission_runbook.md)
 
 | Document | Contents |
 |----------|----------|
-| [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Full architecture, schemas, security model |
+| [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | **Authoritative** architecture, schemas, Phase 2 proofs, verify harness (36/37 passed, last verified 2026-08-02) |
 | [submission_runbook.md](submission_runbook.md) | Verification commands, deployment, honest execution limits |
 | [plan.md](plan.md) | Master execution roadmap (batches & gates) |
 | [KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md) | Reproducible KeeperHub bugs (bounty material) |

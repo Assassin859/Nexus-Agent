@@ -1,6 +1,6 @@
 # NexusAgent — Submission Runbook (DoraHacks / Agents Onchain 2026)
 
-> **Last verified:** 2026-08-01 (live harness run) · **Chain:** Base Sepolia (84532)
+> **Last verified:** 2026-08-02 (live harness run) · **Chain:** Base Sepolia (84532)
 
 ---
 
@@ -28,13 +28,18 @@ UI shows **Simulated** badge when `simulated_stub` or no `txHash`.
 
 ## Phase 2 verified proofs (Postgres `executions_log`)
 
-| Module | Action | Status | Reason (summary) |
-|--------|--------|--------|------------------|
-| **Guardian** | `hold` | `success` | HF ~3.26 > 1.40 — no broadcast (historical) |
-| **Guardian** | `repay` | `success` + txHash | HF ~1.05 → 1.32; agentic wallet funded; KeeperHub approve+repay |
-| **Yield Rotator** | `rotate` | `success` | Dual-wallet ownership guard skip |
-| **DCA Engine** | `swap` | schedule OK | Workflow registered in `active_workflows` |
-| **PayChain** | `payroll` | workflow registered | KeeperHub cron + 2-step confirm |
+**Guardian resilience arc** (visible in `/resilience` → simulation cards, then `/feed` → BaseScan links):
+
+| Order | Module | Action | Status | Proof |
+|-------|--------|--------|--------|-------|
+| 1 | **Guardian** | `repay` | `reverted_simulation` | 2026-08-01 18:41:53 UTC — allowance intercept, zero gas |
+| 2 | **Guardian** | `repay` | `reverted_simulation` | 2026-08-01 18:45:04 UTC — same pre-fix intercept |
+| 3 | **Guardian** | `repay` | `success` + txHash | [0x23f6424…](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) — $1000 repay |
+| 4 | **Guardian** | `repay` | `success` + txHash | [0xd2d8ce6…](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) — HF ~1.05 → ~1.32 |
+| 5 | **Guardian** | `hold` | `success` | Latest cron — HF ~1.32, no broadcast |
+| — | **Yield Rotator** | `rotate` | `success` | Dual-wallet ownership guard skip |
+| — | **DCA Engine** | `swap` | schedule OK | Workflow `3fd2ctluvz7rdtf5yj0va` in `active_workflows` |
+| — | **PayChain** | `payroll` | workflow registered | KeeperHub cron `iu0toy0rena606e07ikxu` |
 
 Re-run: `pnpm --prefix nexus-agent run phase2` then `pnpm --prefix nexus-agent run logs`
 
@@ -42,14 +47,14 @@ Re-run: `pnpm --prefix nexus-agent run phase2` then `pnpm --prefix nexus-agent r
 
 ## Verification commands (exact counts)
 
-Live output from `2026-08-01`:
+Live output from **2026-08-02** (re-run before submission; paste exact Summary line, do not round):
 
 ```bash
 pnpm --prefix nexus-agent run verify
 ```
 
 ```
-Summary: ✓ 21 passed | ⚠ 2 skipped | ✗ 0 failed
+Summary: ✓ 36 passed | ⚠ 2 skipped | ✗ 0 failed
 ```
 
 ```bash
@@ -57,7 +62,7 @@ pnpm --prefix nexus-agent run verify:integration
 ```
 
 ```
-Summary: ✓ 22 passed | ⚠ 2 skipped | ✗ 0 failed
+Summary: ✓ 37 passed | ⚠ 2 skipped | ✗ 0 failed
 ```
 
 Other commands:

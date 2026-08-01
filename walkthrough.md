@@ -29,10 +29,10 @@ pnpm --prefix nexus-agent run build          # 0 TS errors (Railway tsc)
 pnpm --prefix nexus-dashboard run build      # 0 Next.js errors
 
 pnpm --prefix nexus-agent run verify
-# Live 2026-08-01: Summary: ✓ 21 passed | ⚠ 2 skipped | ✗ 0 failed
+# Live 2026-08-02: Summary: ✓ 36 passed | ⚠ 2 skipped | ✗ 0 failed
 
 pnpm --prefix nexus-agent run verify:integration
-# Live 2026-08-01: Summary: ✓ 22 passed | ⚠ 2 skipped | ✗ 0 failed
+# Live 2026-08-02: Summary: ✓ 37 passed | ⚠ 2 skipped | ✗ 0 failed
 
 pnpm --prefix nexus-agent run e2e
 # markets + chat + templates + module triggers + feed audit
@@ -56,13 +56,18 @@ pnpm --prefix nexus-agent run logs
 
 ## Phase 2 execution proofs
 
-| Module | Action | Status | Notes |
-|--------|--------|--------|-------|
-| Guardian | `hold` | `success` | HF ~3.26 (historical safe) |
-| Guardian | `repay` | `success` + txHash | HF ~1.05 → ~1.32; 2 BaseScan txs |
-| Yield | `rotate` | `success` | Ownership guard skip |
-| DCA | `swap` | scheduled | KeeperHub `3fd2ctluvz7rdtf5yj0va` |
-| PayChain | `payroll` | workflow | KeeperHub `iu0toy0rena606e07ikxu` |
+**Guardian resilience arc** (`reverted_simulation` → mined repay → hold):
+
+| Order | Module | Action | Status | Notes |
+|-------|--------|--------|--------|-------|
+| 1 | Guardian | `repay` | `reverted_simulation` | 18:41:53 — allowance intercept |
+| 2 | Guardian | `repay` | `reverted_simulation` | 18:45:04 — pre-fix intercept |
+| 3 | Guardian | `repay` | `success` + txHash | [0x23f6424…](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) |
+| 4 | Guardian | `repay` | `success` + txHash | [0xd2d8ce6…](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) — HF ~1.32 |
+| 5 | Guardian | `hold` | `success` | Latest cron — safe HF |
+| — | Yield | `rotate` | `success` | Ownership guard skip |
+| — | DCA | `swap` | scheduled | KeeperHub `3fd2ctluvz7rdtf5yj0va` |
+| — | PayChain | `payroll` | workflow | KeeperHub `iu0toy0rena606e07ikxu` |
 
 Demo: [submission_runbook.md](submission_runbook.md)
 

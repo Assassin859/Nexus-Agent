@@ -1,5 +1,8 @@
 # NexusAgent — Technical Architecture & Implementation Specification
 
+> **Document status:** **Authoritative** for DoraHacks / Agents Onchain 2026 submission · **Last verified:** 2026-08-02 (live harness + Postgres `executions_log`)  
+> **Brain provider:** OpenRouter `google/gemini-2.5-flash` via [`getBrainModel()`](../nexus-agent/src/brain/provider.ts). Do **not** use legacy GitHub Models references in [goal.md](../goal.md) (archived) or [implementation_plan.md](../implementation_plan.md) (historical).
+
 > **Target Audience:** Hackathon Judges (DoraHacks / Agents Onchain 2026), AI Engineers, Web3 Protocol Developers  
 > **Repository:** [nexus-agent](https://github.com/Assassin859/Nexus-Agent)  
 > **Tech Stack:** Node.js 22 + Next.js 14 (App Router) + Vercel AI SDK v4 + OpenRouter (`google/gemini-2.5-flash`) + KeeperHub MCP + SIWE + Postgres (Drizzle ORM) + Ethers.js v6  
@@ -26,6 +29,23 @@ The end user never manually builds calldata, calculates gas limits, or construct
 **Documented scaffolding — DCA / Yield:** DCA workflow registered on KeeperHub; live Uniswap swap blocked on testnet liquidity. Yield rotator skips on-chain when monitored wallet ≠ agentic MPC signer (dual-wallet constraint — stated roadmap for unified-wallet deployments).
 
 **Brain:** OpenRouter `google/gemini-2.5-flash` via `getBrainModel()` in [`nexus-agent/src/brain/provider.ts`](../nexus-agent/src/brain/provider.ts) — not GitHub Models.
+
+### 1.2 Verified execution proofs (Postgres `executions_log`, Base Sepolia)
+
+Judges can replay this arc in `/resilience` and `/feed` — all rows are real DB history from 2026-08-01 UTC.
+
+| Order | Module | Action | Status | Proof |
+|-------|--------|--------|--------|-------|
+| 1 | **Guardian** | `repay` | `reverted_simulation` | 18:41:53 — `ERC20: transfer amount exceeds allowance` (zero gas) |
+| 2 | **Guardian** | `repay` | `reverted_simulation` | 18:45:04 — same pre-fix intercept |
+| 3 | **Guardian** | `repay` | `success` + txHash | [0x23f6424…770df3](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) — $1000 repay after allowance-aware fix |
+| 4 | **Guardian** | `repay` | `success` + txHash | [0xd2d8ce6…a4f127](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) — second $1000 repay; HF ~1.05 → ~1.32 |
+| 5 | **Guardian** | `hold` | `success` | Latest cron — HF ~1.32, no broadcast |
+| — | **Yield** | `rotate` | `success` | Dual-wallet ownership guard skip (documented constraint) |
+| — | **DCA** | `swap` | schedule OK | KeeperHub workflow `3fd2ctluvz7rdtf5yj0va` registered |
+| — | **PayChain** | `payroll` | workflow registered | KeeperHub cron `iu0toy0rena606e07ikxu` |
+
+Re-run audit: `pnpm --prefix nexus-agent run logs` · Full runbook: [submission_runbook.md](../submission_runbook.md)
 
 ---
 
@@ -203,7 +223,7 @@ OPENROUTER_API_KEY  →  GEMINI_API_KEY  →  OPENAI_API_KEY  →  GITHUB_TOKEN
 5. **`listPayees`**: Returns single payees, team directories, and shared vault pools.
 6. **`queryPortfolio`**: Fetches live Aave V3 health factor, debt, collateral, and Compound V3 APY comparisons.
 7. **`triggerStrategy`**: Forces an immediate ad-hoc run of Guardian, Yield Rotator, or DCA.
-8. **`getLiveTransactions`**: Fetches recent execution logs with verified Sepolia Etherscan links.
+8. **`getLiveTransactions`**: Fetches recent execution logs with verified BaseScan links.
 
 ---
 
@@ -219,7 +239,7 @@ OPENROUTER_API_KEY  →  GEMINI_API_KEY  →  OPENAI_API_KEY  →  GITHUB_TOKEN
   3. Formulates LLM multi-candidate recommendation via `generateObject(GuardianDecisionSchema)`.
   4. Ranks candidate actions via `selectBestCandidate()`.
   5. Clamps amount to cycle budget and agentic wallet balance.
-  6. Pre-flight simulates calldata via `simulate()`.
+  6. Pre-flight simulates via `simulateErc20Action()` — checks on-chain allowance, simulates capped `approve` if needed, then simulates main tx; intercepts allowance reverts as `reverted_simulation` (zero gas).
   7. **Auto-Prepends Capped Allowance**: Calls `ensureAllowance()` and prepends exact amount + 10% buffer approval step if needed.
   8. Inserts `pending` row into `executionsLog` with full selection audit payload (`aiAnalysisPayload`).
   9. Calls KeeperHub `createWorkflow` + `executeWorkflow` + `pollExecutionUntilSettled`.
@@ -342,11 +362,27 @@ Built with Next.js 14 (App Router), Vanilla CSS tokens, and Lucide React icons a
 ## 9. System Verification Harness (`verify-full-system.ts`)
 
 Run via `pnpm verify`:
-* **Tier A (21 Unit Tests - Mandatory)**: Wallet normalization, MCP parsers, candidate selection, payroll split, cron evaluator/resolver, ERC20 approve calldata, cycle remaining clamp.
+* **Tier A (34 offline unit tests — mandatory)**: Wallet normalization, MCP parsers, candidate selection, safety floor, cycle budget, MCP key cache, workflow graph enabled flag, payroll split, cron evaluator/resolver, ERC20 approve calldata, cycle remaining clamp.
 * **Tier B (On-Chain RPC)**: Compound V3 APY (fallback on Sepolia), `ensureAllowance` capped calldata.
 * **Tier C (Integration, `--integration`)**: DB connectivity only; 2 workflow tests skipped (not yet implemented).
 
-**Exact output:** `21 passed | 2 skipped | 0 failed` (unit); `22 passed | 2 skipped | 0 failed` (integration).
+**Live output (2026-08-02)** — paste exact Summary line, do not round:
+
+```bash
+pnpm --prefix nexus-agent run verify
+```
+
+```
+Summary: ✓ 36 passed | ⚠ 2 skipped | ✗ 0 failed
+```
+
+```bash
+pnpm --prefix nexus-agent run verify:integration
+```
+
+```
+Summary: ✓ 37 passed | ⚠ 2 skipped | ✗ 0 failed
+```
 
 Additional scripts: `pnpm run e2e` (full system), `pnpm run phase2` (4 modules), `pnpm run surfaces` (17 MCP surfaces), `pnpm run logs`, `pnpm exec tsx src/scripts/db-audit.ts`.
 

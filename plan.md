@@ -89,9 +89,31 @@
 ## Verification Quick Reference
 
 ```bash
-pnpm --prefix nexus-agent run verify          → 21 passed, 2 skipped, 0 failed
+pnpm --prefix nexus-agent run verify          → 36 passed, 2 skipped, 0 failed
 pnpm --prefix nexus-agent run e2e             → full system (markets, chat, templates, feed)
-pnpm --prefix nexus-agent run verify:integration → 19 passed, 2 skipped, 0 failed
+pnpm --prefix nexus-agent run verify:integration → 37 passed, 2 skipped, 0 failed
 pnpm --prefix nexus-agent run phase2          → 4/4 modules verified
 pnpm --prefix nexus-agent run surfaces        → 17/17 MCP surfaces verified
 ```
+
+---
+
+## 🔴 Batch 5 — Bugfix Sprint (post-audit, one-by-one)
+
+> **Cursor plan:** `.cursor/plans/nexusagent_bugfix_sprint.plan.md`  
+> **Rule:** One fix per session → `pnpm verify` → commit → next todo.
+
+| Priority | Todo ID | Status | Issue |
+|----------|---------|--------|-------|
+| P0 | `fix-guardian-critical-hold` | done | LLM `hold` at HF &lt; 1.15 when USDC exists |
+| P0 | `fix-cycle-budget-timeout` | done | Budget released on poll timeout |
+| P0 | `fix-mcp-apikey` | done | Per-wallet `kh_...` ignored by MCP |
+| P0 | `fix-dca-double-exec` | done | KeeperHub cron + local cron both fire |
+| P1 | `fix-pending-lock-atomic` | next | Duplicate execution race |
+| P1 | `fix-simulate-full-sequence` | pending | Main tx skipped after approve sim |
+| P2 | Dashboard wave (10–13) | pending | Portfolio fallback, OAuth false connected, workflow counts |
+| P3 | Medium hardening (14–22) | pending | Schema unique, RPC fail-closed, SIWE nonce, labels |
+
+**Start here:** `fix-pending-lock-atomic` in `nexus-agent/src/modules/guardian.ts`.
+
+**Gate 5 exit criteria:** Wave 1–2 complete; Guardian cannot hold at critical HF with funds; DCA single-fire verified; dashboard shows real auth errors.
