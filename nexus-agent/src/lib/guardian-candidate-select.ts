@@ -47,3 +47,43 @@ export function selectBestCandidate(
     reason: `Harness Selected Option (${best.action}): ${best.pros || fallback.reason}`,
   };
 }
+
+export type CriticalHfFloorContext = {
+  healthFactor: number | null;
+  agenticBalance: number;
+  cycleRemaining: number;
+  debtUSD: number;
+};
+
+/**
+ * Safety floor: at critical HF, never accept hold/block when repay is possible.
+ */
+export function enforceCriticalHfFloor(
+  recommendation: GuardianDecision["recommendation"],
+  ctx: CriticalHfFloorContext
+): GuardianDecision["recommendation"] {
+  const hf = ctx.healthFactor ?? 99;
+  if (hf >= 1.15) return recommendation;
+
+  if (recommendation.action === "repay" || recommendation.action === "supply_collateral") {
+    return recommendation;
+  }
+
+  if (
+    (recommendation.action === "hold" || recommendation.action === "block_transaction") &&
+    ctx.agenticBalance > 0 &&
+    ctx.cycleRemaining > 0
+  ) {
+    const amount = Math.max(0, Math.min(ctx.agenticBalance, ctx.cycleRemaining, ctx.debtUSD));
+    if (amount > 0) {
+      return {
+        action: "repay",
+        asset: "USDC",
+        amount,
+        reason: `Safety floor: critical HF (${hf.toFixed(2)}) — overriding ${recommendation.action}.`,
+      };
+    }
+  }
+
+  return recommendation;
+}

@@ -7,7 +7,7 @@ import { shouldRunCronNow } from "../lib/cron-evaluator.js";
 import { encodeERC20Approve, USDC_SEPOLIA, AAVE_V3_POOL } from "../lib/calldata.js";
 import { getCompoundUsdcSupplyAPY } from "../lib/compound.js";
 import { ensureAllowance } from "../lib/allowance.js";
-import { selectBestCandidate } from "../lib/guardian-candidate-select.js";
+import { selectBestCandidate, enforceCriticalHfFloor } from "../lib/guardian-candidate-select.js";
 import { getCycleRemaining } from "../lib/repayment-cycle.js";
 
 async function main() {
@@ -97,6 +97,41 @@ async function main() {
   ];
   const rankedResult = selectBestCandidate(mixedCandidates, fallbackRec);
   assert(rankedResult.action === "repay", "Candidate Select — Lower riskScore candidate wins ranking (riskScore=2 > riskScore=3)");
+
+  // 6d. Critical HF safety floor
+  const holdAtCritical = { action: "hold" as const, asset: "USDC", amount: 0, reason: "LLM hold" };
+  const floorRepay = enforceCriticalHfFloor(holdAtCritical, {
+    healthFactor: 1.05,
+    agenticBalance: 8000,
+    cycleRemaining: 1000,
+    debtUSD: 5000,
+  });
+  assert(floorRepay.action === "repay" && floorRepay.amount === 1000, "Safety Floor — Critical HF + hold + funds → repay $1000");
+
+  const floorEmptyWallet = enforceCriticalHfFloor(holdAtCritical, {
+    healthFactor: 1.05,
+    agenticBalance: 0,
+    cycleRemaining: 1000,
+    debtUSD: 5000,
+  });
+  assert(floorEmptyWallet.action === "hold", "Safety Floor — Critical HF + hold + empty wallet → unchanged hold");
+
+  const floorSafeHf = enforceCriticalHfFloor(holdAtCritical, {
+    healthFactor: 1.32,
+    agenticBalance: 8000,
+    cycleRemaining: 1000,
+    debtUSD: 5000,
+  });
+  assert(floorSafeHf.action === "hold", "Safety Floor — Safe HF 1.32 + hold → unchanged hold");
+
+  const existingRepay = { action: "repay" as const, asset: "USDC", amount: 500, reason: "Already repay" };
+  const floorExistingRepay = enforceCriticalHfFloor(existingRepay, {
+    healthFactor: 1.05,
+    agenticBalance: 8000,
+    cycleRemaining: 1000,
+    debtUSD: 5000,
+  });
+  assert(floorExistingRepay.action === "repay" && floorExistingRepay.amount === 500, "Safety Floor — Critical HF + existing repay → unchanged");
 
   // 7. Repayment cycle remaining (never negative)
   assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: 2000 }) === 0, "Cycle Remaining — Clamps negative to 0 when over budget");

@@ -1,7 +1,7 @@
 import { generateObject } from "ai";
 import { getBrainModel } from "../brain/provider.js";
 import { GuardianDecisionSchema, GUARDIAN_SYSTEM_PROMPT } from "../brain/schemas.js";
-import { selectBestCandidate } from "../lib/guardian-candidate-select.js";
+import { selectBestCandidate, enforceCriticalHfFloor } from "../lib/guardian-candidate-select.js";
 import { db } from "../db/client.js";
 import { repaymentCycles, executionsLog } from "../db/schema.js";
 import { simulateErc20Action } from "../lib/simulate.js";
@@ -233,13 +233,29 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     };
   }
 
-  const selectedRecommendation = selectBestCandidate(
+  let selectedRecommendation = selectBestCandidate(
     decision.candidateActions,
     decision.recommendation,
     { currentHealthFactor: position.healthFactor }
   );
 
-  if (
+  const preFloorRecommendation = selectedRecommendation;
+  selectedRecommendation = enforceCriticalHfFloor(selectedRecommendation, {
+    healthFactor: position.healthFactor,
+    agenticBalance,
+    cycleRemaining,
+    debtUSD: position.debtUSD,
+  });
+  const safetyFloorApplied =
+    selectedRecommendation.action !== preFloorRecommendation.action ||
+    selectedRecommendation.amount !== preFloorRecommendation.amount;
+
+  if (safetyFloorApplied) {
+    log.warn(
+      { before: preFloorRecommendation, after: selectedRecommendation },
+      "Safety floor override: critical HF hold/block converted to repay."
+    );
+  } else if (
     selectedRecommendation.action !== decision.recommendation.action ||
     selectedRecommendation.amount !== decision.recommendation.amount
   ) {
@@ -260,8 +276,10 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     llmRecommendation: decision.recommendation,
     harnessRecommendation: selectedRecommendation,
     harnessOverride:
+      safetyFloorApplied ||
       selectedRecommendation.action !== decision.recommendation.action ||
       selectedRecommendation.amount !== decision.recommendation.amount,
+    safetyFloorApplied,
   };
 
   // ── Alert: liquidation risk before execution ──────────────────────────────
@@ -284,10 +302,32 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     selectedRecommendation.action === "hold" ||
     selectedRecommendation.action === "block_transaction"
   ) {
+    const safetyFloorMiss =
+      criticalHf &&
+      selectedRecommendation.action === "hold" &&
+      agenticBalance > 0 &&
+      cycleRemaining > 0;
     const blockedCritical =
       criticalHf &&
       selectedRecommendation.action === "hold" &&
       agenticBalance <= 0;
+
+    if (safetyFloorMiss) {
+      log.error(
+        { agenticBalance, cycleRemaining, healthFactor: position.healthFactor },
+        "Safety floor miss: hold at critical HF with repay capacity — logging delayed."
+      );
+      await db.insert(executionsLog).values({
+        userWallet: monitoredWallet,
+        action: "repay",
+        amount: 0,
+        status: "delayed",
+        reason: `Critical HF (${position.healthFactor?.toFixed(2)}) — safety floor expected repay but hold path reached. ${decision.userExplanation}`,
+        aiAnalysis: aiAnalysisPayload,
+      });
+      return;
+    }
+
     await db.insert(executionsLog).values({
       userWallet: monitoredWallet,
       action: blockedCritical ? "repay" : selectedRecommendation.action,
