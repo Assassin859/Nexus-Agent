@@ -26,12 +26,14 @@ keeperhub-guardian/
 │   │   ├── brain/        # provider.ts, agent-tools.ts, Zod schemas
 │   │   ├── modules/      # guardian, dca, yield-rotator, paychain
 │   │   ├── lib/          # aave, calldata, mcp-client, rpc, simulate
-│   │   └── scripts/      # smoke tests, verify harness, guardian runner
+│   │   └── scripts/      # phase2-run, check-logs, clear-db, verify-full-system, smoke tests
 │   └── drizzle/          # Postgres migrations
 ├── nexus-dashboard/      # Next.js 14 dashboard (App Router)
 │   ├── app/              # Portfolio, Chat, Workflows, Feed, Resilience, …
+│   ├── .env.local        # NEXT_PUBLIC_AGENT_URL (gitignored — copy from .env.example)
 │   └── components/       # Sidebar, DecisionMatrixCard, TransactionCard, …
 ├── docs/TECHNICAL_SPEC.md
+├── submission_runbook.md # Verification commands, known limits, deployment notes
 ├── KEEPERHUB_BUGS.md     # Documented KeeperHub integration friction (hackathon material)
 └── .env.example          # Single root .env — loaded by nexus-agent/src/lib/env.ts
 ```
@@ -45,7 +47,7 @@ keeperhub-guardian/
 | **Backend** | Node.js 22, Express, TypeScript, Drizzle ORM, Postgres |
 | **Frontend** | Next.js 14 (App Router), React 18, Tailwind CSS 4 |
 | **AI Brain** | Vercel AI SDK v4 — `generateText` + `generateObject` + native tool calling |
-| **LLM Provider** | **OpenRouter** (primary, free models) → Gemini → OpenAI → GitHub Models (fallback) |
+| **LLM Provider** | **OpenRouter** (`google/gemini-2.5-flash`, paid) → Gemini → OpenAI → GitHub Models (last-resort fallback) |
 | **Execution** | KeeperHub MCP, Turnkey MPC agentic wallet, Base Sepolia |
 | **Auth** | SIWE JWT (MetaMask sign-in) + optional KeeperHub OAuth |
 | **Chain** | **Base Sepolia** — Aave V3.2, Compound V3, Uniswap V3 |
@@ -60,7 +62,7 @@ User Message ("dca 50 usdc weekly", "what's my health factor?", "pay dev team 20
                                 ▼
          ┌──────────────────────────────────────────────┐
          │       NexusAgent Conversational Agent        │
-         │   getBrainModel() via OpenRouter (free tier) │
+         │   getBrainModel() via OpenRouter (gemini-2.5-flash) │
          │     Vercel AI SDK · maxSteps: 5 · 8 tools    │
          └──────────────────────┬───────────────────────┘
                                 │
@@ -82,7 +84,7 @@ User Message ("dca 50 usdc weekly", "what's my health factor?", "pay dev team 20
 │                 KeeperHub MCP Execution                 │
 │  Turnkey MPC signing (AGENTIC_WALLET_ADDRESS)           │
 │  Pre-flight simulation · 15-min pending TTL cleanup   │
-│  Base Sepolia Etherscan verification links              │
+│  BaseScan links when real txHash exists (else Simulated) │
 └─────────────────────────────────────────────────────────┘
                            ▼
                     executions_log (Postgres)
@@ -129,11 +131,15 @@ Every execution log row shows:
 
 | Badge | When |
 |-------|------|
-| **KeeperHub MPC** | Real on-chain tx with valid `txHash` |
-| **Simulated** | `simulated_stub` or placeholder hash |
+| **KeeperHub MPC** | Real on-chain tx with valid non-stub `txHash` |
+| **Simulated** | `simulated_stub`, missing hash, or MCP stub mode |
 | **In-Flight** | `status === "pending"` |
 
-Plus: copyable tx hash, expandable **AI Reasoning** panel (harness vs LLM recommendation), and **Live BaseScan** link → `https://sepolia.basescan.org/tx/0x...`
+Footer links: **View on KeeperHub** when `aiAnalysis.workflowId` is present and non-stub; otherwise **KeeperHub Managed** label. **BaseScan** link only when a real `txHash` exists → `https://sepolia.basescan.org/tx/0x...`
+
+Plus: copyable tx hash (when present) and expandable **AI Reasoning** panel (`harnessRecommendation`, `harnessOverride`, `healthFactor`, etc.).
+
+> **Honest status:** At HF ~3.26 Guardian correctly **`hold`s** with no broadcast. Do not imply on-chain proof until `executions_log.txHash` is populated. See [submission_runbook.md](submission_runbook.md).
 
 ### KeeperHub connection (3-tier sidebar model)
 
@@ -155,14 +161,14 @@ Priority order — first configured wins:
 OPENROUTER_API_KEY  →  GEMINI_API_KEY  →  OPENAI_API_KEY  →  GITHUB_TOKEN
 ```
 
-**Recommended (free):**
+**Recommended (production):**
 
 ```bash
 OPENROUTER_API_KEY=sk-or-v1-...
-BRAIN_MODEL=google/gemini-2.0-flash-exp:free
+BRAIN_MODEL=google/gemini-2.5-flash
 ```
 
-Other free OpenRouter models that work: `meta-llama/llama-3.3-70b-instruct:free`, `openai/gpt-oss-20b:free` (code default).
+Free OpenRouter models (`:free` suffix) are rate-limited and several IDs are deprecated — use paid `gemini-2.5-flash` for demos.
 
 Provider logs at startup: `AI brain provider initialized { provider: "openrouter", model: "..." }`
 
@@ -179,19 +185,19 @@ Provider logs at startup: `AI brain provider initialized { provider: "openrouter
 - Actions: `repay`, `supply_collateral`, `hold`, `block_transaction`
 - Thresholds: critical &lt; 1.10 · warning 1.10–1.40 · hold &gt; 1.40
 
-### Yield Rotator — APY Optimization
+### Yield Rotator — APY Optimization *(secondary / demo-limited)*
 - **Cron:** every 15 minutes
 - Compares Aave V3.2 vs Compound V3 USDC supply APY on Base Sepolia
-- Rotates only when 90-day profit exceeds gas (break-even &lt; 45 days)
-- Logs `action: "rotate"`
+- **Compound APY:** on-chain `supplyRatePerSecond` may fail on Base Sepolia test deployments — falls back to configured default APY in logs
+- **Dual-wallet constraint:** skips on-chain rotation when `monitoredWallet ≠ AGENTIC_WALLET_ADDRESS` (Aave withdraw has no `onBehalfOf`)
 
-### DCA Engine — Dollar-Cost Averaging
+### DCA Engine — Dollar-Cost Averaging *(secondary)*
 - **Cron:** every hour
 - USDC → ETH via Uniswap V3; delays if gas &gt; 5% of purchase value
 - Single active DCA per wallet (upsert semantics)
 - Chat + `/api/dca/schedule` for registration
 
-### PayChain — Recurring Payroll
+### PayChain — Recurring Payroll *(secondary)*
 - Natural-language payroll from chat
 - Team remainder cent distribution ($100 / 3 → $33, $33, $34)
 - Compensating `cancelWorkflow()` rollback on partial failure
@@ -249,7 +255,7 @@ Copy `.env.example` → `.env` at the **repo root** (not inside `nexus-agent/`).
 | Variable | Purpose |
 |----------|---------|
 | `OPENROUTER_API_KEY` | Primary AI brain (get key at [openrouter.ai/keys](https://openrouter.ai/keys)) |
-| `BRAIN_MODEL` | e.g. `google/gemini-2.0-flash-exp:free` |
+| `BRAIN_MODEL` | `google/gemini-2.5-flash` (recommended) |
 | `DATABASE_URL` | Postgres connection string |
 | `ALCHEMY_RPC_URL` | Base Sepolia RPC (`https://base-sepolia.g.alchemy.com/v2/...`) |
 | `KEEPERHUB_API_KEY` | `kh_...` org key for real MCP execution |
@@ -312,6 +318,17 @@ pnpm --prefix nexus-dashboard dev
 4. Go to **AI Chat** → ask *"What is my Aave health factor?"*
 5. Check **Live Feed** → Decision Matrix + execution cards
 
+### 5. Dashboard against Railway (local UI → cloud agent)
+
+Create `nexus-dashboard/.env.local`:
+
+```bash
+NEXT_PUBLIC_AGENT_URL=https://nexus-agent-production-7783.up.railway.app
+NEXT_PUBLIC_WALLET_ADDRESS=0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b
+```
+
+Restart `pnpm --prefix nexus-dashboard dev` after editing. SIWE and KeeperHub key save call Railway directly — ensure Railway `JWT_SECRET` matches root `.env` and `ALLOWED_ORIGINS` includes `http://localhost:3000` (or leave unset; server defaults include it).
+
 ---
 
 ## Railway Deployment
@@ -322,15 +339,17 @@ Deploy **`nexus-agent`** as a Node service + **Postgres** plugin on Railway Hobb
 
 ```
 OPENROUTER_API_KEY=sk-or-v1-...
-BRAIN_MODEL=google/gemini-2.0-flash-exp:free
+BRAIN_MODEL=google/gemini-2.5-flash
 DATABASE_URL=<from Railway Postgres plugin>
 ALCHEMY_RPC_URL=https://base-sepolia.g.alchemy.com/v2/...
 KEEPERHUB_API_KEY=kh_...
 AGENTIC_WALLET_ADDRESS=0x...
-JWT_SECRET=<random secret>
+JWT_SECRET=<random secret — must match local if running phase2 against Railway>
 ALLOWED_ORIGINS=https://your-dashboard-url.vercel.app
 NODE_ENV=production
 ```
+
+Production URL: `https://nexus-agent-production-7783.up.railway.app`
 
 ### Dashboard (Vercel or Railway)
 
@@ -341,36 +360,90 @@ NEXT_PUBLIC_WALLET_ADDRESS=0x...
 
 Remove `GEMINI_API_KEY` from Railway if using OpenRouter exclusively.
 
+### Production parity check (local JWT → Railway API)
+
+`JWT_SECRET` in root `.env` must **byte-match** Railway before running:
+
+```powershell
+$env:AGENT_URL="https://nexus-agent-production-7783.up.railway.app"
+pnpm --prefix nexus-agent run phase2   # exit 0 = all four modules OK
+pnpm --prefix nexus-agent run logs     # hold, rotate, swap rows in shared Postgres
+pnpm --prefix nexus-agent run surfaces # warm KeeperHub MCP (surfaces 3–12)
+```
+
 ---
 
 ## Verification & Test Harnesses
 
 ```bash
-# Unit tests (CI fast-track — no DB/RPC required)
+# Unit tests (CI fast-track) — requires ALCHEMY_RPC_URL for full Tier B coverage
 pnpm --prefix nexus-agent run verify
+# Full env: 18 passed | 2 skipped | 0 failed
+# Minimal env (no RPC): fewer Tier B runs skipped — paste exact Summary line, do not round
 
-# Integration mode (requires DATABASE_URL + optional RPC)
+# Integration (+ DB connectivity)
 pnpm --prefix nexus-agent run verify:integration
+# Full env: 19 passed | 2 skipped | 0 failed
 
-# OpenRouter AI brain smoke test (generateText + generateObject)
+# End-to-end module triggers (local or Railway via AGENT_URL)
+pnpm --prefix nexus-agent run phase2      # Guardian → Yield → DCA → PayChain
+pnpm --prefix nexus-agent run logs        # Postgres executions_log (sorted desc)
+pnpm --prefix nexus-agent run surfaces    # KeeperHub MCP surface tests
+
+# Maintenance
+pnpm --prefix nexus-agent exec tsx src/scripts/clear-db.ts   # wipe executions_log
+
+# OpenRouter AI brain smoke test
 pnpm --prefix nexus-agent exec tsx src/scripts/test-openrouter-smoke.ts
 
-# Live Guardian evaluation against monitored wallet
+# Live Guardian evaluation
 pnpm --prefix nexus-agent exec tsx src/scripts/test-guardian-run.ts
 
-# Scan Aave position across pool addresses
+# Scan Aave position (V3.2 pool)
 pnpm --prefix nexus-agent exec tsx src/scripts/scan-aave-position.ts
 
 # Dashboard production build
 pnpm --prefix nexus-dashboard build
 ```
 
+**Tier C tests always skipped** (not yet in harness): Guardian cycle TTL rollover, PayChain compensating cancel workflow.
+
 **Expected smoke test output:**
 
 ```
-Testing AI Brain Provider: openrouter (google/gemini-2.0-flash-exp:free)
+Testing AI Brain Provider: openrouter (google/gemini-2.5-flash)
 ✅ SMOKE TEST PASSED: OpenRouter provider is fully operational!
 ```
+
+---
+
+## Execution Status (August 2026)
+
+| Capability | Status |
+|------------|--------|
+| Live Aave V3.2 reads (HF, collateral, debt) on Base Sepolia | Verified |
+| OpenRouter chat + structured Guardian `generateObject` | Verified |
+| Reasoning Harness + `aiAnalysis` persistence | Verified |
+| Pre-flight simulation + Resilience logging | Verified |
+| KeeperHub MCP workflow registration (PayChain cron) | Verified |
+| Mined on-chain tx + BaseScan proof | **Not guaranteed** — safe HF → `hold`; MCP cold start → `simulated_stub` |
+
+Label submissions **simulation-first** until `executions_log.txHash` is a real mined hash visible on [BaseScan Sepolia](https://sepolia.basescan.org).
+
+---
+
+## Phase 2 Verified Proofs (Postgres `executions_log`)
+
+| Module | Action | Status | Notes |
+|--------|--------|--------|-------|
+| **Guardian** | `hold` | `success` | HF ~3.26 > 1.40 — no broadcast |
+| **Yield** | `rotate` | `success` | Dual-wallet ownership guard skip |
+| **DCA** | `swap` | schedule OK | `active_workflows` row registered |
+| **PayChain** | `payroll` | workflow registered | NL + 2-step confirm → KeeperHub cron |
+
+Re-run: `pnpm --prefix nexus-agent run phase2` then `pnpm --prefix nexus-agent run logs`
+
+Details: [submission_runbook.md](submission_runbook.md)
 
 ---
 
@@ -394,28 +467,22 @@ Testing AI Brain Provider: openrouter (google/gemini-2.0-flash-exp:free)
 
 ---
 
-## Demo Script (5 minutes)
-
-1. **Portfolio** — show live HF, collateral, debt from Base Sepolia Aave V3.2
-2. **AI Chat** — *"What's my health factor?"* → tool call → live data
-3. **AI Chat** — *"Trigger guardian strategy now"* → Guardian runs → log appears
-4. **Live Feed** — Decision Matrix counts update; expand AI Reasoning panel
-5. **Resilience** — show simulation intercept vs successful broadcast cards
-6. **Templates** — Fork "Aave Guardian" → routes to chat with pre-filled prompt
-
----
-
 ## Known Limitations & Team Notes
 
 | Topic | Detail |
 |-------|--------|
 | **KeeperHub OAuth ≠ API key** | Web sign-in does not auto-sync `kh_...` to the agent. Must paste key in modal or set env var. See [KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md) BUG-02 |
-| **OpenRouter free tier** | Rate-limited (~RPM/RPD per model). Use `:free` models; retry on 429 |
-| **Gemini direct API** | Separate from Google AI Pro subscription — needs API billing for production quotas |
-| **GitHub Models** | Retired / deprecated — kept as last-resort fallback only |
+| **OpenRouter** | Paid `gemini-2.5-flash` recommended; free `:free` models rate-limited / deprecated |
+| **Gemini direct API** | Separate from Google AI Pro — needs API billing for production quotas |
+| **GitHub Models** | Retired — last-resort fallback only via `GITHUB_TOKEN` |
+| **Dual-wallet** | Yield rotator skips on-chain when monitored ≠ agentic wallet |
+| **On-chain proof** | BaseScan links only when real `txHash` in DB — else Simulated badge |
+| **MCP cold start** | First workflow after idle may return `wf-stub-*` / `simulated_stub` — warm with `pnpm run surfaces` (BUG-04) |
+| **Compound APY** | Base Sepolia Compound contract may return empty rate data — fallback APY used |
 | **Template Fork & Deploy** | Most templates route to Chat; only DCA template calls `/api/dca/schedule` directly |
 | **Stub executions** | Without funded agentic wallet + valid KeeperHub key, txs show **Simulated** badge |
 | **Feed window** | Decision Matrix counts last **50** executions only |
+| **Tier C verify tests** | Cycle rollover + compensating cancel assertions not implemented yet |
 
 ---
 
@@ -424,9 +491,12 @@ Testing AI Brain Provider: openrouter (google/gemini-2.0-flash-exp:free)
 | Document | Contents |
 |----------|----------|
 | [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Full architecture, schemas, security model |
-| [KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md) | Reproducible KeeperHub bugs + proposed fixes (bounty material) |
+| [submission_runbook.md](submission_runbook.md) | Verification commands, deployment, honest execution limits |
+| [plan.md](plan.md) | Master execution roadmap (batches & gates) |
+| [KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md) | Reproducible KeeperHub bugs (bounty material) |
 | [model.md](model.md) | Zod schemas & Reasoning-First pattern reference |
-| [.env.example](.env.example) | All environment variables with comments |
+| [.env.example](.env.example) | Root backend environment variables |
+| [nexus-dashboard/.env.example](nexus-dashboard/.env.example) | Dashboard `NEXT_PUBLIC_*` variables |
 
 ---
 
@@ -434,7 +504,7 @@ Testing AI Brain Provider: openrouter (google/gemini-2.0-flash-exp:free)
 
 - **Branch workflow:** feature branches → PR to `main`
 - **Never commit** `.env` — only `.env.example` with placeholders
-- **Pre-push checklist:** `verify` + `test-openrouter-smoke.ts` + dashboard `build`
+- **Pre-push checklist:** `verify` + `test-openrouter-smoke.ts` + `phase2` + dashboard `build`
 - **Questions:** open a GitHub issue or ping in team chat
 
 ---

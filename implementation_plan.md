@@ -1,7 +1,6 @@
-# Implementation Plan — Native Agentic Tools & Google Turnkey Sync
+# Implementation Plan — Native Agentic Tools & Turnkey Sync
 
-## Overview
-This document tracks the technical architecture and implementation details for upgrading NexusAgent from legacy keyword-based routing to a **Native Tool-Calling Agent Loop (GPT-4o)** with **Google Sign-In Turnkey MPC Alignment**.
+> ⚠️ **Historical document** — describes early GPT-4o / GitHub Models migration. **Current brain:** OpenRouter via `getBrainModel()` in `nexus-agent/src/brain/provider.ts`. See [README.md](README.md).
 
 ---
 

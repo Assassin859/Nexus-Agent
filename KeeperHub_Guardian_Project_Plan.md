@@ -1,14 +1,16 @@
 # KeeperHub NexusAgent — Project Plan
 
-**Hackathon:** Agents Onchain (DoraHacks) · **Dates:** July 27 – Aug 13, 2026
-**Team:** 2 people · **Chain:** Ethereum (Sepolia for build/test, Mainnet for final transaction)
+> ⚠️ **Stale document** — references GitHub Models / Ethereum Sepolia. **Current:** OpenRouter + Base Sepolia. See [submission_runbook.md](submission_runbook.md).
+
+**Hackathon:** Agents Onchain (DoraHacks) · **Dates:** July 27 – Aug 13, 2026  
+**Chain:** Base Sepolia  
 **Targets:** Grand Prize + Best Onboarding UX Improvement bounty
 
 ---
 
-## 1. One-line pitch
+## 1. One-line pitch (updated)
 
-An autonomous Web3 wealth management agent built using Vercel AI SDK + GitHub Models API (Llama-3.3-70B) that integrates with 22/22 KeeperHub execution surfaces to protect lending positions, compound yield, run DCA schedules, and execute payroll.
+Autonomous DeFi guardian: live Aave HF monitoring, multi-candidate AI harness, simulation-before-broadcast, KeeperHub MCP execution on Base Sepolia.
 
 ---
 

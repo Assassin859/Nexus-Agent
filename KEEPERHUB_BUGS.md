@@ -6,7 +6,7 @@
 
 ---
 
-> This document captures every concrete bug, API inconsistency, and friction point encountered while building NexusAgent — a multi-module autonomous DeFi agent fully integrated with KeeperHub. All issues are reproducible. Code traces and expected vs. actual behavior are documented for each.
+> This document captures every concrete bug, API inconsistency, and friction point encountered while building NexusAgent. **Still accurate for demos** — especially BUG-02 (OAuth ≠ API key). See [submission_runbook.md](submission_runbook.md) for workarounds.
 
 ---
 

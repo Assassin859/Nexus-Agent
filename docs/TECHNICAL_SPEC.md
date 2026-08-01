@@ -2,7 +2,8 @@
 
 > **Target Audience:** Hackathon Judges (DoraHacks / Agents Onchain 2026), AI Engineers, Web3 Protocol Developers  
 > **Repository:** [nexus-agent](https://github.com/Assassin859/Nexus-Agent)  
-> **Tech Stack:** Node.js 22 + Next.js 14 (App Router) + Vercel AI SDK v4 + OpenRouter (google/gemini-2.5-flash / openai/gpt-oss-20b:free) + KeeperHub MCP + SIWE (Web3 Wallet Sign-In) + Postgres (Drizzle ORM) + Ethers.js v6
+> **Tech Stack:** Node.js 22 + Next.js 14 (App Router) + Vercel AI SDK v4 + OpenRouter (`google/gemini-2.5-flash`) + KeeperHub MCP + SIWE + Postgres (Drizzle ORM) + Ethers.js v6  
+> **Chain:** Base Sepolia (84532) · **Aave V3.2 Pool:** `0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27`
 
 ---
 
@@ -34,7 +35,8 @@ The end user never manually builds calldata, calculates gas limits, or construct
 │                                                                                                                │
 │   ┌──────────────────────────────────────────────────────────────────────────────────────────────────────┐     │
 │   │                               CONVERSATIONAL AI BRAIN (Vercel AI SDK)                                │     │
-│   │   • Model: GitHub Models (gpt-4o-mini) with maxSteps: 5                                             │     │
+│   │   • Model: getBrainModel() → OpenRouter (google/gemini-2.5-flash) with maxSteps: 5                  │     │
+│   │   • Failover: OPENROUTER → GEMINI → OPENAI → GITHUB_TOKEN                                            │     │
 │   │   • Native Tools: schedulePayroll, scheduleDCA, cancelWorkflows, queryPortfolio, triggerStrategy...  │     │
 │   └──────────────────────────────────────────────────┬───────────────────────────────────────────────────┘     │
 │                                                      │                                                         │
@@ -62,7 +64,7 @@ The end user never manually builds calldata, calculates gas limits, or construct
 │                                           KEEPERHUB MCP EXECUTION LAYER                                        │
 │   • Turnkey MPC Wallet Signing (`AGENTIC_WALLET_ADDRESS`)                                                       │
 │   • Flashbots MEV-Protected Private Bundles                                                                    │
-│   • Onchain Execution on Ethereum Sepolia Testnet                                                              │
+│   • Onchain Execution on Base Sepolia Testnet                                                          │
 └────────────────────────────────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -175,7 +177,13 @@ The dashboard clearly separates **End-User Authentication** from **KeeperHub MCP
 
 ## 5. Native AI SDK Tool-Calling Engine
 
-Powered by Vercel AI SDK v4 and `gpt-4o-mini` (via GitHub Models), NexusAgent runs a natural language tool loop with `maxSteps: 5`.
+Powered by Vercel AI SDK v4 and `getBrainModel()` (OpenRouter primary, `google/gemini-2.5-flash`), NexusAgent runs a natural language tool loop with `maxSteps: 5`.
+
+Provider priority (`nexus-agent/src/brain/provider.ts`):
+
+```
+OPENROUTER_API_KEY  →  GEMINI_API_KEY  →  OPENAI_API_KEY  →  GITHUB_TOKEN
+```
 
 ### Registered Native AI Tools (`nexus-agent/src/brain/agent-tools.ts`)
 1. **`schedulePayroll`**: Parses human instructions ("pay dev team 50 USDC every friday") -> resolves payees -> splits remainder cents -> registers KeeperHub workflows.
@@ -324,9 +332,13 @@ Built with Next.js 14 (App Router), Vanilla CSS tokens, and Lucide React icons a
 ## 9. System Verification Harness (`verify-full-system.ts`)
 
 Run via `pnpm verify`:
-* **Tier A (16 Unit Tests - Mandatory)**: Pure unit tests checking wallet normalization, MCP content parsers, candidate selection ranking & fallbacks, team payroll remainder division, cron evaluator matching & malformed expression guards, and ERC20 approve calldata selectors (`0x095ea7b3`).
-* **Tier B (On-Chain RPC Queries)**: Validates Sepolia Alchemy RPC connection, Compound V3 APY queries, and `ensureAllowance` exact capped calldata generation.
-* **Tier C (Integration Mode)**: Verifies PostgreSQL database connectivity (`--integration`).
+* **Tier A (18 Unit Tests - Mandatory)**: Wallet normalization, MCP parsers, candidate selection, payroll split, cron evaluator/resolver, ERC20 approve calldata.
+* **Tier B (On-Chain RPC)**: Compound V3 APY (fallback on Sepolia), `ensureAllowance` capped calldata.
+* **Tier C (Integration, `--integration`)**: DB connectivity only; 2 workflow tests skipped (not yet implemented).
+
+**Exact output:** `18 passed | 2 skipped | 0 failed` (unit); `19 passed | 2 skipped | 0 failed` (integration).
+
+Additional scripts: `pnpm run phase2` (4 modules), `pnpm run surfaces` (17 MCP surfaces), `pnpm run logs`.
 
 ---
 

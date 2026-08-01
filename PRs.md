@@ -1,6 +1,6 @@
 # KeeperHub Onboarding UX Bounty — Pull Request Specifications
 
-This document outlines the three onboarding friction points identified in the local workspace and specifies the production-ready Pull Requests (PRs) we will submit to the upstream `KeeperHub/keeperhub` repository once the hackathon starts on July 27, 2026.
+> **Status:** Upstream PR drafts for KeeperHub repo. Still valid for bounty submission. NexusAgent integration workarounds documented in [KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md).
 
 ---
 

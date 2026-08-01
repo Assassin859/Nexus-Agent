@@ -1,6 +1,6 @@
 # NexusAgent Database Schema Reference (Drizzle ORM + PostgreSQL)
 
-> Hosted on Railway free tier. Accessed by both `nexus-agent` (read/write) and `nexus-dashboard` (read via API proxy).
+> Hosted on Railway. Chain context: **Base Sepolia**. See [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) §7 for authoritative schema.
 
 ---
 

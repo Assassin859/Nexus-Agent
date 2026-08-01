@@ -1,20 +1,26 @@
 # NexusAgent — Complete Project Goal & Specification
 
-**Hackathon:** Agents Onchain (DoraHacks) · **Dates:** July 27 – Aug 13, 2026
-**Team:** 2 people · **Chain:** Ethereum (Sepolia for build/test → Mainnet for final)
-**Targets:** Grand Prize ($5,000 pool) + Best Onboarding UX Improvement Bounty ($1,000)
+> ⚠️ **Stale sections below** — AI provider migrated to **OpenRouter (`google/gemini-2.5-flash`)**. See [README.md](README.md) and [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) for current architecture.
+
+**Hackathon:** Agents Onchain (DoraHacks) · **Dates:** July 27 – Aug 13, 2026  
+**Chain:** **Base Sepolia** (84532)  
+**Targets:** Grand Prize + Best Onboarding UX Improvement Bounty
 
 ---
 
-## One-Line Pitch
+## One-Line Pitch (current)
 
-> *A fully autonomous Web3 wealth management agent platform built with Vercel AI SDK and GitHub Models API (Llama-3.3-70B), utilizing 22/22 KeeperHub execution surfaces to protect positions, optimize yield, Dollar-Cost Average, and run automated payroll.*
+> *An AI DeFi guardian on Base Sepolia that reads live Aave positions, runs a multi-candidate Reasoning Harness, pre-flight simulates every transaction, and executes via KeeperHub MCP — with SIWE auth and a full audit dashboard.*
+
+**Lead demo modules:** Guardian + AI Chat + Resilience. DCA/PayChain/Yield are implemented but secondary.
 
 ---
 
 ## What Is NexusAgent?
 
-NexusAgent is a personal AI wealth manager that lives onchain. Using the **Vercel AI SDK** configured with the **GitHub Models API** provider, the user defines high-level goals in plain English, and the agent translates and runs them through KeeperHub workflows.
+> ⚠️ Sections below this header retain original hackathon planning text. **Current brain:** OpenRouter. See [README.md](README.md).
+
+NexusAgent is a personal AI wealth manager that lives onchain. Using the **Vercel AI SDK** with **OpenRouter** (`getBrainModel()`), the user defines high-level goals in plain English, and the agent translates and runs them through KeeperHub workflows.
 
 - 🛡️ **Protects** your lending positions (Aave V3) from liquidation
 - 🔄 **Grows** stablecoin yield by rotating funds dynamically between Aave, Compound, and Morpho

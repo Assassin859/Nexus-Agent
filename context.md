@@ -14,7 +14,7 @@ User's natural language / portfolio state
          ↓
     NexusAgent (BRAIN)
     ├── Reads live on-chain positions (Aave V3, Sepolia RPC)
-    ├── Thinks with LLM (gpt-4o-mini via GitHub Models)
+    ├── Thinks with LLM (OpenRouter `google/gemini-2.5-flash` via `getBrainModel()`)
     └── Decides: repay / rotate / swap / pay / hold
          ↓
     KeeperHub (HANDS)
@@ -50,18 +50,15 @@ The audit trail is a **distinct KeeperHub surface** from simulation and executio
 **File:** `nexus-agent/src/brain/provider.ts`
 
 ```typescript
-import { createOpenAI } from "@ai-sdk/openai";
+import { getBrainModel, getActiveBrainProvider } from "./provider.js";
 
-// Points to GitHub Models — free inference via GitHub PAT
-const githubModels = createOpenAI({
-  baseURL: "https://models.inference.ai.azure.com",
-  apiKey: process.env.GITHUB_TOKEN,
-});
+// Priority: OPENROUTER_API_KEY → GEMINI_API_KEY → OPENAI_API_KEY → GITHUB_TOKEN
+// Recommended: BRAIN_MODEL=google/gemini-2.5-flash
 
-export const BRAIN_MODEL = "gpt-4o-mini";
+const model = getBrainModel(); // used in all generateObject() calls
 ```
 
-**Why this matters for the hackathon:** Zero local RAM — no Ollama, no GPU. Both Railway services run under 100MB.
+**Why this matters:** Serverless inference — no Ollama, no GPU. Railway Node service stays under 100MB RAM.
 
 **Package:** `zod` + `generateObject()`
 **File:** `nexus-agent/src/brain/schemas.ts`
@@ -86,7 +83,7 @@ All 4 LLM calls use `generateObject()` with Zod schemas — the model *cannot* r
 Alchemy (primary) → Infura (secondary) → public Sepolia fallback. All modules call `getProvider()` — never hardcode an RPC.
 
 #### Aave V3 Position Read (`lib/aave.ts`)
-Calls `getUserAccountData(walletAddress)` on the Aave V3 Pool contract (`0x6Ae43d3271ff68408378a467C62b15264c8d77e4`, Sepolia).
+Calls `getUserAccountData(walletAddress)` on the Aave V3.2 Pool contract (`0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27`, Base Sepolia).
 
 Returns:
 - `healthFactor` — 18-decimal fixed point → divided by 1e18
@@ -216,33 +213,31 @@ Where:
 
 ---
 
-## 5. GitHub Models Setup
+## 5. OpenRouter Setup
 
-No special scopes required — any GitHub PAT works for public model inference.
-
-1. **GitHub Settings** → Developer Settings → Personal Access Tokens
-2. Create a token (fine-grained or classic)
-3. Add to `.env`:
+1. Create key at [openrouter.ai/keys](https://openrouter.ai/keys)
+2. Add to `.env`:
    ```env
-   GITHUB_TOKEN=ghp_yourTokenHere
+   OPENROUTER_API_KEY=sk-or-v1-...
+   BRAIN_MODEL=google/gemini-2.5-flash
    ```
-4. The provider maps automatically to `https://models.inference.ai.azure.com`
+3. Smoke test: `pnpm --prefix nexus-agent exec tsx src/scripts/test-openrouter-smoke.ts`
 
-Model in use: `gpt-4o-mini` — structured output, fast, free tier compatible.
+Fallback chain: `GEMINI_API_KEY` → `OPENAI_API_KEY` → `GITHUB_TOKEN` (legacy).
 
 ---
 
-## 6. Current Stub Status (Honest Assessment)
+## 6. Current Execution Status (August 2026)
 
 | Component | Status | Impact |
 |---|---|---|
-| Aave V3 position reads | ✅ **Real** | Live Sepolia data every call |
-| AI decisions | ✅ **Real** | gpt-4o-mini via GitHub Models |
-| Calldata encoding | ✅ **Real** | Correct ABI for Aave, Uniswap, Compound |
-| Gas estimation simulation | ✅ **Real** | Calls `estimateGas` on Sepolia RPC |
-| Postgres audit log | ✅ **Real** | Railway DB, persisted |
-| KeeperHub workflow creation | ⚠️ **Stub** | Returns `wf-stub-*` — no KEEPERHUB_API_KEY configured |
-| Onchain broadcast | ⚠️ **Stub** | No transaction sent to chain yet |
-| Notifications | ⚠️ **Stub** | Returns `true` without sending |
+| Aave V3.2 position reads | ✅ **Real** | Live Base Sepolia data |
+| AI decisions | ✅ **Real** | OpenRouter `gemini-2.5-flash` |
+| Calldata encoding | ✅ **Real** | Aave, Uniswap, Compound on Base Sepolia |
+| Gas estimation simulation | ✅ **Real** | `estimateGas` on Base Sepolia RPC |
+| Postgres audit log | ✅ **Real** | Railway DB |
+| Guardian at HF ~3.26 | ✅ **hold** | No broadcast (correct behavior) |
+| KeeperHub on-chain tx | ⚠️ **Conditional** | Requires valid `kh_...` key + funded agentic wallet; may show `simulated_stub` if MCP cold |
+| Yield on-chain rotate | ⚠️ **Skipped** | Dual-wallet unless addresses aligned |
 
-**To make it fully live:** add `KEEPERHUB_API_KEY` to `.env` and set `AGENTIC_WALLET_ADDRESS` to a funded Sepolia wallet. The MCP client will automatically use real calls instead of stubs.
+**Honest demo:** Lead with Portfolio + Chat + Feed harness + Resilience. BaseScan links only when `txHash` present.

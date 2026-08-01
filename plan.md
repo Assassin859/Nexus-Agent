@@ -1,85 +1,96 @@
-# Pre-Aug 4 Roadmap & Execution Plan
+# NexusAgent — Master Submission Execution Roadmap (August 2026)
 
-> **Focus:** ~2–4 hours of targeted bug fixes & correctness alignment + half a day of demo rehearsal.
-
----
-
-## P0 — Fix Before Aug 4 (Demo-Breaking)
-
-- [ ] **1. Guardian: `aiAnalysis` lost on successful execution**
-  - On mined success (`finalStatus === "success"`), `guardian.ts` overwrites `aiAnalysis` with only `{ ...decision.analysis, executionId }`, losing `candidateActions`, `harnessOverride`, `priceTrend`, etc.
-  - **Fix:** Update line ~321 to set `aiAnalysis: { ...aiAnalysisPayload, executionId }` (matches stub path pattern).
-  - **File:** `nexus-agent/src/modules/guardian.ts`
-
-- [ ] **2. Feed Page: `aiAnalysis` missing from `TransactionCard`**
-  - `feed/page.tsx` defines `FeedItem` without `aiAnalysis` and doesn't pass it down.
-  - `TransactionCard` already has an "AI Reasoning" expand panel, but data isn't wired.
-  - **Fix:** Add `aiAnalysis?: any` to `FeedItem` type in `feed/page.tsx` and forward it to `TransactionCard`.
-  - **Files:** `nexus-dashboard/app/feed/page.tsx`, `nexus-dashboard/components/TransactionCard.tsx`
-
-- [ ] **3. Demo Row Strategy**
-  - Until #1 & #2 are fixed, demo `hold`, `reverted_simulation`, or `simulated_stub` Guardian rows to show the candidate harness JSON.
-
-- [ ] **4. KeeperHub Ops (Demo Environment Warmup)**
-  - Cold MCP calls fallback to `wf-stub-*`. SIWE login doesn't auto-sync API keys to local storage.
-  - **Action:** Warm up MCP with a test workflow, confirm Sepolia network, and pre-save `kh_...` API key in `KeeperHubSyncModal`.
-
-- [ ] **5. Dual-Wallet Config Awareness**
-  - If `NEXT_PUBLIC_WALLET_ADDRESS ≠ AGENTIC_WALLET_ADDRESS`: Yield Rotator skips (Aave withdraw lacks `onBehalfOf`). Guardian uses signer USDC balance for monitored wallet.
-  - **Action:** Align wallets for demo OR add demo slide note explaining dual-wallet vs same-wallet mechanics.
+> **Submission Strategy:** Divided into 4 sequential execution batches. Complete each batch gate before proceeding to the next to ensure zero wasted effort.
 
 ---
 
-## P1 — Important (Correctness & Q&A Readiness)
+## 🟢 Batch 1 — Production Gate (~30 min)
+*Objective: Verify Railway production backend parity and MCP warm-up.*
 
-- [ ] **6. Injected `executionHistory` Prompt Rule Alignment**
-  - `schemas.ts` Rule #1 references `executionHistory` for CYCLE LOCK (`block_transaction`).
-  - `guardian.ts` prompt JSON omits `executionHistory` (though Step 4.3 software lock prevents double execution).
-  - **Fix:** Pass `executionHistory: activePendingTx ? ["pending_transaction_exists"] : []` in prompt JSON OR update system prompt and docs.
-  - **Files:** `nexus-agent/src/modules/guardian.ts`, `nexus-agent/src/brain/schemas.ts`
-
-- [ ] **7. Yield Rotator Single-Flight / Pending Lock**
-  - Guardian & DCA use a 15m TTL + active pending lock guard. Yield rotator executes directly, risking double-rotation under overlapping triggers.
-  - **Fix:** Insert a `pending` log row prior to workflow creation and resolve status post-settlement.
-  - **File:** `nexus-agent/src/modules/yield-rotator.ts`
-
-- [ ] **8. Wallet Normalization Gaps (PayChain & DCA)**
-  - PayChain contains un-lowercased `userWallet: walletAddress` assignments. DCA logger/key resolution uses raw `userWallet`.
-  - **Fix:** Enforce `const monitoredWallet = walletAddress.toLowerCase()` at module entry points.
-  - **Files:** `nexus-agent/src/modules/paychain.ts`, `nexus-agent/src/modules/dca.ts`
-
-- [ ] **9. Feed Badge for `delayed` Status**
-  - DCA gas/balance delays log `status: "delayed"`, but `FeedItem` types omit it, falling back to a generic badge.
-  - **Fix:** Add `"delayed"` to `FeedItem` status union and style badge in `TransactionCard`.
-  - **Files:** `nexus-dashboard/app/feed/page.tsx`, `nexus-dashboard/components/TransactionCard.tsx`
-
-- [ ] **10. Documentation Reconciliation**
-  - `walkthrough.md`: Update test counts and audit references.
-  - `TECHNICAL_SPEC.md §7`: Align DB schema field names (`cycleStart` vs `cycleStartDate`).
-  - `README.md`: Verify setup instructions match current code.
-
-- [ ] **11. Tier C Verification Labeling**
-  - `verify-full-system.ts --integration` checks DB connection; pending TTL & cancel workflow tests remain skipped.
-  - **Fix:** Implement at least one integration test or clarify skip messages in harness summary.
-  - **File:** `nexus-agent/src/scripts/verify-full-system.ts`
+- [ ] **Secret Sanity Check**: Confirm `JWT_SECRET` in root `.env` matches Railway (`nexus-agent-hackathon-super-secret-jwt-key-2026`). *(Do NOT commit secret strings to GitHub).*
+- [ ] **Railway Execution Test**:
+  ```powershell
+  $env:AGENT_URL="https://nexus-agent-production-7783.up.railway.app"
+  pnpm --prefix nexus-agent run phase2
+  ```
+- [ ] **Audit DB Logs**:
+  ```bash
+  pnpm --prefix nexus-agent run logs
+  ```
+  *Verify newly created execution rows appear with live timestamps.*
+- [ ] **MCP Session Warm-up**:
+  ```bash
+  pnpm --prefix nexus-agent run surfaces
+  ```
+- **Gate 1 Exit Criteria:** `phase2` script returns `exit 0` against Railway and new execution rows appear in `check-logs.ts`.
 
 ---
 
-## P2 — Polish (Optional / Time Permitting)
+## 🟢 Batch 2 — Browser End-to-End (~20 min)
+*Objective: Confirm the exact frontend experience judges will encounter on production.*
 
-- [ ] **12. Feed Summary Line for Harness Decisions**
-  - Render a human-readable badge on feed cards (e.g., `Harness: Repay | LLM: Hold | Override: Yes`).
-- [ ] **13. Logging Hygiene Clean-up**
-  - Replace remaining `console.warn` in `paychain.ts`, `simulate.ts`, and `allowance.ts` with structured pino `childLogger`.
-- [ ] **14. `getPriceTrend()` Demo Strategy**
-  - Chainlink Sepolia updates can be sparse. Demonstrate with logs showing `priceTrend: "stable"` and explain thresholds.
-- [ ] **15. Seed Data Cleanup**
-  - Wipe/reseed test DB before demo to avoid dummy/stub hash records appearing in feed.
+- [ ] **Dashboard Production Environment**: Set `nexus-dashboard/.env.local`:
+  ```bash
+  NEXT_PUBLIC_AGENT_URL=https://nexus-agent-production-7783.up.railway.app
+  NEXT_PUBLIC_WALLET_ADDRESS=0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b
+  ```
+- [ ] **Browser Flow Verification (http://localhost:3000)**:
+  1. SIWE Sign In with MetaMask (`0x89f97...`) on Base Sepolia.
+  2. Portfolio tab -> displays live Health Factor ~3.26 ($12.1k collateral, $3.1k debt).
+  3. KeeperHub Sync Modal -> paste `kh_...` -> Sidebar shows **Green Badge: KeeperHub MCP Connected**.
+  4. AI Chat -> ask *"What is my health factor?"* -> returns 3.26 live.
+  5. Feed & Resilience tabs -> render Decision Matrix & simulation cards cleanly.
+- **Gate 2 Exit Criteria:** Browser flow works 100% cleanly on Railway backend without `401 Unauthorized` or network errors.
 
 ---
 
-## ✅ Completed & Verified Stack
+## 🟢 Batch 3 — Narrative Rehearsal & Housekeeping (~45 min)
+*Objective: Lock in Path A pitch narrative and clean demo feed.*
 
-- **Phase 11–13 Core:** Canonical Spec (`docs/TECHNICAL_SPEC.md`), Pure Candidate Harness (`selectBestCandidate`), 16 Tier A unit tests, live Chainlink `priceTrend`, yield `monitoredWallet` normalization, `price-feed` pino logging.
-- **PayChain & DCA Reliability:** PayChain UUID FKs & compensating cancels; DCA 15m pending lock TTL.
-- **Security & Safety:** Capped approvals (`amount * 1.10`), `assertWalletScope` IDOR checks, MCP parsing retries, cron evaluators.
+- [ ] **Narrative Selection**: **Path A — Simulation-First & Resilience** (Highlighting real-time Aave V3.2 reading, Guardian quantitative rules, Reasoning Harness, and 0 gas pre-flight simulation intercepts).
+- [ ] **Feed Housekeeping (Optional)**:
+  ```bash
+  pnpm --prefix nexus-agent exec tsx src/scripts/clear-db.ts
+  pnpm --prefix nexus-agent run phase2
+  ```
+- [ ] **Runbook Rehearsal**: Rehearse 4-scene script from `submission_runbook.md` once with a timer without recording.
+- **Gate 3 Exit Criteria:** Able to narrate all 4 scenes smoothly within 3 minutes without improvising.
+
+---
+
+## 🟢 Batch 4 — Recording & Hackathon Submission (~1 hour)
+*Objective: Produce video asset and submit DoraHacks form.*
+
+- [ ] **Video Recording**: Record 3-minute screen capture following `submission_runbook.md` (take 1 + backup take).
+- [ ] **DoraHacks Form Submission**: Fill form fields (project title, tagline, repo URL, Railway URL, known limitations) from `submission_runbook.md`.
+- [ ] **Git Push**: Re-verify zero `.env` files are tracked, build TypeScript packages, and push final code:
+  ```bash
+  pnpm --prefix nexus-agent run build
+  pnpm --prefix nexus-dashboard run build
+  git add .
+  git commit -m "docs: finalize master submission plan and verification runbook"
+  git push origin main
+  ```
+- **Gate 4 Exit Criteria:** DoraHacks form submitted & video uploaded before Aug 13 deadline.
+
+---
+
+## 📋 Deferred Post-Submission Work (P2 — After Submission)
+
+| Task | Effort | Priority |
+|:---|:---:|:---:|
+| **Forced Simulation Error Script** | Low | P2 |
+| **Tier C Integration Harness Assertions** | Medium | P2 |
+| **Pino Logger Migration in PayChain/Compound** | Low | P2 |
+| **Compound Sepolia APY Decoding Fix** | Low | P2 |
+
+---
+
+## Verification Quick Reference
+
+```bash
+pnpm --prefix nexus-agent run verify          → 18 passed, 2 skipped, 0 failed
+pnpm --prefix nexus-agent run verify:integration → 19 passed, 2 skipped, 0 failed
+pnpm --prefix nexus-agent run phase2          → 4/4 modules verified
+pnpm --prefix nexus-agent run surfaces        → 17/17 MCP surfaces verified
+```

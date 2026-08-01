@@ -179,14 +179,20 @@ export default function TransactionCard({
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingTop: 10, borderTop: "1px solid var(--border)", fontSize: 12, color: "var(--text-muted)", fontWeight: 500, flexWrap: "wrap", gap: 8 }}>
         <span>{timestamp ? new Date(timestamp).toLocaleString() : "Just now"}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <a
-            href="https://app.keeperhub.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            style={{ display: "flex", alignItems: "center", gap: 4, color: "#818cf8", fontWeight: 600, textDecoration: "none" }}
-          >
-            View on KeeperHub <ExternalLink size={12} />
-          </a>
+          {aiAnalysis?.workflowId && !aiAnalysis.workflowId.includes("stub") ? (
+            <a
+              href={`https://app.keeperhub.com/workflows/${aiAnalysis.workflowId}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ display: "flex", alignItems: "center", gap: 4, color: "#818cf8", fontWeight: 600, textDecoration: "none" }}
+            >
+              View on KeeperHub <ExternalLink size={12} />
+            </a>
+          ) : (
+            <span style={{ color: "#64748b", fontWeight: 600, fontSize: 12 }}>
+              🛡️ KeeperHub Managed
+            </span>
+          )}
 
           {!isStubTx && (
             <a

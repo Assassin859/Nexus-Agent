@@ -8,24 +8,30 @@
 ## 1. Provider Setup (`brain/provider.ts`)
 
 ```typescript
-import { createOpenAI } from "@ai-sdk/openai";
 import { generateObject } from "ai";
+import { getBrainModel, getActiveBrainProvider } from "./provider.js";
+import { GuardianDecisionSchema, GUARDIAN_SYSTEM_PROMPT } from "./schemas.js";
 
-// GitHub Models endpoint — authenticated with a standard GitHub PAT
-const githubModels = createOpenAI({
-  baseURL: "https://models.inference.ai.azure.com",
-  apiKey: process.env.GITHUB_TOKEN,
-});
+// getBrainModel() selects provider by env priority:
+// OPENROUTER_API_KEY → GEMINI_API_KEY → OPENAI_API_KEY → GITHUB_TOKEN
 
-export const BRAIN_MODEL = "gpt-4o-mini";
-
-// Usage in every module:
 const { object: decision } = await generateObject({
-  model: githubModels(BRAIN_MODEL),
-  schema: GuardianDecisionSchema,   // Zod schema
-  system: GUARDIAN_SYSTEM_PROMPT,   // Role + rules
-  prompt: JSON.stringify(liveData), // Real on-chain context
+  model: getBrainModel(),
+  schema: GuardianDecisionSchema,
+  system: GUARDIAN_SYSTEM_PROMPT,
+  prompt: JSON.stringify({
+    healthFactor: 3.26,
+    walletBalance: 11000,
+    collateralValueUSD: 12114,
+    debtValueUSD: 3122,
+    cycleRemainingBudget: 1000,
+    executionHistory: [],
+    priceTrend: "stable",
+  }),
 });
+
+// Startup log: getActiveBrainProvider()
+// → { provider: "openrouter", model: "google/gemini-2.5-flash" }
 ```
 
 **Why `generateObject()`?** It forces the LLM to return structured JSON matching the Zod schema. No hallucinated field names, no unstructured text, no missing fields. If the model output doesn't match, the Vercel AI SDK retries automatically.
@@ -255,20 +261,18 @@ export const PayChainSchema = z.object({
 
 ## 5. Model Selection Rationale
 
-| Model | Why Considered | Decision |
+| Model | Role | Decision |
 |---|---|---|
-| `meta-llama-3.3-70b-instruct` | Original choice (high capability) | Switched |
-| `gpt-4o-mini` | Structured output support, faster, free tier | **Current model** |
-
-`gpt-4o-mini` was selected because it has native support for `generateObject()` structured output via the GitHub Models endpoint. Llama 3.3-70B had inconsistent JSON schema adherence in testing.
+| `google/gemini-2.5-flash` (OpenRouter) | Primary production model | **Current default** — fast, reliable `generateObject()` |
+| `gemini-2.0-flash` (direct Gemini API) | Fallback if OpenRouter unavailable | Via `GEMINI_API_KEY` |
+| `gpt-4o-mini` (OpenAI / GitHub) | Last-resort fallback | Legacy; GitHub Models retired |
 
 ---
 
-## 6. Zero-RAM Architecture
+## 6. Serverless Inference Architecture
 
-Using GitHub Models via Vercel AI SDK means:
-- No Ollama container needed
-- No GPU or VRAM on Railway
-- Both Railway services run < 100MB RAM
-- Inference is serverless — billed per token to the GitHub Models free tier
-- A standard GitHub PAT (no special scopes) is the only credential required
+Using OpenRouter via Vercel AI SDK means:
+- No Ollama container or local GPU
+- Railway Node service runs &lt; 100MB RAM
+- Inference is API-based — billed per token (OpenRouter credits)
+- Primary credential: `OPENROUTER_API_KEY` + `BRAIN_MODEL=google/gemini-2.5-flash`
