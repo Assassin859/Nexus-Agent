@@ -1,10 +1,14 @@
 import { createOpenAI } from "@ai-sdk/openai";
 import { createGoogleGenerativeAI } from "@ai-sdk/google";
 
-const GEMINI_MODEL = process.env.BRAIN_MODEL ?? "gemini-flash-latest";
+const OPENROUTER_MODEL = process.env.BRAIN_MODEL ?? "google/gemma-4-31b-it:free";
+const GEMINI_MODEL = process.env.GEMINI_MODEL ?? "gemini-2.0-flash";
 const OPENAI_COMPAT_MODEL = process.env.OPENAI_BRAIN_MODEL ?? "gpt-4o-mini";
 
 export function getActiveBrainProvider(): { provider: string; model: string } {
+  if (process.env.OPENROUTER_API_KEY) {
+    return { provider: "openrouter", model: OPENROUTER_MODEL };
+  }
   if (process.env.GEMINI_API_KEY) {
     return { provider: "gemini", model: GEMINI_MODEL };
   }
@@ -18,6 +22,18 @@ export function getActiveBrainProvider(): { provider: string; model: string } {
 }
 
 export function getBrainModel(): any {
+  if (process.env.OPENROUTER_API_KEY) {
+    const openrouter = createOpenAI({
+      baseURL: "https://openrouter.ai/api/v1",
+      apiKey: process.env.OPENROUTER_API_KEY,
+      headers: {
+        "HTTP-Referer": process.env.OPENROUTER_SITE_URL ?? "http://localhost:3000",
+        "X-Title": "NexusAgent",
+      },
+    });
+    return openrouter(OPENROUTER_MODEL);
+  }
+
   if (process.env.GEMINI_API_KEY) {
     const google = createGoogleGenerativeAI({
       apiKey: process.env.GEMINI_API_KEY,
@@ -41,9 +57,8 @@ export function getBrainModel(): any {
     return github(OPENAI_COMPAT_MODEL);
   }
 
-  throw new Error("No AI provider configured: set GEMINI_API_KEY (preferred) or GITHUB_TOKEN/OPENAI_API_KEY");
+  throw new Error("No AI provider configured: set OPENROUTER_API_KEY (preferred), GEMINI_API_KEY, or GITHUB_TOKEN/OPENAI_API_KEY");
 }
 
-// Deprecated wrapper for backwards compatibility during migration
 export const githubModels = (model?: string) => getBrainModel();
-export const BRAIN_MODEL = GEMINI_MODEL;
+export const BRAIN_MODEL = OPENROUTER_MODEL;
