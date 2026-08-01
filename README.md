@@ -139,7 +139,7 @@ Footer links: **View on KeeperHub** when `aiAnalysis.workflowId` is present and 
 
 Plus: copyable tx hash (when present) and expandable **AI Reasoning** panel (`harnessRecommendation`, `harnessOverride`, `healthFactor`, etc.).
 
-> **Honest status:** At HF ~3.26 Guardian correctly **`hold`s** with no broadcast. Do not imply on-chain proof until `executions_log.txHash` is populated. See [submission_runbook.md](submission_runbook.md).
+> **Honest status:** Guardian **`hold`s** at safe HF (~3.26 historically; ~1.32 after repay). **On-chain proof verified:** 2 mined `repay` txs on BaseScan (see [submission_runbook.md](submission_runbook.md)).
 
 ### KeeperHub connection (3-tier sidebar model)
 
@@ -378,14 +378,15 @@ pnpm --prefix nexus-agent run surfaces # warm KeeperHub MCP (surfaces 3–12)
 ```bash
 # Unit tests (CI fast-track) — requires ALCHEMY_RPC_URL for full Tier B coverage
 pnpm --prefix nexus-agent run verify
-# Full env: 18 passed | 2 skipped | 0 failed
+# Full env: 21 passed | 2 skipped | 0 failed
 # Minimal env (no RPC): fewer Tier B runs skipped — paste exact Summary line, do not round
 
 # Integration (+ DB connectivity)
 pnpm --prefix nexus-agent run verify:integration
-# Full env: 19 passed | 2 skipped | 0 failed
+# Full env: 22 passed | 2 skipped | 0 failed
 
 # End-to-end module triggers (local or Railway via AGENT_URL)
+pnpm --prefix nexus-agent run e2e        # markets + chat + templates + feed audit
 pnpm --prefix nexus-agent run phase2      # Guardian → Yield → DCA → PayChain
 pnpm --prefix nexus-agent run logs        # Postgres executions_log (sorted desc)
 pnpm --prefix nexus-agent run surfaces    # KeeperHub MCP surface tests
@@ -426,9 +427,9 @@ Testing AI Brain Provider: openrouter (google/gemini-2.5-flash)
 | Reasoning Harness + `aiAnalysis` persistence | Verified |
 | Pre-flight simulation + Resilience logging | Verified |
 | KeeperHub MCP workflow registration (PayChain cron) | Verified |
-| Mined on-chain tx + BaseScan proof | **Not guaranteed** — safe HF → `hold`; MCP cold start → `simulated_stub` |
+| Mined on-chain tx + BaseScan proof | **Verified** — Guardian repay (2 txs; HF ~1.05 → ~1.32) |
 
-Label submissions **simulation-first** until `executions_log.txHash` is a real mined hash visible on [BaseScan Sepolia](https://sepolia.basescan.org).
+Label submissions with BaseScan links when `executions_log.txHash` is populated (see runbook for proof hashes).
 
 ---
 
@@ -436,7 +437,8 @@ Label submissions **simulation-first** until `executions_log.txHash` is a real m
 
 | Module | Action | Status | Notes |
 |--------|--------|--------|-------|
-| **Guardian** | `hold` | `success` | HF ~3.26 > 1.40 — no broadcast |
+| **Guardian** | `hold` | `success` | HF ~3.26 > 1.40 — no broadcast (historical) |
+| **Guardian** | `repay` | `success` + txHash | HF ~1.05 → ~1.32; agentic wallet funded; approve+repay via KeeperHub |
 | **Yield** | `rotate` | `success` | Dual-wallet ownership guard skip |
 | **DCA** | `swap` | schedule OK | `active_workflows` row registered |
 | **PayChain** | `payroll` | workflow registered | NL + 2-step confirm → KeeperHub cron |
@@ -479,7 +481,7 @@ Details: [submission_runbook.md](submission_runbook.md)
 | **On-chain proof** | BaseScan links only when real `txHash` in DB — else Simulated badge |
 | **MCP cold start** | First workflow after idle may return `wf-stub-*` / `simulated_stub` — warm with `pnpm run surfaces` (BUG-04) |
 | **Compound APY** | Base Sepolia Compound contract may return empty rate data — fallback APY used |
-| **Template Fork & Deploy** | Most templates route to Chat; only DCA template calls `/api/dca/schedule` directly |
+| **Template Fork & Deploy** | Guardian, DCA, Payroll deploy via API; Yield/Rebalancer show blocked badge; Liquidation Notifier → Chat |
 | **Stub executions** | Without funded agentic wallet + valid KeeperHub key, txs show **Simulated** badge |
 | **Feed window** | Decision Matrix counts last **50** executions only |
 | **Tier C verify tests** | Cycle rollover + compensating cancel assertions not implemented yet |

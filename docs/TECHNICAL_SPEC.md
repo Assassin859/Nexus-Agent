@@ -325,20 +325,20 @@ Built with Next.js 14 (App Router), Vanilla CSS tokens, and Lucide React icons a
 | **Alerts** | `/alerts` | Categorized notification feed (Danger, Warning, Success, Info) with green success badges |
 | **AI Chat** | `/chat` | Conversational command center with SIWE auth banners, quick prompts, and tool execution status |
 | **Payees** | `/payees` | Payee directory manager for single recipients, dev teams, and vault pools |
-| **Template Store** | `/templates` | 1-click KeeperHub automation templates with instant deployment modals |
+| **Template Store** | `/templates` | 6 templates; Guardian/DCA/Payroll direct Fork & Deploy; Yield/Rebalancer blocked (dual-wallet) |
 
 ---
 
 ## 9. System Verification Harness (`verify-full-system.ts`)
 
 Run via `pnpm verify`:
-* **Tier A (18 Unit Tests - Mandatory)**: Wallet normalization, MCP parsers, candidate selection, payroll split, cron evaluator/resolver, ERC20 approve calldata.
+* **Tier A (21 Unit Tests - Mandatory)**: Wallet normalization, MCP parsers, candidate selection, payroll split, cron evaluator/resolver, ERC20 approve calldata, cycle remaining clamp.
 * **Tier B (On-Chain RPC)**: Compound V3 APY (fallback on Sepolia), `ensureAllowance` capped calldata.
 * **Tier C (Integration, `--integration`)**: DB connectivity only; 2 workflow tests skipped (not yet implemented).
 
-**Exact output:** `18 passed | 2 skipped | 0 failed` (unit); `19 passed | 2 skipped | 0 failed` (integration).
+**Exact output:** `21 passed | 2 skipped | 0 failed` (unit); `22 passed | 2 skipped | 0 failed` (integration).
 
-Additional scripts: `pnpm run phase2` (4 modules), `pnpm run surfaces` (17 MCP surfaces), `pnpm run logs`.
+Additional scripts: `pnpm run e2e` (full system), `pnpm run phase2` (4 modules), `pnpm run surfaces` (17 MCP surfaces), `pnpm run logs`, `pnpm exec tsx src/scripts/db-audit.ts`.
 
 ---
 

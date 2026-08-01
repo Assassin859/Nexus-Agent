@@ -24,6 +24,8 @@ BRAIN_MODEL=google/gemini-2.5-flash
 DATABASE_URL=<Railway Postgres private URL>
 ALCHEMY_RPC_URL=https://base-sepolia.g.alchemy.com/v2/...
 KEEPERHUB_API_KEY=kh_...
+KEEPERHUB_MCP_URL=https://app.keeperhub.com/mcp
+KEEPERHUB_CHAIN_ID=84532
 AGENTIC_WALLET_ADDRESS=0x...
 JWT_SECRET=<strong random secret>
 ALLOWED_ORIGINS=http://localhost:3000,https://your-dashboard.app
@@ -49,6 +51,7 @@ PORT=3001
 
 ```powershell
 $env:AGENT_URL="https://nexus-agent-production-7783.up.railway.app"
+pnpm --prefix nexus-agent run e2e
 pnpm --prefix nexus-agent run phase2
 pnpm --prefix nexus-agent run logs
 ```

@@ -237,7 +237,8 @@ Fallback chain: `GEMINI_API_KEY` → `OPENAI_API_KEY` → `GITHUB_TOKEN` (legacy
 | Gas estimation simulation | ✅ **Real** | `estimateGas` on Base Sepolia RPC |
 | Postgres audit log | ✅ **Real** | Railway DB |
 | Guardian at HF ~3.26 | ✅ **hold** | No broadcast (correct behavior) |
-| KeeperHub on-chain tx | ⚠️ **Conditional** | Requires valid `kh_...` key + funded agentic wallet; may show `simulated_stub` if MCP cold |
+| Guardian repay (HF ~1.05) | ✅ **mined** | 2 BaseScan txs; HF → ~1.32 |
+| KeeperHub on-chain tx | ✅ **Verified** (repay) | Requires `kh_...` key + funded agentic wallet |
 | Yield on-chain rotate | ⚠️ **Skipped** | Dual-wallet unless addresses aligned |
 
-**Honest demo:** Lead with Portfolio + Chat + Feed harness + Resilience. BaseScan links only when `txHash` present.
+**Honest demo:** Lead with Portfolio + Chat + Feed repay proof (BaseScan) + Resilience simulation cards.

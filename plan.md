@@ -36,9 +36,9 @@
   ```
 - [ ] **Browser Flow Verification (http://localhost:3000)**:
   1. SIWE Sign In with MetaMask (`0x89f97...`) on Base Sepolia.
-  2. Portfolio tab -> displays live Health Factor ~3.26 ($12.1k collateral, $3.1k debt).
+  2. Portfolio tab -> displays live Health Factor (~1.32 post-repay; ~3.26 historical hold demo).
   3. KeeperHub Sync Modal -> paste `kh_...` -> Sidebar shows **Green Badge: KeeperHub MCP Connected**.
-  4. AI Chat -> ask *"What is my health factor?"* -> returns 3.26 live.
+  4. AI Chat -> ask *"What is my health factor?"* -> returns live HF from chain.
   5. Feed & Resilience tabs -> render Decision Matrix & simulation cards cleanly.
 - **Gate 2 Exit Criteria:** Browser flow works 100% cleanly on Railway backend without `401 Unauthorized` or network errors.
 
@@ -89,7 +89,8 @@
 ## Verification Quick Reference
 
 ```bash
-pnpm --prefix nexus-agent run verify          → 18 passed, 2 skipped, 0 failed
+pnpm --prefix nexus-agent run verify          → 21 passed, 2 skipped, 0 failed
+pnpm --prefix nexus-agent run e2e             → full system (markets, chat, templates, feed)
 pnpm --prefix nexus-agent run verify:integration → 19 passed, 2 skipped, 0 failed
 pnpm --prefix nexus-agent run phase2          → 4/4 modules verified
 pnpm --prefix nexus-agent run surfaces        → 17/17 MCP surfaces verified

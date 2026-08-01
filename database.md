@@ -31,7 +31,7 @@ export const repaymentCycles = pgTable("repayment_cycles", {
 });
 ```
 
-**How it's used:** Guardian reads `cycleLimitUSD - totalRepaidThisCycleUSD` and passes `cycleRemainingBudget` into the LLM prompt. The schema enforces `recommendation.amount <= cycleRemainingBudget`.
+**How it's used:** Guardian reads `cycleLimitUSD - totalRepaidThisCycleUSD` (clamped ≥ 0) and passes `cycleRemainingBudget` into the LLM prompt. **`reserveCycleBudget()`** atomically increments `totalRepaidThisCycleUSD` before execution to prevent concurrent double-repay; **`releaseCycleBudget()`** rolls back on failure.
 
 ---
 

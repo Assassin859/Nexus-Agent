@@ -20,7 +20,7 @@ const { object: decision } = await generateObject({
   schema: GuardianDecisionSchema,
   system: GUARDIAN_SYSTEM_PROMPT,
   prompt: JSON.stringify({
-    healthFactor: 3.26,
+    healthFactor: 1.32,  // example; live value from Aave V3.2 on Base Sepolia
     walletBalance: 11000,
     collateralValueUSD: 12114,
     debtValueUSD: 3122,

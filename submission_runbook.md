@@ -10,7 +10,7 @@
 |------------|--------|
 | Live Aave V3.2 position reads (HF, collateral, debt) | ✅ Verified |
 | AI Chat with tool calling (OpenRouter / `gemini-2.5-flash`) | ✅ Verified |
-| Guardian evaluation + Reasoning Harness (`hold` at HF ~3.26) | ✅ Verified |
+| Guardian evaluation + Reasoning Harness (`hold` at HF ~3.26; `repay` at HF ~1.05) | ✅ Verified |
 | Pre-flight simulation + Resilience logging | ✅ Verified |
 | KeeperHub MCP workflow registration (PayChain cron) | ✅ Verified |
 | Mined on-chain tx with BaseScan proof | ✅ **Verified** — Guardian repay (2 txs, HF 1.05 → 1.32) |
@@ -30,7 +30,7 @@ UI shows **Simulated** badge when `simulated_stub` or no `txHash`.
 
 | Module | Action | Status | Reason (summary) |
 |--------|--------|--------|------------------|
-| **Guardian** | `hold` | `success` | HF ~3.26 > 1.40 — no broadcast |
+| **Guardian** | `hold` | `success` | HF ~3.26 > 1.40 — no broadcast (historical) |
 | **Guardian** | `repay` | `success` + txHash | HF ~1.05 → 1.32; agentic wallet funded; KeeperHub approve+repay |
 | **Yield Rotator** | `rotate` | `success` | Dual-wallet ownership guard skip |
 | **DCA Engine** | `swap` | schedule OK | Workflow registered in `active_workflows` |
