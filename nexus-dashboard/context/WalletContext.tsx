@@ -117,8 +117,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
     if (email) setKhEmail(email);
     localStorage.setItem("nexus_kh_session_token", token);
     if (email) localStorage.setItem("nexus_kh_email", email);
-    // Also mark as KH-connected for Sidebar status check
-    localStorage.setItem(`nexus_kh_key_${walletAddress}`, "kh_oauth_connected");
+    // OAuth session stored separately — MCP requires a real kh_... API key in settings
   }
 
   function signOutKeeperHub() {

@@ -11,6 +11,7 @@ export const repaymentCycles = pgTable("repayment_cycles", {
   totalRepaidThisCycleUSD: integer("total_repaid_this_cycle_usd").default(0),
 }, (table) => ({
   userWalletIdx: index("repayment_cycles_user_wallet_idx").on(table.userWallet),
+  userWalletUnique: uniqueIndex("repayment_cycles_user_wallet_unique").on(table.userWallet),
 }));
 
 // 2. Active Workflows Table: Tracks scheduled triggers (DCA, Payroll, Guardian)

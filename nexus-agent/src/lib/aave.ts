@@ -26,6 +26,13 @@ export type AavePosition = {
   errorReason?: string;
 };
 
+export class BalanceQueryError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "BalanceQueryError";
+  }
+}
+
 export async function getUsdcBalance(address: string): Promise<number> {
   if (!address) return 0;
   const target = address.toLowerCase();
@@ -39,7 +46,7 @@ export async function getUsdcBalance(address: string): Promise<number> {
     return Number(raw) / Math.pow(10, Number(decimals));
   } catch (err) {
     console.warn(`[AAVE] getUsdcBalance failed for ${target.slice(0, 8)}:`, err);
-    return 0;
+    throw new BalanceQueryError("USDC balance query failed — RPC unavailable.");
   }
 }
 

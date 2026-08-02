@@ -89,9 +89,9 @@
 ## Verification Quick Reference
 
 ```bash
-pnpm --prefix nexus-agent run verify          → 36 passed, 2 skipped, 0 failed
+pnpm --prefix nexus-agent run verify          → 41 passed, 2 skipped, 0 failed
 pnpm --prefix nexus-agent run e2e             → full system (markets, chat, templates, feed)
-pnpm --prefix nexus-agent run verify:integration → 37 passed, 2 skipped, 0 failed
+pnpm --prefix nexus-agent run verify:integration → 42 passed, 2 skipped, 0 failed
 pnpm --prefix nexus-agent run phase2          → 4/4 modules verified
 pnpm --prefix nexus-agent run surfaces        → 17/17 MCP surfaces verified
 ```
@@ -110,10 +110,13 @@ pnpm --prefix nexus-agent run surfaces        → 17/17 MCP surfaces verified
 | P0 | `fix-mcp-apikey` | done | Per-wallet `kh_...` ignored by MCP |
 | P0 | `fix-dca-double-exec` | done | KeeperHub cron + local cron both fire |
 | P1 | `fix-pending-lock-atomic` | done | Duplicate execution race |
-| P1 | `fix-simulate-full-sequence` | next | Main tx skipped after approve sim |
-| P2 | Dashboard wave (10–13) | pending | Portfolio fallback, OAuth false connected, workflow counts |
-| P3 | Medium hardening (14–22) | pending | Schema unique, RPC fail-closed, SIWE nonce, labels |
+| P1 | `fix-simulate-full-sequence` | done | Main tx skipped after approve sim |
+| P1 | `fix-yield-sim-order` | done | Allowance before Compound supply sim |
+| P1 | `fix-dca-cancel-remote` | done | DCA cancel hits KeeperHub |
+| P1 | `fix-dca-schedule-stale-remote` | done | Recreate remote workflow on register |
+| P2 | Dashboard wave (10–13) | done | Portfolio/feed auth, OAuth UI, workflow filter |
+| P3 | Hardening (14–22) | done | Schema unique, RPC fail-closed, SIWE nonce, scoped locks |
 
-**Start here:** `fix-simulate-full-sequence` in `nexus-agent/src/lib/simulate.ts`.
+**Sprint complete.** Verify: **41 passed** (unit) · **42 passed** (integration).
 
 **Gate 5 exit criteria:** Wave 1–2 complete; Guardian cannot hold at critical HF with funds; DCA single-fire verified; dashboard shows real auth errors.

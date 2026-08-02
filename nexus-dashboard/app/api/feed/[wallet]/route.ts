@@ -15,13 +15,26 @@ export async function GET(
     });
 
     if (res.status === 401) {
-      return NextResponse.json({ error: "Unauthorized: Sign in required" }, { status: 401 });
+      return NextResponse.json({ error: "Unauthorized: Sign in required", _unauthorized: true }, { status: 401 });
     }
 
-    if (!res.ok) throw new Error(`Agent returned ${res.status}`);
-    const data = await res.json();
+    if (res.status === 403) {
+      return NextResponse.json({ error: "Forbidden: wallet scope mismatch", _forbidden: true }, { status: 403 });
+    }
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: data.error || `Agent returned ${res.status}`, _agentError: true },
+        { status: res.status },
+      );
+    }
+
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({ error: "Failed to fetch execution log feed" }, { status: 500 });
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : "Failed to fetch execution log feed", _agentError: true },
+      { status: 503 },
+    );
   }
 }

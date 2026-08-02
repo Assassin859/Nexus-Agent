@@ -42,11 +42,11 @@ export default function Sidebar() {
 
   useEffect(() => {
     if (typeof window !== "undefined" && walletAddress) {
-      setHasLocalKey(!!localStorage.getItem(`nexus_kh_key_${walletAddress}`));
+      setHasLocalKey(!!localStorage.getItem(`nexus_kh_key_${walletAddress}`)?.startsWith("kh_"));
     }
   }, [walletAddress]);
 
-  const khConnected = !!khSessionToken || khServerKey || hasLocalKey;
+  const khConnected = khServerKey || hasLocalKey;
   const [modalOpen, setModalOpen] = useState(false);
   const [signingIn, setSigningIn] = useState(false);
 

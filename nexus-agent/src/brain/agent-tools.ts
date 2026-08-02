@@ -10,7 +10,7 @@ import { cancelWorkflow } from "../lib/mcp-client.js";
 import { run as runGuardian } from "../modules/guardian.js";
 import { run as runYieldRotator } from "../modules/yield-rotator.js";
 import { run as runDCA } from "../modules/dca.js";
-import { eq, desc, and, ilike } from "drizzle-orm";
+import { eq, desc, and, ilike, gte } from "drizzle-orm";
 
 /**
  * Creates the set of native AI SDK tools for the LLM agent.
@@ -46,7 +46,12 @@ export function createAgentTools(
         if (dcaRows.length === 0) {
           return { cancelledCount: 0, message: "No active DCA workflows found." };
         }
+        let remoteOk = 0;
         for (const wf of dcaRows) {
+          if (wf.keeperhubWorkflowId && !wf.keeperhubWorkflowId.startsWith("wf-stub-")) {
+            const result = await cancelWorkflow(wf.keeperhubWorkflowId, apiKey);
+            if (result.ok && !result.isStub) remoteOk++;
+          }
           await db.update(activeWorkflows)
             .set({ status: `cancelled_${wf.id.slice(0, 8)}` })
             .where(eq(activeWorkflows.id, wf.id));
@@ -60,7 +65,7 @@ export function createAgentTools(
         });
         return {
           cancelledCount: dcaRows.length,
-          message: `🛑 Cancelled ${dcaRows.length} active DCA workflow(s) locally.`,
+          message: `🛑 Cancelled ${dcaRows.length} active DCA workflow(s) (${remoteOk} synced to KeeperHub).`,
         };
       }
 
@@ -203,7 +208,10 @@ export function createAgentTools(
       parameters: z.object({}),
       execute: async () => {
         const activeWfs = await db.query.activeWorkflows.findMany({
-          where: eq(activeWorkflows.userWallet, wallet),
+          where: and(
+            eq(activeWorkflows.userWallet, wallet),
+            eq(activeWorkflows.status, "active"),
+          ),
         });
 
         return {
@@ -300,16 +308,32 @@ export function createAgentTools(
         strategy: z.enum(["dca", "guardian", "yield"]).describe("Strategy to execute"),
       }),
       execute: async ({ strategy }) => {
+        const startedAt = new Date();
         if (strategy === "dca") {
           await runDCA(wallet, { apiKey });
-          return { message: "🤖 DCA Swap strategy triggered successfully! Uniswap V3 calldata generated." };
         } else if (strategy === "guardian") {
           await runGuardian(wallet, { apiKey });
-          return { message: "🛡️ Guardian position check triggered! Health factor & repayment limits evaluated." };
         } else {
           await runYieldRotator(wallet, { apiKey });
-          return { message: "🤖 Yield Rotator strategy triggered! Evaluated APY delta & rotated yield positions." };
         }
+
+        const recent = await db.query.executionsLog.findFirst({
+          where: and(
+            eq(executionsLog.userWallet, wallet),
+            gte(executionsLog.timestamp, startedAt),
+          ),
+          orderBy: [desc(executionsLog.timestamp)],
+        });
+
+        if (!recent) {
+          return {
+            message: `⏭️ ${strategy} skipped — no action logged (pending lock, safe position, schedule window, or RPC unavailable).`,
+          };
+        }
+
+        return {
+          message: `✅ ${strategy} ran: ${recent.status} — ${(recent.reason || recent.action).slice(0, 120)}`,
+        };
       },
     }),
 

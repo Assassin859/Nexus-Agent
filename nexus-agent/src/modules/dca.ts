@@ -8,7 +8,7 @@ import { acquirePendingLock } from "../lib/pending-lock.js";
 import { createWorkflow, executeWorkflow, pollExecutionUntilSettled, type WorkflowStep } from "../lib/mcp-client.js";
 import { getProvider } from "../lib/rpc.js";
 import { encodeUniswapSwap, UNISWAP_V3_ROUTER, USDC_SEPOLIA } from "../lib/calldata.js";
-import { getAavePosition, getUsdcBalance } from "../lib/aave.js";
+import { getAavePosition, getUsdcBalance, BalanceQueryError } from "../lib/aave.js";
 import { getAgenticWallet, getWalletContext } from "../lib/agentic-wallet.js";
 import { getEthPriceUSD } from "../lib/price-feed.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
@@ -38,7 +38,23 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
 
   // ── Check Signer USDC Balance ──────────────────────────────────────────────
-  const signerUsdc = await getUsdcBalance(context.signerWallet);
+  let signerUsdc: number;
+  try {
+    signerUsdc = await getUsdcBalance(context.signerWallet);
+  } catch (err) {
+    if (err instanceof BalanceQueryError) {
+      log.warn({ err: err.message }, "Signer USDC balance RPC failed — skipping DCA.");
+      await db.insert(executionsLog).values({
+        userWallet: context.monitoredWallet,
+        action: "swap",
+        amount: workflow.amount,
+        status: "delayed",
+        reason: "DCA skipped: USDC balance RPC unavailable.",
+      });
+      return;
+    }
+    throw err;
+  }
   if (signerUsdc < workflow.amount) {
     log.warn({ signerUsdc, amountNeeded: workflow.amount }, "Signer wallet has insufficient USDC balance for DCA swap.");
     await db.insert(executionsLog).values({
@@ -77,17 +93,31 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     log.warn({ reason: (gasFee.reason as Error)?.message }, "Failed to fetch gas price — using fallback");
   }
 
-  const { object: decision } = await generateObject({
-    model: getBrainModel(),
-    schema: DCASchema,
-    system: DCA_SYSTEM_PROMPT,
-    prompt: JSON.stringify({
-      purchaseAmountUSD: workflow.amount,
-      estimatedGasUSD: parseFloat(estimatedGasUSD.toFixed(2)),
-      sourceAsset: "USDC",
-      targetAsset: "ETH",
-    }),
-  });
+  let decision;
+  try {
+    const res = await generateObject({
+      model: getBrainModel(),
+      schema: DCASchema,
+      system: DCA_SYSTEM_PROMPT,
+      prompt: JSON.stringify({
+        purchaseAmountUSD: workflow.amount,
+        estimatedGasUSD: parseFloat(estimatedGasUSD.toFixed(2)),
+        sourceAsset: "USDC",
+        targetAsset: "ETH",
+      }),
+    });
+    decision = res.object;
+  } catch (llmErr) {
+    log.warn({ err: String(llmErr) }, "LLM brownout — skipping DCA swap this cycle");
+    await db.insert(executionsLog).values({
+      userWallet: context.monitoredWallet,
+      action: "swap",
+      amount: workflow.amount,
+      status: "delayed",
+      reason: "DCA skipped: brain model unavailable this cycle.",
+    });
+    return;
+  }
 
   if (!decision.recommendation.execute_swap) {
     log.info({ delayMin: decision.recommendation.delay_minutes }, `Swap delayed: ${decision.userExplanation}`);

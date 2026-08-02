@@ -25,6 +25,7 @@ export default function FeedPage() {
   const { walletAddress, authToken } = useWallet();
   const [feed, setFeed] = useState<FeedItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
   const [page, setPage] = useState(1);
 
   // Reset page to 1 when wallet changes
@@ -35,11 +36,28 @@ export default function FeedPage() {
       try {
         const res = await proxyFetch(`/api/feed/${walletAddress}`, {}, authToken);
         const data = await res.json();
+        if (res.status === 401) {
+          setAuthError("Sign in with Ethereum to view the live execution feed.");
+          setFeed([]);
+          return;
+        }
+        if (res.status === 403) {
+          setAuthError("Forbidden — signed-in wallet does not match this feed.");
+          setFeed([]);
+          return;
+        }
+        if (!res.ok) {
+          setAuthError(data.error || `Feed unavailable (${res.status})`);
+          setFeed([]);
+          return;
+        }
+        setAuthError(null);
         if (Array.isArray(data)) {
           setFeed(data);
         }
       } catch (err) {
         console.error("Failed to load feed:", err);
+        setAuthError("Agent unreachable — could not load execution feed.");
       } finally {
         setLoading(false);
       }
@@ -60,6 +78,12 @@ export default function FeedPage() {
       </div>
 
       {/* Decision Matrix — always uses full feed for correct aggregate counts */}
+      {authError && (
+        <div className="card" style={{ color: "#f59e0b", fontSize: 13, padding: 14 }}>
+          {authError}
+        </div>
+      )}
+
       <DecisionMatrixCard items={feed} loading={loading} />
 
       {/* Stepper */}

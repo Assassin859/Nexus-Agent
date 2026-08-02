@@ -125,7 +125,7 @@ export default function KeeperHubSyncModal({ isOpen, onClose, walletAddress, onK
           <div>
             <h3 style={{ fontSize: 18, fontWeight: 700, margin: 0, color: "var(--text)" }}>Connect KeeperHub</h3>
             <p style={{ fontSize: 12, color: "var(--text-muted)", margin: 0, marginTop: 2 }}>
-              Sign in via KeeperHub to sync your workflows, payees & Turnkey wallet
+              Paste your KeeperHub API key (<code>kh_...</code>) to sync workflows via MCP
             </p>
           </div>
         </div>
@@ -133,15 +133,15 @@ export default function KeeperHubSyncModal({ isOpen, onClose, walletAddress, onK
         <div style={{ background: "rgba(255,255,255,0.02)", border: "1px solid var(--border)", borderRadius: 10, padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--text-2)" }}>
             <Shield size={14} color="#34d399" />
-            <span>No manual API key copying required</span>
+            <span>Key is stored per-wallet in Postgres (encrypted at rest on Railway)</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--text-2)" }}>
             <Shield size={14} color="#818cf8" />
-            <span>Authenticates via the KeeperHub website (OAuth)</span>
+            <span>Used for KeeperHub MCP workflow create/execute/cancel</span>
           </div>
           <div style={{ display: "flex", alignItems: "center", gap: 10, fontSize: 12, color: "var(--text-2)" }}>
             <Shield size={14} color="#f59e0b" />
-            <span>Syncs all your remote workflows & payees automatically</span>
+            <span>OAuth sign-in is optional — API key is required for live execution</span>
           </div>
         </div>
 

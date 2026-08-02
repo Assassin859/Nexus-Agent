@@ -19,25 +19,26 @@ export async function GET(
       return NextResponse.json({ error: "Unauthorized: Sign in with Ethereum required", _unauthorized: true }, { status: 401 });
     }
 
-    if (!res.ok) throw new Error(`Agent returned ${res.status}`);
-    const data = await res.json();
+    if (res.status === 403) {
+      return NextResponse.json({ error: "Forbidden: wallet scope mismatch", _forbidden: true }, { status: 403 });
+    }
+
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      return NextResponse.json(
+        { error: data.error || `Agent returned ${res.status}`, _agentError: true },
+        { status: res.status },
+      );
+    }
+
     return NextResponse.json(data);
   } catch (err) {
-    return NextResponse.json({
-      walletAddress: params.wallet,
-      healthFactor: null,
-      collateralUSD: 0,
-      debtUSD: 0,
-      availableBorrowsUSD: 0,
-      ltvPercent: 0,
-      usdcWalletBalance: 0,
-      currentUSDCSupplyAPY: 0,
-      compoundUSDCSupplyAPY: 0,
-      apyDeltaVsAave: 0,
-      isError: true,
-      errorReason: err instanceof Error ? err.message : "Agent offline",
-      workflows: [],
-      _fallback: true,
-    });
+    return NextResponse.json(
+      {
+        error: err instanceof Error ? err.message : "Agent unreachable",
+        _agentError: true,
+      },
+      { status: 503 },
+    );
   }
 }

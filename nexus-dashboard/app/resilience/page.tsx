@@ -70,15 +70,33 @@ export default function ResiliencePage() {
   const [scenarios, setScenarios] = useState(INITIAL_SCENARIOS);
   const [feed, setFeed] = useState<ExecutionLogItem[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   useEffect(() => {
     async function loadResilience() {
       try {
         const res = await proxyFetch(`/api/feed/${wallet}`, {}, authToken);
-        const data: LogItem[] = await res.json();
+        const data = await res.json();
+        if (res.status === 401) {
+          setAuthError("Sign in with Ethereum to view resilience logs.");
+          setFeed([]);
+          return;
+        }
+        if (res.status === 403) {
+          setAuthError("Forbidden — signed-in wallet does not match this feed.");
+          setFeed([]);
+          return;
+        }
+        if (!res.ok) {
+          setAuthError(data.error || `Resilience feed unavailable (${res.status})`);
+          setFeed([]);
+          return;
+        }
+        setAuthError(null);
         if (Array.isArray(data) && data.length > 0) {
-          setFeed(data as ExecutionLogItem[]);
-          const happy = data.find(d => d.status === "success");
+          const logs = data as LogItem[];
+          setFeed(logs as ExecutionLogItem[]);
+          const happy = logs.find(d => d.status === "success");
           const delayed = data.find(d => d.status === "delayed");
           const pending = data.find(d => d.status === "pending");
           const simRevert = data.find(d => d.status === "reverted_simulation");
@@ -123,6 +141,12 @@ export default function ResiliencePage() {
         <h1 className="page-title">Resilience &amp; Simulation Log</h1>
         <p className="page-subtitle">Every action is simulated prior to broadcast. Zero gas wasted on reverts.</p>
       </div>
+
+      {authError && (
+        <div className="card" style={{ color: "#f59e0b", fontSize: 13, padding: 14 }}>
+          {authError}
+        </div>
+      )}
 
       {/* AI Decision Matrix Component */}
       <DecisionMatrixCard items={feed} loading={loading} />

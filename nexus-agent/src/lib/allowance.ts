@@ -38,6 +38,7 @@ export async function ensureAllowance(
     }
   } catch (err) {
     alLog.warn({ wallet: signerWallet.slice(0, 8), err }, "[ALLOWANCE] Failed to query allowance");
+    throw new Error("Allowance check failed — RPC unavailable; aborting execution.");
   }
 
   return null;

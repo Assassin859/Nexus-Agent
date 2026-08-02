@@ -22,6 +22,7 @@ import { verifyMessage } from "ethers";
 import { generateText } from "ai";
 import { getBrainModel, getActiveBrainProvider } from "./brain/provider.js";
 import { createAgentTools } from "./brain/agent-tools.js";
+import { issueSiweChallenge, consumeSiweChallenge } from "./lib/siwe-challenge.js";
 import { run as runGuardian } from "./modules/guardian.js";
 import { run as runYieldRotator } from "./modules/yield-rotator.js";
 import { run as runDCA } from "./modules/dca.js";
@@ -120,8 +121,7 @@ app.get("/health", (_req, res) => {
 // ── SIWE Authentication & Challenge ─────────────────────────────────────────
 app.get("/api/auth/challenge", (req, res) => {
   const wallet = (req.query.wallet as string || DEMO_WALLET).toLowerCase();
-  const timestamp = new Date().toISOString();
-  const challenge = `Sign in to NexusAgent\n\nWallet: ${wallet}\nTimestamp: ${timestamp}\n\nAuthorize automated wealth management & sync KeeperHub workflows.`;
+  const { challenge, timestamp } = issueSiweChallenge(wallet);
   res.json({ challenge, timestamp });
 });
 
@@ -133,6 +133,10 @@ app.post("/api/auth/verify", async (req, res) => {
     }
 
     const expectedAddress = walletAddress.toLowerCase();
+
+    if (!consumeSiweChallenge(expectedAddress, challenge)) {
+      return res.status(400).json({ error: "Authentication failed: Challenge not issued by server or already used." });
+    }
 
     // 1. Verify Challenge Timestamp (<= 5 minutes old) — Fail-closed
     const tsMatch = challenge.match(/Timestamp:\s*([^\n]+)/);
@@ -402,7 +406,10 @@ app.get("/api/portfolio/:walletAddress", requireAuth, async (req: express.Reques
     const [position, workflows, compoundAPY] = await Promise.all([
       getAavePosition(walletAddress),
       db.query.activeWorkflows.findMany({
-        where: eq(activeWorkflows.userWallet, walletAddress),
+        where: and(
+          eq(activeWorkflows.userWallet, walletAddress),
+          eq(activeWorkflows.status, "active"),
+        ),
       }),
       getCompoundUsdcSupplyAPY(),
     ]);

@@ -24,6 +24,11 @@ export function shouldRunCronNow(cronExpression: string, now = new Date()): bool
 
   function matchField(rule: string, val: number): boolean {
     if (rule === "*") return true;
+    if (rule.startsWith("*/")) {
+      const step = parseInt(rule.slice(2), 10);
+      if (!Number.isFinite(step) || step <= 0) return false;
+      return val % step === 0;
+    }
     const items = rule.split(",");
     for (const item of items) {
       if (item.trim() === String(val)) return true;

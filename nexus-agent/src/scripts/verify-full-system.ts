@@ -195,7 +195,11 @@ async function main() {
   });
   assert(cronDisabledRemote.enabled === false, "Workflow Graph — remoteCronEnabled false → enabled false");
 
-  // 6h. Pending lock conflict detection (Postgres 23505)
+  // 6h. Cron step expressions (*/n)
+  assert(shouldRunCronNow("*/15 * * * *", new Date("2026-08-02T14:30:00Z")) === true, "Cron Evaluator — */15 matches :30");
+  assert(shouldRunCronNow("*/15 * * * *", new Date("2026-08-02T14:07:00Z")) === false, "Cron Evaluator — */15 rejects :07");
+
+  // 6i. Pending lock conflict detection (Postgres 23505)
   assert(isPendingLockConflict({ code: "23505" }) === true, "Pending Lock — detects unique_violation 23505");
   assert(isPendingLockConflict({ code: "23503" }) === false, "Pending Lock — ignores non-unique errors");
   assert(isPendingLockConflict(new Error("fail")) === false, "Pending Lock — ignores generic errors");

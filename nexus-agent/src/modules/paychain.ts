@@ -40,8 +40,11 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     where: eq(payees.userWallet, walletAddress),
   });
 
-  // Check if user prompt matches a registered payee or team name
-  const matchedPayee = savedPayees.find((p) => msgLower.includes(p.name.toLowerCase()));
+  // Check if user prompt matches a registered payee or team name (word boundary)
+  const matchedPayee = savedPayees.find((p) => {
+    const escaped = p.name.toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    return new RegExp(`\\b${escaped}\\b`, "i").test(userMessage);
+  });
 
   // If user mentioned a named entity without a 0x address and no matching payee was found
   const has0xAddress = /0x[a-fA-F0-9]{40}/.test(userMessage);
@@ -60,9 +63,9 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
 
   if (matchedPayee) {
     // Extract numeric amount from prompt (e.g. "pay dev team 20 usdc" -> 20)
-    const amountMatch = userMessage.match(/(\d+)\s*(usdc|usdt|weth|\$)/i) || userMessage.match(/\$\s*(\d+)/);
+    const amountMatch = userMessage.match(/(\d+(?:\.\d+)?)\s*(usdc|usdt|weth|\$)/i) || userMessage.match(/\$\s*(\d+(?:\.\d+)?)/);
     const recipients = matchedPayee.recipientAddresses as Array<{ address: string; amount?: number }> | null;
-    const amount = amountMatch ? parseInt(amountMatch[1], 10) : recipients?.[0]?.amount;
+    const amount = amountMatch ? parseFloat(amountMatch[1]) : recipients?.[0]?.amount;
 
     if (!amount) {
       return {

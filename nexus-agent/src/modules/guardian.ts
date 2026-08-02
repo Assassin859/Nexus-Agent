@@ -6,7 +6,7 @@ import { db } from "../db/client.js";
 import { repaymentCycles, executionsLog } from "../db/schema.js";
 import { simulateErc20Action } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled, getExecutionStatus, type WorkflowStep } from "../lib/mcp-client.js";
-import { getAavePosition, getUsdcBalance } from "../lib/aave.js";
+import { getAavePosition, getUsdcBalance, BalanceQueryError } from "../lib/aave.js";
 import { getPriceTrend } from "../lib/price-feed.js";
 import {
   encodeAaveRepay,
@@ -26,7 +26,9 @@ import {
   resolveExecutionLogStatus,
 } from "../lib/repayment-cycle.js";
 import { acquirePendingLock } from "../lib/pending-lock.js";
-import { eq, and, lt, desc, gte } from "drizzle-orm";
+import { eq, and, lt, desc, gte, inArray } from "drizzle-orm";
+
+const GUARDIAN_LOCK_ACTIONS = ["repay", "supply"] as const;
 
 const ALLOWED_CHANNELS = ["telegram", "discord", "email"] as const;
 type AlertChannel = typeof ALLOWED_CHANNELS[number];
@@ -121,6 +123,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   const expiredPendingRows = await db.query.executionsLog.findMany({
     where: and(
       eq(executionsLog.userWallet, monitoredWallet),
+      inArray(executionsLog.action, [...GUARDIAN_LOCK_ACTIONS]),
       eq(executionsLog.status, "pending"),
       lt(executionsLog.timestamp, cutoff15m)
     ),
@@ -169,18 +172,28 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   const activePendingTx = await db.query.executionsLog.findFirst({
     where: and(
       eq(executionsLog.userWallet, monitoredWallet),
+      inArray(executionsLog.action, [...GUARDIAN_LOCK_ACTIONS]),
       eq(executionsLog.status, "pending")
     ),
   });
   if (activePendingTx) {
-    log.warn({ logId: activePendingTx.id }, "Active pending transaction exists (<15m) — skipping evaluation.");
+    log.warn({ logId: activePendingTx.id }, "Active Guardian pending transaction exists (<15m) — skipping evaluation.");
     return;
   }
 
   const cycleRemaining = getCycleRemaining(cycle!);
 
   // ── Step 5: Read signerWallet USDC balance ──────────────────────────────
-  const agenticBalance = await getUsdcBalance(signerWallet);
+  let agenticBalance: number;
+  try {
+    agenticBalance = await getUsdcBalance(signerWallet);
+  } catch (err) {
+    if (err instanceof BalanceQueryError) {
+      log.warn({ err: err.message }, "USDC balance RPC failed — skipping Guardian cycle.");
+      return;
+    }
+    throw err;
+  }
 
   // ── Step 6: AI Brain & Reasoning Harness Candidate Selection ───────────────
   const priceTrend = await getPriceTrend();

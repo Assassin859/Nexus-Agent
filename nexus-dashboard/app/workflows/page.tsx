@@ -152,7 +152,7 @@ export default function WorkflowsPage() {
         </div>
         <div className="card metric-card">
           <span className="metric-label">Target Network</span>
-          <div className="metric-value" style={{ fontSize: 20 }}>Ethereum Sepolia</div>
+          <div className="metric-value" style={{ fontSize: 20 }}>Base Sepolia</div>
           <span className="metric-sub text-muted">KeeperHub Turnkey MPC</span>
         </div>
       </div>

@@ -22,6 +22,8 @@ type PortfolioData = {
   errorReason?: string;
   _fallback?: boolean;
   _unauthorized?: boolean;
+  _forbidden?: boolean;
+  _agentError?: boolean;
 };
 
 export default function PortfolioPage() {
@@ -34,6 +36,9 @@ export default function PortfolioPage() {
       try {
         const res = await proxyFetch(`/api/portfolio/${wallet}`, {}, authToken);
         const json = await res.json();
+        if (res.status === 401) json._unauthorized = true;
+        if (res.status === 403) json._forbidden = true;
+        if (!res.ok) json._agentError = true;
         setData(json);
       } catch (err) {
         console.error("Failed to load portfolio:", err);
@@ -65,11 +70,13 @@ export default function PortfolioPage() {
   const delta = data?.apyDeltaVsAave ?? (compoundAPY - aaveAPY);
   const hasYieldDelta = !isError && compoundAPY > 0 && aaveAPY > 0 && delta > 0.1;
 
+  const activeWorkflowCount = data?.workflows?.filter((w) => w.status === "active").length ?? 0;
+
   const metrics = [
     { label: "Collateral Value", value: `$${(data?.collateralUSD ?? 0).toLocaleString()}`, sub: "USDC & WETH Deposited", icon: Shield, color: "#34d399", href: "/resilience", ltv: undefined },
     { label: "Current Debt",     value: `$${(data?.debtUSD ?? 0).toLocaleString()}`,        sub: "USDC Borrowed",         icon: RefreshCw, color: "#818cf8", href: "/alerts", ltv: undefined },
     { label: "LTV Ratio",        value: `${data?.ltvPercent ?? 0}%`,                       sub: "Max 75% before risk",   icon: Layers,   color: "#fbbf24", href: "/resilience", ltv: data?.ltvPercent ?? 0 },
-    { label: "Active Workflows", value: `${data?.workflows?.length ?? 0} Active`,             sub: "Guardian · DCA · Payroll", icon: ArrowUpRight, color: "#06b6d4", href: "/feed", ltv: undefined },
+    { label: "Active Workflows", value: `${activeWorkflowCount} Active`,             sub: "Guardian · DCA · Payroll", icon: ArrowUpRight, color: "#06b6d4", href: "/feed", ltv: undefined },
   ];
 
   return (
@@ -84,6 +91,20 @@ export default function PortfolioPage() {
           <button onClick={signInWithEthereum} className="btn btn-primary" style={{ padding: "6px 12px", fontSize: 12 }}>
             Sign In with Ethereum
           </button>
+        </div>
+      )}
+
+      {data?._forbidden && (
+        <div style={{ background: "rgba(248,113,113,0.1)", border: "1px solid rgba(248,113,113,0.3)", borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", gap: 8, color: "#f87171", fontSize: 13 }}>
+          <AlertCircle size={16} />
+          <span>Forbidden — signed-in wallet does not match the portfolio address.</span>
+        </div>
+      )}
+
+      {data?._agentError && !data?._unauthorized && !data?._forbidden && (
+        <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", gap: 8, color: "#f59e0b", fontSize: 13 }}>
+          <AlertCircle size={16} />
+          <span>{data.errorReason || (data as PortfolioData & { error?: string }).error || "Agent error — live portfolio unavailable."}</span>
         </div>
       )}
 
@@ -113,7 +134,7 @@ export default function PortfolioPage() {
           </button>
 
           <span className="pill pill-success">
-            <CheckCircle2 size={12} /> Sepolia Network Active
+            <CheckCircle2 size={12} /> Base Sepolia Network Active
           </span>
         </div>
       </div>

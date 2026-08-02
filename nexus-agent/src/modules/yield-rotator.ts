@@ -58,7 +58,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  // ── Step 4.1: Expire pending rows older than 15m (wallet-wide) ──────────────
+  // ── Step 4.1: Expire pending rotate rows older than 15m ───────────────────
   const fifteenMinutesAgo = new Date(Date.now() - 15 * 60 * 1000);
   await db
     .update(executionsLog)
@@ -69,20 +69,22 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     .where(
       and(
         eq(executionsLog.userWallet, monitoredWallet),
+        eq(executionsLog.action, "rotate"),
         eq(executionsLog.status, "pending"),
         lt(executionsLog.timestamp, fifteenMinutesAgo)
       )
     );
 
-  // ── Step 4.2: Hard return on active pending lock (under 15m) ─────────────
+  // ── Step 4.2: Hard return on active rotate pending lock (under 15m) ─────
   const activePendingTx = await db.query.executionsLog.findFirst({
     where: and(
       eq(executionsLog.userWallet, monitoredWallet),
+      eq(executionsLog.action, "rotate"),
       eq(executionsLog.status, "pending")
     ),
   });
   if (activePendingTx) {
-    log.warn({ logId: activePendingTx.id }, "Active pending transaction exists (<15m) — skipping yield evaluation.");
+    log.warn({ logId: activePendingTx.id }, "Active yield rotate pending transaction exists (<15m) — skipping yield evaluation.");
     return;
   }
 
@@ -119,20 +121,34 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   // ── Env-configurable gas estimate fallback ────────────────────────────────
   const estimatedGasUSD = Number(process.env.ESTIMATED_GAS_USD_FALLBACK) || 4.5;
 
-  const { object: decision } = await generateObject({
-    model: getBrainModel(),
-    schema: YieldRotatorSchema,
-    system: YIELD_ROTATOR_SYSTEM_PROMPT,
-    prompt: JSON.stringify({
-      currentProtocol: "Aave V3",
-      currentAPY: aaveUSDCSupplyAPY,
-      candidateProtocol: "Compound V3",
-      candidateAPY: compoundUSDCSupplyAPY,
-      userUSDCBalance: userBalance,
-      estimatedGasUSD,
-      lockInDays: 90,
-    }),
-  });
+  let decision;
+  try {
+    const res = await generateObject({
+      model: getBrainModel(),
+      schema: YieldRotatorSchema,
+      system: YIELD_ROTATOR_SYSTEM_PROMPT,
+      prompt: JSON.stringify({
+        currentProtocol: "Aave V3",
+        currentAPY: aaveUSDCSupplyAPY,
+        candidateProtocol: "Compound V3",
+        candidateAPY: compoundUSDCSupplyAPY,
+        userUSDCBalance: userBalance,
+        estimatedGasUSD,
+        lockInDays: 90,
+      }),
+    });
+    decision = res.object;
+  } catch (llmErr) {
+    log.warn({ err: String(llmErr) }, "LLM brownout — skipping yield rotation this cycle");
+    await db.insert(executionsLog).values({
+      userWallet: monitoredWallet,
+      action: "rotate",
+      amount: 0,
+      status: "delayed",
+      reason: "Yield rotator skipped: brain model unavailable this cycle.",
+    });
+    return;
+  }
 
   log.info({ shouldRotate: decision.recommendation.should_rotate }, decision.userExplanation);
 
@@ -150,12 +166,24 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
 
 
   const rotateAmount = Math.min(decision.recommendation.amount || userBalance, userBalance);
-  // Step 1: Withdraw from Aave to signer wallet
   const withdrawCalldata = encodeAaveWithdraw(USDC_SEPOLIA, rotateAmount, context.signerWallet);
-  // Step 2: Supply to Compound V3 from signer wallet
   const supplyCalldata = encodeCompoundSupply(USDC_SEPOLIA, rotateAmount);
 
-  // Pre-flight simulate Step 1 (Aave withdraw)
+  let allowanceCalldata: string | null;
+  try {
+    allowanceCalldata = await ensureAllowance(context.signerWallet, USDC_SEPOLIA, COMPOUND_V3_USDC, rotateAmount);
+  } catch (err) {
+    log.warn({ err: err instanceof Error ? err.message : String(err) }, "Allowance check failed — skipping yield rotation.");
+    await db.insert(executionsLog).values({
+      userWallet: monitoredWallet,
+      action: "rotate",
+      amount: rotateAmount,
+      status: "delayed",
+      reason: "Yield rotator skipped: allowance RPC check failed.",
+    });
+    return;
+  }
+
   const simWithdraw = await simulate(
     { from: context.signerWallet, to: AAVE_V3_POOL, data: withdrawCalldata },
     monitoredWallet
@@ -174,14 +202,32 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  // Pre-flight simulate Step 2 (Compound supply)
+  if (allowanceCalldata) {
+    const simApprove = await simulate(
+      { from: context.signerWallet, to: USDC_SEPOLIA, data: allowanceCalldata },
+      monitoredWallet,
+    );
+    if (simApprove.wouldRevert) {
+      log.warn("Step 2 (ERC20 approve) pre-flight simulation reverted — recording resilience log.");
+      await db.insert(executionsLog).values({
+        userWallet: monitoredWallet,
+        action: "rotate",
+        amount: rotateAmount,
+        status: "reverted_simulation",
+        reason: `Pre-flight simulation intercepted revert: Compound supply allowance failed (${simApprove.revertReason || "Reverted"}). Zero gas wasted.`,
+        aiAnalysis: decision.analysis,
+      });
+      return;
+    }
+  }
+
   const simSupply = await simulate(
     { from: context.signerWallet, to: COMPOUND_V3_USDC, data: supplyCalldata },
     monitoredWallet
   );
 
   if (simSupply.wouldRevert) {
-    log.warn("Step 2 (Compound supply) pre-flight simulation reverted — recording resilience log.");
+    log.warn("Step 3 (Compound supply) pre-flight simulation reverted — recording resilience log.");
     await db.insert(executionsLog).values({
       userWallet: monitoredWallet,
       action: "rotate",
@@ -193,8 +239,6 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     return;
   }
 
-  // Prepend ERC20 max-uint256 approval step for Compound V3 USDC supply if needed
-  const allowanceCalldata = await ensureAllowance(context.signerWallet, USDC_SEPOLIA, COMPOUND_V3_USDC, rotateAmount);
   const steps: WorkflowStep[] = [
     { type: "transaction", to: AAVE_V3_POOL, calldata: withdrawCalldata, gasStrategy: "standard" },
   ];

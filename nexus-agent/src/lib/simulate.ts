@@ -64,10 +64,8 @@ export async function simulateErc20Action(
     if (approveSim.wouldRevert) {
       return { ...approveSim, allowanceCalldata };
     }
-    simLog.info("Skipping main tx simulation; approve step will be prepended.");
-    return { wouldRevert: false, gasEstimate: approveSim.gasEstimate, allowanceCalldata };
   }
 
   const mainSim = await simulate(mainTx, monitoredWallet);
-  return { ...mainSim, allowanceCalldata: null };
+  return { ...mainSim, allowanceCalldata };
 }

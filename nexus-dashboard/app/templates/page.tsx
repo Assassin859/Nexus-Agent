@@ -109,20 +109,21 @@ export default function TemplatesPage() {
     setStatusMsg(null);
 
     if (tmpl.deploy.mode === "api" && authToken) {
+      const apiDeploy = tmpl.deploy;
       try {
         const res = await proxyFetch(
-          tmpl.deploy.apiPath,
+          apiDeploy.apiPath,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(tmpl.deploy.body ?? {}),
+            body: JSON.stringify(apiDeploy.body ?? {}),
           },
           authToken,
         );
 
         if (res.ok) {
           setStatusMsg(`✅ ${tmpl.title} deployed!`);
-          setTimeout(() => router.push(tmpl.deploy.redirect ?? "/workflows"), 1200);
+          setTimeout(() => router.push(apiDeploy.redirect ?? "/workflows"), 1200);
           return;
         }
         const err = await res.json().catch(() => ({}));
@@ -168,6 +169,7 @@ export default function TemplatesPage() {
           const Icon = tmpl.icon;
           const isSelected = deploying === tmpl.title;
           const isBlocked = tmpl.deploy.mode === "blocked";
+          const blockedReason = tmpl.deploy.mode === "blocked" ? tmpl.deploy.reason : undefined;
           return (
             <div
               key={tmpl.title}
@@ -191,16 +193,16 @@ export default function TemplatesPage() {
                   <span
                     className={isBlocked ? "pill" : "pill pill-success"}
                     style={{ fontSize: 10.5 }}
-                    title={isBlocked ? tmpl.deploy.reason : undefined}
+                    title={blockedReason}
                   >
                     {isBlocked ? "Same wallet required" : "Deploy in 60s"}
                   </span>
                 </div>
                 <div className="tmpl-name">{tmpl.title}</div>
                 <p className="tmpl-desc">{tmpl.desc}</p>
-                {isBlocked && (
+                {blockedReason && (
                   <p style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 8, lineHeight: 1.4 }}>
-                    {tmpl.deploy.reason}
+                    {blockedReason}
                   </p>
                 )}
               </div>
