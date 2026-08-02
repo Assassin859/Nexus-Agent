@@ -1,22 +1,22 @@
 # Railway Deployment Guide — NexusAgent Production
 
 > **Production backend:** `https://nexus-agent-production-7783.up.railway.app`  
+> **Production dashboard:** `https://spirited-heart-production-b5c5.up.railway.app`  
 > **Note:** Ollama-based deployment is **not used**. AI runs via OpenRouter API (serverless).
 
 ---
 
 ## 1. Services on Railway
 
-| Service | Type | Purpose |
-|---------|------|---------|
-| **nexus-agent** | Node.js | Express API, cron modules, MCP client |
-| **Postgres** | Plugin | Shared state + `executions_log` |
-
-Dashboard (`nexus-dashboard`) can run locally or on Vercel/Railway with `NEXT_PUBLIC_AGENT_URL` pointing at the agent service.
+| Service | Root directory | Purpose |
+|---------|----------------|---------|
+| **nexus-agent** | `nexus-agent` | Express API, cron modules, MCP client |
+| **nexus-dashboard** | `nexus-dashboard` | Next.js 14 dashboard (judges' UI) |
+| **Postgres** | Plugin | Shared state + `executions_log` (agent only) |
 
 ---
 
-## 2. Required environment variables (nexus-agent)
+## 2. Environment variables — **nexus-agent** service
 
 ```env
 OPENROUTER_API_KEY=sk-or-v1-...
@@ -28,26 +28,60 @@ KEEPERHUB_MCP_URL=https://app.keeperhub.com/mcp
 KEEPERHUB_CHAIN_ID=84532
 AGENTIC_WALLET_ADDRESS=0x...
 JWT_SECRET=<strong random secret>
-ALLOWED_ORIGINS=http://localhost:3000,https://your-dashboard.app
+ALLOWED_ORIGINS=http://localhost:3000,https://spirited-heart-production-b5c5.up.railway.app
 NODE_ENV=production
-PORT=3001
 ```
+
+**Do not set on agent:** `NEXT_PUBLIC_*` (dashboard-only), `OLLAMA_*` (unused).
+
+**Critical — CORS:** SIWE sign-in calls the agent **from the browser**. If `ALLOWED_ORIGINS` omits the dashboard URL, requests with that `Origin` header return **500 Internal Server Error**. Always include both localhost and the live dashboard URL.
 
 **Critical:** `JWT_SECRET` on Railway must match local `.env` if you run `pnpm run phase2` against production with locally minted tokens.
 
----
-
-## 3. Deploy steps
-
-1. Connect GitHub repo to Railway
-2. Set root directory / start command: `pnpm --prefix nexus-agent start` (after `build`)
-3. Add Postgres plugin → copy `DATABASE_URL`
-4. Set all env vars above → **Redeploy**
-5. Health check: `GET /health` → `{ "status": "ok" }`
+Railway sets `PORT` automatically on each service.
 
 ---
 
-## 4. Production parity test
+## 3. Environment variables — **nexus-dashboard** service
+
+Set **before build** (`NEXT_PUBLIC_*` is inlined at build time):
+
+```env
+NEXT_PUBLIC_AGENT_URL=https://nexus-agent-production-7783.up.railway.app
+NEXT_PUBLIC_WALLET_ADDRESS=0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b
+NODE_ENV=production
+```
+
+**Do not put on dashboard:** `DATABASE_URL`, `JWT_SECRET`, `KEEPERHUB_API_KEY`, `OPENROUTER_API_KEY`, `AGENTIC_WALLET_ADDRESS`, etc. Those belong on the agent service only.
+
+**Build / start commands** (dashboard service):
+
+```bash
+npm install && npm run build
+npm run start
+```
+
+**Next.js version:** Railway blocks deploys on `next@14.2.5` (CVE-2025-55184, CVE-2025-67779). Use **`next@14.2.35`** or newer (see `nexus-dashboard/package.json`).
+
+---
+
+## 4. Deploy steps
+
+### Agent
+1. Connect GitHub repo → service root `nexus-agent`
+2. Add Postgres plugin → copy `DATABASE_URL`
+3. Set agent env vars (§2) → **Redeploy**
+4. Health check: `GET /health` → `{ "status": "ok" }`
+
+### Dashboard
+1. New service → root `nexus-dashboard`
+2. Set dashboard env vars (§3) **before first build**
+3. Build: `npm install && npm run build` · Start: `npm run start`
+4. After deploy, confirm dashboard URL in agent `ALLOWED_ORIGINS` → **Redeploy agent**
+
+---
+
+## 5. Production parity test
 
 ```powershell
 $env:AGENT_URL="https://nexus-agent-production-7783.up.railway.app"
@@ -60,21 +94,23 @@ Expect exit 0 and new rows in shared Postgres.
 
 ---
 
-## 5. Dashboard connection
+## 6. Dashboard smoke test (live URL)
 
-```env
-# nexus-dashboard/.env.local or Vercel env
-NEXT_PUBLIC_AGENT_URL=https://nexus-agent-production-7783.up.railway.app
-NEXT_PUBLIC_WALLET_ADDRESS=0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b
-```
+1. Open `https://spirited-heart-production-b5c5.up.railway.app`
+2. MetaMask → Base Sepolia → SIWE sign-in (no CORS error in DevTools)
+3. Portfolio → live HF; Feed → BaseScan repay links; Resilience → simulation cards
+4. Paste `kh_...` in KeeperHub Sync modal → green MCP badge
 
 ---
 
-## 6. Troubleshooting
+## 7. Troubleshooting
 
 | Symptom | Fix |
 |---------|-----|
-| 401 on API routes | JWT mismatch — align `JWT_SECRET` |
-| Chat 404/429 | Set `BRAIN_MODEL=google/gemini-2.5-flash` |
-| `simulated_stub` in Feed | Warm MCP: `pnpm run surfaces`; confirm `KEEPERHUB_API_KEY` |
+| Railway build blocked (Next.js CVE) | Upgrade to `next@14.2.35+` in `nexus-dashboard`, push, redeploy |
+| Dashboard 404 "Application not found" | Deploy failed or service not running — check Railway build logs |
+| SIWE / CORS 500 on agent | Add dashboard URL to agent `ALLOWED_ORIGINS`, redeploy **agent** |
+| 401 on API routes | JWT mismatch — align `JWT_SECRET` between sign-in and agent |
+| Chat 404/429 | Set `BRAIN_MODEL=google/gemini-2.5-flash` on **agent** |
+| `simulated_stub` in Feed | Warm MCP: `pnpm run surfaces`; confirm `KEEPERHUB_API_KEY` on **agent** |
 | Agent crash on boot | `JWT_SECRET` required when `NODE_ENV=production` |
