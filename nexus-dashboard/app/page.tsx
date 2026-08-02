@@ -239,7 +239,7 @@ export default function PortfolioPage() {
       <EthPriceChart />
 
       <div>
-        <IntegrationsProofCard tempo={data?.tempo} />
+        <IntegrationsProofCard />
         <HfReadWidget />
       </div>
 

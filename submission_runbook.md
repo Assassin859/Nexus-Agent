@@ -125,14 +125,14 @@ Your **KeeperHub agentic wallet** (`AGENTIC_WALLET_ADDRESS`) signs on Tempo — 
 
 **Tempo proof table (4 transfer-with-memo txs on Moderato):**
 
-| # | Tx | Explorer | KeeperHub execution |
+| # | Tx | Explorer | KeeperHub workflow |
 |---|-----|----------|---------------------|
-| 1 | `0xc60706…ce4ec74` | [Moderato](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) | [`80bk5zy4fwdfedy3w1rdi`](https://app.keeperhub.com/executions/80bk5zy4fwdfedy3w1rdi) |
-| 2 | `0x64e57b…d12b87` | [Moderato](https://explore.testnet.tempo.xyz/tx/0x64e57b1a27b8efdda803f4d6c7113e27cea5c1877652f0ffa47c394b6ad12b87) | [`8qq18tjln92vh3fqh5hk5`](https://app.keeperhub.com/executions/8qq18tjln92vh3fqh5hk5) |
-| 3 | `0xceba5b…ebded3` | [Moderato](https://explore.testnet.tempo.xyz/tx/0xceba5bead95ab9cf64e18fc801622a985d5405ddb38dfd5f855c1f4ac1ebded3) | [`9x1za1aur2t0vw8y28yth`](https://app.keeperhub.com/executions/9x1za1aur2t0vw8y28yth) |
-| 4 | `0x36a595…554fd` | [Moderato](https://explore.testnet.tempo.xyz/tx/0x36a595cace20493791aeab8400f7ff9633fcafbbb3c5da136604658cde1554fd) | [`tqx40bk50scajq5wlq3jx`](https://app.keeperhub.com/executions/tqx40bk50scajq5wlq3jx) |
+| 1 | `0xc60706…ce4ec74` | [Moderato](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) | WF [`b6acvzz32j2e1xlnrl7vy`](https://app.keeperhub.com/workflows/b6acvzz32j2e1xlnrl7vy) |
+| 2 | `0x64e57b…d12b87` | [Moderato](https://explore.testnet.tempo.xyz/tx/0x64e57b1a27b8efdda803f4d6c7113e27cea5c1877652f0ffa47c394b6ad12b87) | WF [`j1a3c0en54vbcdypmaih6`](https://app.keeperhub.com/workflows/j1a3c0en54vbcdypmaih6) |
+| 3 | `0xceba5b…ebded3` | [Moderato](https://explore.testnet.tempo.xyz/tx/0xceba5bead95ab9cf64e18fc801622a985d5405ddb38dfd5f855c1f4ac1ebded3) | WF [`wpsunufv3mvan4xnq9bjs`](https://app.keeperhub.com/workflows/wpsunufv3mvan4xnq9bjs) |
+| 4 | `0x36a595…554fd` | [Moderato](https://explore.testnet.tempo.xyz/tx/0x36a595cace20493791aeab8400f7ff9633fcafbbb3c5da136604658cde1554fd) | WF [`gkkbpagufwiqb49ik0ygb`](https://app.keeperhub.com/workflows/gkkbpagufwiqb49ik0ygb) |
 
-Signer: `0xc63a364F…b9Fac` (agentic MPC wallet) · memo: `nexus-agent-proof` · Feed shows all rows as `tempo_transfer`
+**Dashboard:** [/tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo) · **Do not link** `app.keeperhub.com/executions/…` for judges (404 outside org). Use Tempo Explorer for public proof.
 
 ---
 
@@ -140,9 +140,8 @@ Signer: `0xc63a364F…b9Fac` (agentic MPC wallet) · memo: `nexus-agent-proof` �
 
 | Time | Scene | Say |
 |------|-------|-----|
-| 0:00 | Portfolio → **Integrations** card (Tempo balance + proof links) | Base Sepolia + Tempo Moderato tier-2 proofs |
-| 0:20 | **Query HF via Marketplace** widget | KeeperHub listing or local Aave fallback (x402 badge) |
-| 0:40 | Feed → Tempo proof row + BaseScan repay links | Live chain-aware explorers |
+| 0:00 | Portfolio → **Marketplace** card + HF widget | Base Sepolia tier-2 |
+| 0:15 | **Tempo** page (`/tempo`) — 4 proof txs + Tempo Explorer links | Do not use KeeperHub `/executions/…` (404 for judges) |
 | 1:00 | Chat: *"What is my health factor?"* | NL → live chain read |
 | 1:00 | Feed → BaseScan repay links | Autonomous repay, HF recovered |
 | 1:30 | Decision Matrix | Harness ranked repay vs hold |
@@ -169,7 +168,8 @@ Signer: `0xc63a364F…b9Fac` (agentic MPC wallet) · memo: `nexus-agent-proof` �
 - [x] Dashboard deployed on Railway
 - [x] Feed: repay txHashes + BaseScan links
 - [x] Feed: **4× Tempo `tempo_transfer` rows** (chain-aware explorer)
-- [x] Portfolio: Integrations card + HF-read widget + Tempo balance
+- [x] Portfolio: Marketplace card + HF-read widget
+- [x] **Tempo page** (`/tempo`) — proof table + Tempo Explorer (no execution deep links)
 - [x] Tier 2 smoke script passes on production
 - [x] Resilience: `reverted_simulation` cards
 - [x] SIWE + KeeperHub sync on live dashboard

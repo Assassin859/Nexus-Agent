@@ -98,10 +98,11 @@ Expect exit 0 and new rows in shared Postgres.
 
 1. Open https://spirited-heart-production-b5c5.up.railway.app
 2. MetaMask → Base Sepolia → SIWE sign-in
-3. Portfolio → live HF; **Integrations** card (4 Tempo txs + balance); **Query HF via Marketplace**
-4. Feed → BaseScan repay links + **4× `tempo_transfer`** rows (Tempo Explorer)
-5. Resilience → simulation cards
-6. Paste `kh_...` → green MCP badge
+3. Portfolio → live HF; **Marketplace** card + HF-read widget
+4. **Tempo** (`/tempo`) → proof table + Tempo Explorer links (not KeeperHub execution URLs)
+5. Feed → BaseScan repay links + tempo rows
+6. Resilience → simulation cards
+7. Paste `kh_...` → green MCP badge
 
 **Automated Tier 2 smoke** (requires local `JWT_SECRET` matching Railway):
 

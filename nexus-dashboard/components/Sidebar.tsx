@@ -18,6 +18,7 @@ import {
   Wallet,
   Key,
   LogOut,
+  Zap,
 } from "lucide-react";
 import KeeperHubSyncModal from "./KeeperHubSyncModal";
 import { useWallet } from "@/context/WalletContext";
@@ -29,6 +30,7 @@ const NAV_ITEMS = [
   { href: "/workflows",   label: "Workflows",   icon: GitFork },
   { href: "/payees",      label: "Payees",      icon: Users },
   { href: "/feed",        label: "Live Feed",   icon: Activity },
+  { href: "/tempo",       label: "Tempo",       icon: Zap },
   { href: "/resilience",  label: "Resilience",  icon: ShieldCheck },
   { href: "/alerts",      label: "Alerts",      icon: Bell },
   { href: "/templates",   label: "Templates",   icon: Store },

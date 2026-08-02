@@ -2,12 +2,8 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Calendar, Repeat, Banknote, Bell, Scale, ArrowRight, Store, Zap, Terminal } from "lucide-react";
-import {
-  MARKETPLACE_URL,
-  TEMPO_PROOF_TX,
-  tempoTxUrl,
-} from "@/lib/tier2-proofs";
+import { Shield, Calendar, Repeat, Banknote, Bell, Scale, ArrowRight, Store, Zap } from "lucide-react";
+import { MARKETPLACE_URL } from "@/lib/tier2-proofs";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 import Pagination from "@/components/Pagination";
@@ -114,23 +110,11 @@ const TEMPLATES: Array<{
   {
     icon: Zap,
     color: "#f59e0b",
-    title: "Tempo transfer-with-memo",
-    desc: "On-chain proof: PathUSD transfer-with-memo on Tempo Moderato via KeeperHub MCP.",
+    title: "Tempo Moderato proofs",
+    desc: "All transfer-with-memo attestation txs, agentic balance, and live tempo feed — dedicated page.",
     tag: "Tempo Moderato",
-    prompt: "Show the Tempo Moderato transfer-with-memo proof transaction.",
-    deploy: { mode: "link", href: tempoTxUrl(TEMPO_PROOF_TX), external: true },
-  },
-  {
-    icon: Terminal,
-    color: "#64748b",
-    title: "Run Tempo proof",
-    desc: "Execute a fresh Tempo transfer-with-memo attestation from the agent CLI.",
-    tag: "CLI Proof",
-    prompt: "How do I run the Tempo proof script?",
-    deploy: {
-      mode: "blocked",
-      reason: "Run `pnpm run tempo:proof` from nexus-agent (requires funded agentic wallet).",
-    },
+    prompt: "Show me the Tempo Moderato proof transactions.",
+    deploy: { mode: "link", href: "/tempo", external: false },
   },
 ];
 
@@ -151,7 +135,11 @@ export default function TemplatesPage() {
   const handleFork = async (tmpl: (typeof TEMPLATES)[0]) => {
     if (tmpl.deploy.mode === "blocked") return;
     if (tmpl.deploy.mode === "link") {
-      window.open(tmpl.deploy.href, tmpl.deploy.external !== false ? "_blank" : "_self");
+      if (tmpl.deploy.external === false) {
+        router.push(tmpl.deploy.href);
+        return;
+      }
+      window.open(tmpl.deploy.href, "_blank");
       return;
     }
 

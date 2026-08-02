@@ -78,14 +78,14 @@ pnpm --prefix nexus-agent run phase2
 
 **Tempo Moderato proof:**
 
-| # | Tx | Explorer | KeeperHub execution |
-|---|-----|----------|---------------------|
-| 1 | `0xc60706…ce4ec74` | [transfer-with-memo](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) | [`80bk5zy4fwdfedy3w1rdi`](https://app.keeperhub.com/executions/80bk5zy4fwdfedy3w1rdi) |
-| 2 | `0x64e57b…d12b87` | [transfer-with-memo](https://explore.testnet.tempo.xyz/tx/0x64e57b1a27b8efdda803f4d6c7113e27cea5c1877652f0ffa47c394b6ad12b87) | [`8qq18tjln92vh3fqh5hk5`](https://app.keeperhub.com/executions/8qq18tjln92vh3fqh5hk5) |
-| 3 | `0xceba5b…ebded3` | [transfer-with-memo](https://explore.testnet.tempo.xyz/tx/0xceba5bead95ab9cf64e18fc801622a985d5405ddb38dfd5f855c1f4ac1ebded3) | [`9x1za1aur2t0vw8y28yth`](https://app.keeperhub.com/executions/9x1za1aur2t0vw8y28yth) |
-| 4 | `0x36a595…554fd` | [transfer-with-memo](https://explore.testnet.tempo.xyz/tx/0x36a595cace20493791aeab8400f7ff9633fcafbbb3c5da136604658cde1554fd) | [`tqx40bk50scajq5wlq3jx`](https://app.keeperhub.com/executions/tqx40bk50scajq5wlq3jx) |
+| # | Tx | Explorer | KeeperHub workflow |
+|---|-----|----------|-------------------|
+| 1 | `0xc60706…ce4ec74` | [transfer-with-memo](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) | [`b6acvzz32j2e1xlnrl7vy`](https://app.keeperhub.com/workflows/b6acvzz32j2e1xlnrl7vy) |
+| 2 | `0x64e57b…d12b87` | [transfer-with-memo](https://explore.testnet.tempo.xyz/tx/0x64e57b1a27b8efdda803f4d6c7113e27cea5c1877652f0ffa47c394b6ad12b87) | [`j1a3c0en54vbcdypmaih6`](https://app.keeperhub.com/workflows/j1a3c0en54vbcdypmaih6) |
+| 3 | `0xceba5b…ebded3` | [transfer-with-memo](https://explore.testnet.tempo.xyz/tx/0xceba5bead95ab9cf64e18fc801622a985d5405ddb38dfd5f855c1f4ac1ebded3) | [`wpsunufv3mvan4xnq9bjs`](https://app.keeperhub.com/workflows/wpsunufv3mvan4xnq9bjs) |
+| 4 | `0x36a595…554fd` | [transfer-with-memo](https://explore.testnet.tempo.xyz/tx/0x36a595cace20493791aeab8400f7ff9633fcafbbb3c5da136604658cde1554fd) | [`gkkbpagufwiqb49ik0ygb`](https://app.keeperhub.com/workflows/gkkbpagufwiqb49ik0ygb) |
 
-Latest workflow: [`gkkbpagufwiqb49ik0ygb`](https://app.keeperhub.com/workflows/gkkbpagufwiqb49ik0ygb) · memo: `nexus-agent-proof`
+**Dashboard:** [/tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo) · Public proof = Tempo Explorer (KeeperHub `/executions/…` links 404 for external viewers)
 
 **Marketplace:** [`nexus-guardian-hf-read`](https://app.keeperhub.com/hub?tab=marketplace) — read-only HF snapshot ($0.01/call). Publish: `pnpm --prefix nexus-agent run marketplace:publish-hf`
 

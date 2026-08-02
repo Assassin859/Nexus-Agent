@@ -18,7 +18,7 @@ Production Railway · harness 60/62 · Guardian mined txs · PayChain cron · ma
 | 2.2 | Tempo Moderato proof | Done — **4 txs** (latest [`0x36a595…`](https://explore.testnet.tempo.xyz/tx/0x36a595cace20493791aeab8400f7ff9633fcafbbb3c5da136604658cde1554fd)) |
 | 2.3 | MCP surfaces doc | Done — [docs/MCP-SURFACES.md](docs/MCP-SURFACES.md) |
 | 2.4 | Sign & Hold spike | Done — FRICTION-03 confirmed blocked in probe-mcp |
-| 2.5 | Dashboard Integrations UI | Done — Portfolio card, HF widget, chain-aware Feed |
+| 2.5 | Dashboard Integrations UI | Done — Marketplace on Portfolio; **dedicated `/tempo` page** |
 ---
 
 ## Verify

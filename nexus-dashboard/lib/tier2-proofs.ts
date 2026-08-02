@@ -47,6 +47,7 @@ export function keeperHubWorkflowUrl(id: string): string {
 }
 
 export function keeperHubExecutionUrl(id: string): string {
+  /** Not shareable — returns 404 for viewers outside the Nexus Agent KeeperHub org. Prefer tempoTxUrl + workflow links. */
   return `https://app.keeperhub.com/executions/${id}`;
 }
 
