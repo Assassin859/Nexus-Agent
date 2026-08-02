@@ -75,7 +75,7 @@ pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts
 | Guardian hold/repay | `bulk-proof` / cron | No — real HF reads |
 | Yield rotate | `bulk-proof` / cron | No — dual-wallet skip is honest |
 | DCA swap | `bulk-proof` / cron | No — real Uniswap path |
-| Payroll | max 3, real addresses only | No synthetic `0x000…` accounts |
+| Payroll | max 3, team demo addresses | No — see `demo-addresses.ts` |
 
 **Never** use synthetic payroll bulk or `db:seed`.
 

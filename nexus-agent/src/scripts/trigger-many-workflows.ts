@@ -11,9 +11,10 @@ import { handle as handlePaychain } from "../modules/paychain.js";
 import { db } from "../db/client.js";
 import { executionsLog } from "../db/schema.js";
 import { desc, eq } from "drizzle-orm";
+import { DEMO_MONITORED_WALLET, DEMO_PAYROLL_RECIPIENTS } from "../lib/demo-addresses.js";
 
 const WALLET = (
-  process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b"
+  process.env.NEXT_PUBLIC_WALLET_ADDRESS || DEMO_MONITORED_WALLET
 ).toLowerCase();
 
 const DCA_CONFIGS = [
@@ -24,23 +25,11 @@ const DCA_CONFIGS = [
   { amount: 15,  cronSchedule: "0 9 * * 3",   label: "15 USDC → ETH (Weekly Wednesday 9am)" },
 ];
 
-const PAYCHAIN_CONFIGS = [
-  {
-    label: "Engineering Payroll — Alice & Bob",
-    amount: 200,
-    payees: [
-      { name: "Alice Chen",   address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e", amount: 100 },
-      { name: "Bob Martinez", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", amount: 100 },
-    ],
-  },
-  {
-    label: "Design Payroll — Carol",
-    amount: 150,
-    payees: [
-      { name: "Carol Smith", address: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B", amount: 150 },
-    ],
-  },
-];
+const PAYCHAIN_CONFIGS = DEMO_PAYROLL_RECIPIENTS.map((p) => ({
+  label: `Payroll — ${p.label}`,
+  amount: p.amount,
+  payees: [{ name: p.label, address: p.address, amount: p.amount }],
+}));
 
 async function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));

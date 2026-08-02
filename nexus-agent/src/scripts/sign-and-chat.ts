@@ -5,9 +5,10 @@
  */
 import "../lib/env.js";
 import { ethers } from "ethers";
+import { DEMO_MONITORED_WALLET, DEMO_PAYROLL_RECIPIENTS } from "../lib/demo-addresses.js";
 
 const BASE = process.env.AGENT_URL || "https://nexus-agent-production-7783.up.railway.app";
-const WALLET = (process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b").toLowerCase();
+const WALLET = (process.env.NEXT_PUBLIC_WALLET_ADDRESS || DEMO_MONITORED_WALLET).toLowerCase();
 const PK = process.env.AGENTIC_WALLET_KEY || process.env.PRIVATE_KEY || "";
 
 if (!PK) {
@@ -18,9 +19,9 @@ if (!PK) {
 const CHAT_COMMANDS = [
   "schedule DCA of 20 USDC into ETH every Monday",
   "schedule DCA of 75 USDC into ETH every 1st of the month",
-  "set up weekly payroll of 50 USDC to Alice at 0x742d35Cc6634C0532925a3b844Bc454e4438f44e every Friday",
+  `set up weekly payroll of ${DEMO_PAYROLL_RECIPIENTS[0].amount} USDC to ${DEMO_PAYROLL_RECIPIENTS[0].address} every Friday`,
   "schedule DCA of 200 USDC into ETH every Wednesday at 10am",
-  "pay Bob at 0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045 100 USDC monthly",
+  `pay ${DEMO_PAYROLL_RECIPIENTS[1].address} ${DEMO_PAYROLL_RECIPIENTS[1].amount} USDC monthly`,
 ];
 
 async function fetchJson(url: string, opts?: RequestInit) {

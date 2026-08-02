@@ -12,24 +12,21 @@
 import "../lib/env.js";
 import { db } from "../db/client.js";
 import { executionsLog } from "../db/schema.js";
-import { sql, desc, eq } from "drizzle-orm";
+import { sql, eq } from "drizzle-orm";
+import { DEMO_MONITORED_WALLET, DEMO_PAYROLL_RECIPIENTS } from "../lib/demo-addresses.js";
 import { registerDcaWorkflow } from "../modules/dca-schedule.js";
 import { handle as handlePaychain } from "../modules/paychain.js";
 import { run as runGuardian } from "../modules/guardian.js";
 import { run as runYield } from "../modules/yield-rotator.js";
 import { run as runDca } from "../modules/dca.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
+import { DEMO_MONITORED_WALLET, DEMO_PAYROLL_RECIPIENTS } from "../lib/demo-addresses.js";
 
 const WALLET = (
-  process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b"
+  process.env.NEXT_PUBLIC_WALLET_ADDRESS || DEMO_MONITORED_WALLET
 ).toLowerCase();
 
-/** Real public testnet addresses (not synthetic padding). Max 3 payroll proofs. */
-const REAL_PAYROLL_RECIPIENTS = [
-  { label: "Alice Chen", address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e", amount: 50 },
-  { label: "Bob Martinez", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", amount: 75 },
-  { label: "Carol Smith", address: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B", amount: 100 },
-];
+const REAL_PAYROLL_RECIPIENTS = DEMO_PAYROLL_RECIPIENTS.map((p) => ({ ...p }));
 
 type Args = {
   guardian: number;
@@ -55,7 +52,7 @@ function parseArgs(): Args {
       yieldRuns: Math.floor(target * 0.30),
       dcaSchedule: Math.floor(target * 0.20),
       dcaTrigger: Math.floor(target * 0.15),
-      payroll: Math.min(3, Math.floor(target * 0.02)),
+      payroll: Math.min(DEMO_PAYROLL_RECIPIENTS.length, Math.floor(target * 0.02)),
       dryRun,
     };
   }
@@ -173,7 +170,7 @@ async function main() {
   }
 
   if (args.payroll > 0) {
-    console.log(`\n── Real payroll (${Math.min(args.payroll, 3)}) ──`);
+    console.log(`\n── Real payroll (${Math.min(args.payroll, REAL_PAYROLL_RECIPIENTS.length)}) ──`);
     for (let i = 0; i < Math.min(args.payroll, REAL_PAYROLL_RECIPIENTS.length); i++) {
       const p = REAL_PAYROLL_RECIPIENTS[i];
       process.stdout.write(`  ${p.label} … `);
