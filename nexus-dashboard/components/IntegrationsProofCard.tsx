@@ -5,8 +5,7 @@ import {
   HF_READ_SLUG,
   HF_READ_WORKFLOW_ID,
   MARKETPLACE_URL,
-  TEMPO_PROOF_EXECUTION_ID,
-  TEMPO_PROOF_TX,
+  TEMPO_PROOF_TXS,
   TEMPO_PROOF_WORKFLOW_ID,
   keeperHubExecutionUrl,
   keeperHubWorkflowUrl,
@@ -39,20 +38,12 @@ export default function IntegrationsProofCard({ tempo }: Props) {
       href: MARKETPLACE_URL,
     },
     {
-      icon: Zap,
-      label: "Tempo proof tx",
-      sub: `${TEMPO_PROOF_TX.slice(0, 10)}…`,
-      href: tempoTxUrl(TEMPO_PROOF_TX),
-      secondaryHref: keeperHubExecutionUrl(TEMPO_PROOF_EXECUTION_ID),
-      secondaryLabel: "KeeperHub execution",
-    },
-    {
       icon: Link2,
       label: "HF-read workflow",
       sub: HF_READ_WORKFLOW_ID,
       href: keeperHubWorkflowUrl(HF_READ_WORKFLOW_ID),
       secondaryHref: keeperHubWorkflowUrl(TEMPO_PROOF_WORKFLOW_ID),
-      secondaryLabel: "Tempo workflow",
+      secondaryLabel: "Latest Tempo workflow",
     },
   ];
 
@@ -108,6 +99,58 @@ export default function IntegrationsProofCard({ tempo }: Props) {
           </a>
         </div>
       )}
+
+      <div style={{ marginBottom: 18 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 10 }}>
+          <Zap size={16} color="#f59e0b" />
+          <span style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+            Tempo proof txs ({TEMPO_PROOF_TXS.length})
+          </span>
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+          {[...TEMPO_PROOF_TXS].reverse().map((proof, idx) => {
+            const n = TEMPO_PROOF_TXS.length - idx;
+            return (
+              <div
+                key={proof.txHash}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "8px 12px",
+                  borderRadius: 8,
+                  background: "rgba(255,255,255,0.03)",
+                  border: "1px solid var(--border)",
+                  gap: 10,
+                  flexWrap: "wrap",
+                }}
+              >
+                <div style={{ fontSize: 11, fontFamily: "monospace", color: "var(--text-muted)" }}>
+                  #{n} {proof.txHash.slice(0, 10)}…{proof.txHash.slice(-6)}
+                </div>
+                <div style={{ display: "flex", gap: 10 }}>
+                  <a
+                    href={keeperHubExecutionUrl(proof.executionId)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 11, color: "var(--text-muted)", textDecoration: "none", display: "flex", alignItems: "center", gap: 3 }}
+                  >
+                    Execution <ExternalLink size={10} />
+                  </a>
+                  <a
+                    href={tempoTxUrl(proof.txHash)}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{ fontSize: 11, color: "#f59e0b", textDecoration: "none", display: "flex", alignItems: "center", gap: 3, fontWeight: 600 }}
+                  >
+                    Tempo Explorer <ExternalLink size={10} />
+                  </a>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {links.map((row) => {

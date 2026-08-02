@@ -93,7 +93,9 @@ pnpm --prefix nexus-agent run phase2 && pnpm --prefix nexus-agent run logs
 pnpm --prefix nexus-agent run e2e
 pnpm --prefix nexus-agent run surfaces
 pnpm --prefix nexus-agent run marketplace:publish-hf   # Tier 2 — HF-read listing
-pnpm --prefix nexus-agent run tempo:proof              # Tier 2 — after Moderato funding
+pnpm --prefix nexus-agent run verify
+AGENT_URL=https://nexus-agent-production-7783.up.railway.app pnpm --prefix nexus-agent exec tsx src/scripts/smoke-tier2-dashboard.ts
+pnpm --prefix nexus-agent run tempo:proof              # Tier 2 — optional extra Moderato tx
 ```
 
 ---
@@ -104,7 +106,7 @@ pnpm --prefix nexus-agent run tempo:proof              # Tier 2 — after Modera
 |------------|--------|----------------|
 | Marketplace HF-read listing | Publish via script | `pnpm --prefix nexus-agent run marketplace:publish-hf` |
 | Slug | `nexus-guardian-hf-read` | [Marketplace](https://app.keeperhub.com/hub?tab=marketplace) |
-| Tempo Moderato proof | Done | [tx `0xc60706…`](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) |
+| Tempo Moderato proof | **4 txs** (Aug 2026) | See table below |
 | MCP surfaces doc | [docs/MCP-SURFACES.md](docs/MCP-SURFACES.md) | 17 checks + tool inventory |
 
 ### Tempo Moderato funding (one-time setup)
@@ -121,13 +123,16 @@ Your **KeeperHub agentic wallet** (`AGENTIC_WALLET_ADDRESS`) signs on Tempo — 
 
 **Token addresses (Moderato):** PathUSD `0x20c0000000000000000000000000000000000000` · AlphaUSD `0x20c0000000000000000000000000000000000001`
 
-**Tempo proof table:**
+**Tempo proof table (4 transfer-with-memo txs on Moderato):**
 
-| Tx | Link |
-|----|------|
-| `0xc60706…ce4ec74` | [transfer-with-memo on Moderato](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) |
+| # | Tx | Explorer | KeeperHub execution |
+|---|-----|----------|---------------------|
+| 1 | `0xc60706…ce4ec74` | [Moderato](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) | [`80bk5zy4fwdfedy3w1rdi`](https://app.keeperhub.com/executions/80bk5zy4fwdfedy3w1rdi) |
+| 2 | `0x64e57b…d12b87` | [Moderato](https://explore.testnet.tempo.xyz/tx/0x64e57b1a27b8efdda803f4d6c7113e27cea5c1877652f0ffa47c394b6ad12b87) | [`8qq18tjln92vh3fqh5hk5`](https://app.keeperhub.com/executions/8qq18tjln92vh3fqh5hk5) |
+| 3 | `0xceba5b…ebded3` | [Moderato](https://explore.testnet.tempo.xyz/tx/0xceba5bead95ab9cf64e18fc801622a985d5405ddb38dfd5f855c1f4ac1ebded3) | [`9x1za1aur2t0vw8y28yth`](https://app.keeperhub.com/executions/9x1za1aur2t0vw8y28yth) |
+| 4 | `0x36a595…554fd` | [Moderato](https://explore.testnet.tempo.xyz/tx/0x36a595cace20493791aeab8400f7ff9633fcafbbb3c5da136604658cde1554fd) | [`tqx40bk50scajq5wlq3jx`](https://app.keeperhub.com/executions/tqx40bk50scajq5wlq3jx) |
 
-KeeperHub: [execution `80bk5zy4fwdfedy3w1rdi`](https://app.keeperhub.com/executions/80bk5zy4fwdfedy3w1rdi) · memo: `nexus-agent-proof` · signer: `0xc63a364F…b9Fac`
+Signer: `0xc63a364F…b9Fac` (agentic MPC wallet) · memo: `nexus-agent-proof` · Feed shows all rows as `tempo_transfer`
 
 ---
 
@@ -163,6 +168,9 @@ KeeperHub: [execution `80bk5zy4fwdfedy3w1rdi`](https://app.keeperhub.com/executi
 - [x] Production agent health + phase2
 - [x] Dashboard deployed on Railway
 - [x] Feed: repay txHashes + BaseScan links
+- [x] Feed: **4× Tempo `tempo_transfer` rows** (chain-aware explorer)
+- [x] Portfolio: Integrations card + HF-read widget + Tempo balance
+- [x] Tier 2 smoke script passes on production
 - [x] Resilience: `reverted_simulation` cards
 - [x] SIWE + KeeperHub sync on live dashboard
 - [ ] Timed screen recording (< 3 min)

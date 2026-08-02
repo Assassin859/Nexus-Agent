@@ -239,7 +239,7 @@
 | BUG-04 | Bug | 🟠 Medium | Client retry workaround |
 | BUG-05 | Bug | 🟠 Medium | PR drafted |
 | BUG-06 | Bug | 🟠 Medium | New — fork verified |
-| BUG-07 | Bug | 🔴 High (Tempo) | Repro on prod: **passed** — `tempo:proof` mined [`0xc60706…`](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) |
+| BUG-07 | Bug | 🔴 High (Tempo) | Repro on prod: **passed** — 4× `tempo:proof` mined (latest [`0x36a595…`](https://explore.testnet.tempo.xyz/tx/0x36a595cace20493791aeab8400f7ff9633fcafbbb3c5da136604658cde1554fd)) |
 | BUG-08 | Bug | 🟠 Medium | New — fork verified |
 | BUG-09 | Bug | 🟠 Medium | New — ApprovalSentinel aligned |
 | FRICTION-01 | DX | 🔴 High | New (narrowed from old F-02) |

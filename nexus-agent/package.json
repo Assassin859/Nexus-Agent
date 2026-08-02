@@ -23,7 +23,8 @@
     "purge-fake-payrolls": "tsx src/scripts/purge-bulk-fake-payroll.ts",
     "marketplace:publish-hf": "tsx src/scripts/publish-marketplace-hf-read.ts",
     "tempo:proof": "tsx src/scripts/tempo-proof.ts",
-    "tempo:backfill-log": "tsx src/scripts/backfill-tempo-proof-log.ts"
+    "tempo:backfill-log": "tsx src/scripts/backfill-tempo-proof-log.ts",
+    "smoke:tier2": "tsx src/scripts/smoke-tier2-dashboard.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.0.12",

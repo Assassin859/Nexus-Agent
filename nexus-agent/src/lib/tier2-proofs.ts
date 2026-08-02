@@ -2,11 +2,42 @@ export const HF_READ_SLUG = "nexus-guardian-hf-read";
 export const HF_READ_WORKFLOW_ID =
   process.env.HF_READ_WORKFLOW_ID || "15a4yssu4dkcim8fq3o70";
 
+export type TempoProofRecord = {
+  txHash: string;
+  executionId: string;
+  workflowId: string;
+};
+
+/** Chronological Tempo Moderato transfer-with-memo proofs (oldest first). */
+export const TEMPO_PROOF_TXS: TempoProofRecord[] = [
+  {
+    txHash: "0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74",
+    executionId: "80bk5zy4fwdfedy3w1rdi",
+    workflowId: "b6acvzz32j2e1xlnrl7vy",
+  },
+  {
+    txHash: "0x64e57b1a27b8efdda803f4d6c7113e27cea5c1877652f0ffa47c394b6ad12b87",
+    executionId: "8qq18tjln92vh3fqh5hk5",
+    workflowId: "j1a3c0en54vbcdypmaih6",
+  },
+  {
+    txHash: "0xceba5bead95ab9cf64e18fc801622a985d5405ddb38dfd5f855c1f4ac1ebded3",
+    executionId: "9x1za1aur2t0vw8y28yth",
+    workflowId: "wpsunufv3mvan4xnq9bjs",
+  },
+  {
+    txHash: "0x36a595cace20493791aeab8400f7ff9633fcafbbb3c5da136604658cde1554fd",
+    executionId: "tqx40bk50scajq5wlq3jx",
+    workflowId: "gkkbpagufwiqb49ik0ygb",
+  },
+];
+
+const latestProof = TEMPO_PROOF_TXS[TEMPO_PROOF_TXS.length - 1];
+
 export const TEMPO_PROOF_TX =
-  process.env.TEMPO_PROOF_TX_HASH ||
-  "0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74";
-export const TEMPO_PROOF_WORKFLOW_ID = "b6acvzz32j2e1xlnrl7vy";
-export const TEMPO_PROOF_EXECUTION_ID = "80bk5zy4fwdfedy3w1rdi";
+  process.env.TEMPO_PROOF_TX_HASH || latestProof.txHash;
+export const TEMPO_PROOF_WORKFLOW_ID = latestProof.workflowId;
+export const TEMPO_PROOF_EXECUTION_ID = latestProof.executionId;
 export const TEMPO_PROOF_MEMO = "nexus-agent-proof";
 
 export const TEMPO_CHAIN_ID = 42431;

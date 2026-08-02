@@ -98,8 +98,19 @@ Expect exit 0 and new rows in shared Postgres.
 
 1. Open https://spirited-heart-production-b5c5.up.railway.app
 2. MetaMask → Base Sepolia → SIWE sign-in
-3. Portfolio → live HF; Feed → BaseScan links; Resilience → simulation cards
-4. Paste `kh_...` → green MCP badge
+3. Portfolio → live HF; **Integrations** card (4 Tempo txs + balance); **Query HF via Marketplace**
+4. Feed → BaseScan repay links + **4× `tempo_transfer`** rows (Tempo Explorer)
+5. Resilience → simulation cards
+6. Paste `kh_...` → green MCP badge
+
+**Automated Tier 2 smoke** (requires local `JWT_SECRET` matching Railway):
+
+```bash
+AGENT_URL=https://nexus-agent-production-7783.up.railway.app \
+  pnpm --prefix nexus-agent exec tsx src/scripts/smoke-tier2-dashboard.ts
+```
+
+Expect: portfolio `tempo` block, HF-read proxy 200, feed `tempo_transfer` count ≥ 4.
 
 Auth/settings use **Next.js API proxies** — browser does not call agent directly (no CORS config required for SIWE).
 

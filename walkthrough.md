@@ -7,9 +7,10 @@
 ## Verify (2026-08-02)
 
 ```bash
-pnpm --prefix nexus-agent run verify              # 52 passed, 2 skipped
+pnpm --prefix nexus-agent run verify              # 60 passed, 2 skipped
+pnpm --prefix nexus-agent exec tsx src/scripts/smoke-tier2-dashboard.ts  # Tier 2 prod smoke
 pnpm --prefix nexus-agent run marketplace:publish-hf
-pnpm --prefix nexus-agent run tempo:proof
+pnpm --prefix nexus-agent run tempo:proof         # optional — adds another Moderato tx
 pnpm --prefix nexus-agent run verify:integration  # 42 passed, 2 skipped
 pnpm --prefix nexus-agent run phase2              # Guardian → Yield → DCA → PayChain
 pnpm --prefix nexus-dashboard run build

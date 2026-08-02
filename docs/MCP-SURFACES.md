@@ -67,7 +67,7 @@ Probe MCP directly: `pnpm --prefix nexus-agent exec tsx src/scripts/probe-mcp.ts
 |----------|-----------|---------|
 | PayChain payroll | `iu0toy0rena606e07ikxu` | Cron payroll demo |
 | HF-read marketplace | `nexus-guardian-hf-read` (id: `15a4yssu4dkcim8fq3o70`) | Callable read-only HF snapshot ($0.01/call) |
-| Tempo proof | *(created per run)* | Latest: [`b6acvzz32j2e1xlnrl7vy`](https://app.keeperhub.com/workflows/b6acvzz32j2e1xlnrl7vy) · [tx](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) |
+| Tempo proof | **4 mined txs** (Aug 2026) | Latest WF [`gkkbpagufwiqb49ik0ygb`](https://app.keeperhub.com/workflows/gkkbpagufwiqb49ik0ygb) · [tx #4](https://explore.testnet.tempo.xyz/tx/0x36a595cace20493791aeab8400f7ff9633fcafbbb3c5da136604658cde1554fd) · [full table](../submission_runbook.md) |
 
 Publish HF listing: `pnpm --prefix nexus-agent run marketplace:publish-hf`
 
@@ -88,7 +88,9 @@ External agents discover via `search_workflows` and invoke via `call_workflow` w
 ## Tempo proof (Tier 2)
 
 **Chain:** Moderato testnet (42431) · **Action:** `tempo/transfer-with-memo`  
-**Script:** `pnpm --prefix nexus-agent run tempo:proof`
+**Script:** `pnpm --prefix nexus-agent run tempo:proof` (each run creates a new workflow + tx; logged to `executions_log`)
+
+**Proof txs (4):** See [submission_runbook.md](../submission_runbook.md) § Tempo proof table.
 
 See [submission_runbook.md](../submission_runbook.md) § Tempo Moderato funding for wallet setup.
 
