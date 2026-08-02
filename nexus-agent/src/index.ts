@@ -459,7 +459,7 @@ app.get("/api/feed/:walletAddress", requireAuth, async (req: express.Request, re
     const logs = await db.query.executionsLog.findMany({
       where: eq(executionsLog.userWallet, walletAddress),
       orderBy: [desc(executionsLog.timestamp)],
-      limit: 50,
+      limit: 200,
     });
     res.json(logs);
   } catch (err) {

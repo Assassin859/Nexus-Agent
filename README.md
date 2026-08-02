@@ -61,12 +61,10 @@ Browser: SIWE sign-in → KeeperHub Sync (`kh_...`) → Chat: *"What is my healt
 
 ```bash
 pnpm --prefix nexus-agent run verify              # 41 passed, 2 skipped
-pnpm --prefix nexus-agent run verify:integration  # 42 passed, 2 skipped
-pnpm --prefix nexus-agent run phase2              # 4/4 modules
-pnpm --prefix nexus-agent run e2e
+pnpm --prefix nexus-agent run bulk-proof -- --target 100  # execution + workflow proofs
+pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts  # 350+ log rows (see runbook)
+pnpm --prefix nexus-agent run phase2
 ```
-
-Bugfix sprint complete (22 audit items). Tier C skipped: cycle TTL rollover, PayChain compensating cancel.
 
 ---
 

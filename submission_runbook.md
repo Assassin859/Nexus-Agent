@@ -62,6 +62,27 @@ At safe HF, Guardian **holds** — use Feed history for repay proof.
 
 ---
 
+## Bulk proof generation (443+ execution logs)
+
+Already **350+** real `executions_log` rows (Guardian hold/rotate/block, PayChain, DCA). To grow further:
+
+```bash
+pnpm --prefix nexus-agent run bulk-proof -- --target 100   # ~100 new rows + KeeperHub payroll workflows
+pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts   # total count + tx hashes
+```
+
+| Proof type | How generated | On-chain? |
+|------------|---------------|-----------|
+| Guardian hold/rotate | `bulk-proof` / cron / trigger | No (audit rows) |
+| PayChain payroll | Direct KeeperHub cron registration | KeeperHub workflow (cron fires later) |
+| DCA schedule | `registerDcaWorkflow` | KeeperHub + local executor log |
+| Mined repay | HF critical + cycle budget | **Yes** — 2 BaseScan txs (flagship) |
+| Templates | `/templates` Fork & Deploy = same API paths | Same as above |
+
+**Do not use** `db:seed` — fabricates tx hashes.
+
+---
+
 ## Verify commands
 
 ```bash
@@ -73,7 +94,7 @@ pnpm --prefix nexus-agent run verify:integration
 
 pnpm --prefix nexus-agent run phase2 && pnpm --prefix nexus-agent run logs
 pnpm --prefix nexus-agent run e2e
-pnpm --prefix nexus-agent run surfaces   # 17 MCP surfaces
+pnpm --prefix nexus-agent run surfaces
 ```
 
 ---
