@@ -65,7 +65,14 @@ for (const p of ps) {
   console.log(`${p.name} | ${p.type} | members=${p.memberCount} | ${p.userWallet.slice(0, 10)}…`);
 }
 
-const CHAIN_ACTIONS = new Set(["repay", "supply_collateral", "swap", "rotate", "payroll"]);
+const CHAIN_ACTIONS = new Set([
+  "repay",
+  "supply_collateral",
+  "swap",
+  "rotate",
+  "payroll",
+  "tempo_transfer",
+]);
 const VALID_TX = /^0x[a-fA-F0-9]{64}$/;
 
 function isValidTxHash(h: string | null | undefined): boolean {

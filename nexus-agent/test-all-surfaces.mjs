@@ -19,7 +19,7 @@ async function runTestSuite() {
   console.log("=================================================\n");
 
   const wallet = "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b";
-  const agentUrl = "http://localhost:3001";
+  const agentUrl = process.env.AGENT_URL || "http://localhost:3001";
   const token = generateAuthToken(wallet);
   const authHeaders = {
     "Content-Type": "application/json",

@@ -8,16 +8,15 @@
 
 ```bash
 pnpm --prefix nexus-agent run verify              # 60 passed, 2 skipped
-pnpm --prefix nexus-agent exec tsx src/scripts/smoke-tier2-dashboard.ts  # Tier 2 prod smoke
-pnpm --prefix nexus-agent run marketplace:publish-hf
-pnpm --prefix nexus-agent run tempo:proof         # optional — adds another Moderato tx
-pnpm --prefix nexus-agent run verify:integration  # 42 passed, 2 skipped
+pnpm --prefix nexus-agent run smoke:tier2         # production Tier 2 (AGENT_URL set)
+pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts  # 505+ rows, 0 actionable mismatches
 pnpm --prefix nexus-agent run phase2              # Guardian → Yield → DCA → PayChain
 pnpm --prefix nexus-dashboard run build
 ```
 
 ## Architecture highlights
 
+0. **Competitive map:** [docs/COMPETITIVE_POSITION.md](docs/COMPETITIVE_POSITION.md) — moat vs. Deplex / ApprovalSentinel
 1. **Reasoning Harness** — `selectBestCandidate()` ranks/overrides LLM candidates
 2. **Pre-flight simulation** — `reverted_simulation` before broadcast (zero gas)
 3. **Atomic pending locks** — partial unique index on `executions_log`
@@ -27,4 +26,4 @@ pnpm --prefix nexus-dashboard run build
 
 ## Demo order
 
-Portfolio → Feed (BaseScan) → Resilience (simulation arc) → Chat → KeeperHub workflow link
+Portfolio (Marketplace + HF widget) → **/tempo** (Tempo Explorer proofs) → Feed (BaseScan + tempo rows) → Resilience (simulation arc) → Chat

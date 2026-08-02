@@ -229,6 +229,19 @@
 
 ---
 
+### FRICTION-09 · KeeperHub `/executions/{id}` deep links 404 for external viewers
+
+**Severity:** Medium (judge / demo UX)  
+**Repro:** Open `https://app.keeperhub.com/executions/80bk5zy4fwdfedy3w1rdi` while signed into a different org or logged out → **404 This page could not be found.** On-chain proof is valid; link is not shareable like BaseScan/Tempo Explorer.
+
+**Impact:** Hackathon submissions cannot cite execution URLs as public proof. Teams must fall back to explorer tx links or in-app Activity (org-scoped).
+
+**Workaround:** NexusAgent dashboard [`/tempo`](https://spirited-heart-production-b5c5.up.railway.app/tempo) links **Tempo Explorer** + workflow ids only. Documented in [COMPETITIVE_POSITION.md](docs/COMPETITIVE_POSITION.md).
+
+**Fix:** Public read-only execution share URLs (token or slug) **or** redirect `/executions/{id}` to workflow run tab when viewer lacks org access.
+
+---
+
 ## 📊 Summary table
 
 | ID | Type | Severity | Status |
@@ -250,8 +263,9 @@
 | FRICTION-06 | DX | 🟡 Medium | Open |
 | FRICTION-07 | DX | 🟢 Low | Open |
 | FRICTION-08 | DX | 🟡 Medium | New — KEEP-489 partial |
+| FRICTION-09 | UX | 🟡 Medium | New — execution deep link 404 |
 
-**Counts:** 9 bugs · 8 frictions · **17 total** (was 12)
+**Counts:** 9 bugs · 9 frictions · **18 total** (was 12)
 
 ---
 

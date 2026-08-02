@@ -36,4 +36,6 @@ pnpm --prefix nexus-dashboard run build
 
 ## Out of scope (Tier 3+)
 
-Video · DoraHacks form · upstream PRs · bounty filing · bulk-proof demo runs
+DoraHacks form (owner) · paid x402 marketplace call (owner) · upstream PR filing · bulk-proof demo runs
+
+**Done for competitive prep:** [docs/COMPETITIVE_POSITION.md](docs/COMPETITIVE_POSITION.md) · [docs/GITHUB_REPO_SETUP.md](docs/GITHUB_REPO_SETUP.md) · production smoke + db-audit

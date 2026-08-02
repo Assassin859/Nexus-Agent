@@ -182,6 +182,7 @@ Your **KeeperHub agentic wallet** (`AGENTIC_WALLET_ADDRESS`) signs on Tempo — 
 
 1. Dual-wallet → Yield skips on-chain (roadmap: unified wallet)
 2. KeeperHub OAuth ≠ API key — paste `kh_...` ([BUG-02](BUGS.md))
-3. MCP cold start may return stubs — warm with `pnpm run surfaces`
-4. Guardian at safe HF logs `hold`, not a new repay
-5. Paid OpenRouter model recommended
+3. KeeperHub `/executions/…` deep links 404 outside org — use **Tempo Explorer** + [/tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo) ([COMPETITIVE_POSITION.md](docs/COMPETITIVE_POSITION.md))
+4. MCP cold start may return stubs — warm with `AGENT_URL=… pnpm run surfaces`
+5. Guardian at safe HF logs `hold`, not a new repay
+6. Paid OpenRouter model recommended

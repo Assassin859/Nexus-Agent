@@ -1,10 +1,10 @@
 # NexusAgent — Technical Architecture & Implementation Specification
 
-> **Document status:** **Authoritative** for DoraHacks / Agents Onchain 2026 submission · **Last verified:** 2026-08-02 (bugfix sprint complete — live harness 41/42 + Postgres `executions_log`)  
+> **Document status:** **Authoritative** for Agents Onchain 2026 submission · **Last verified:** 2026-08-02 (harness **60/62**, production Tier 2 smoke **7/7**, db-audit **0 actionable mismatches**)  
 > **Brain provider:** OpenRouter `google/gemini-2.5-flash` via [`getBrainModel()`](../nexus-agent/src/brain/provider.ts). Do **not** use legacy GitHub Models references in [goal.md](../goal.md) (archived) or [implementation_plan.md](../implementation_plan.md) (historical).
 
-> **Live demo:** [Dashboard](https://spirited-heart-production-b5c5.up.railway.app) · [Agent API](https://nexus-agent-production-7783.up.railway.app)  
-> **Runbook (proofs + demo):** [submission_runbook.md](../submission_runbook.md)
+> **Live demo:** [Dashboard](https://spirited-heart-production-b5c5.up.railway.app) · [Tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo) · [Agent API](https://nexus-agent-production-7783.up.railway.app)  
+> **Runbook (proofs + demo):** [submission_runbook.md](../submission_runbook.md) · **Competitive map:** [COMPETITIVE_POSITION.md](COMPETITIVE_POSITION.md)
 
 ---
 
@@ -18,15 +18,19 @@
 
 The end user never manually builds calldata, calculates gas limits, or constructs complex multi-step workflows. They simply interact in natural language via a conversational AI interface or sign in with their Web3 wallet.
 
-### 1.1 Submission narrative (DoraHacks 2026)
+### 1.1 Submission narrative (Agents Onchain 2026)
 
-**Flagship — Guardian:** Autonomous Aave V3 liquidation protection with a multi-candidate Reasoning Harness, allowance-aware pre-flight simulation, and **two mined repay transactions** on Base Sepolia (HF ~1.05 → ~1.32).
+**Flagship — Guardian:** Autonomous Aave V3 liquidation protection with a multi-candidate Reasoning Harness, allowance-aware pre-flight simulation, and **mined repay transactions** on Base Sepolia (HF recovery arc — see runbook).
 
 **Scheduling proof — PayChain:** Natural-language payroll registration with KeeperHub cron workflows (`iu0toy0rena606e07ikxu`).
+
+**Tier 2 — Marketplace + Tempo:** Published read-only listing `nexus-guardian-hf-read` ($0.01/call x402); **4× Tempo Moderato** `transfer-with-memo` proofs on chain 42431 ([/tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo)). Public attestation via Tempo Explorer — not KeeperHub execution deep links (404 outside org).
 
 **Documented scaffolding — DCA / Yield:** DCA workflow registered on KeeperHub; live Uniswap swap blocked on testnet liquidity. Yield rotator skips on-chain when monitored wallet ≠ agentic MPC signer (dual-wallet constraint — stated roadmap for unified-wallet deployments).
 
 **Brain:** OpenRouter `google/gemini-2.5-flash` via `getBrainModel()` in [`nexus-agent/src/brain/provider.ts`](../nexus-agent/src/brain/provider.ts) — not GitHub Models.
+
+**Competitive positioning:** [COMPETITIVE_POSITION.md](COMPETITIVE_POSITION.md) — contrast vs. typical submissions and public README cross-check (Deplex, ApprovalSentinel).
 
 ### 1.2 Verified execution proofs
 
