@@ -19,7 +19,8 @@
     "trigger-workflows": "tsx src/scripts/trigger-many-workflows.ts",
     "chat-workflows": "tsx src/scripts/sign-and-chat.ts",
     "e2e": "tsx src/scripts/full-system-e2e.ts",
-    "bulk-proof": "tsx src/scripts/bulk-proof-run.ts"
+    "bulk-proof": "tsx src/scripts/bulk-proof-run.ts",
+    "purge-fake-payrolls": "tsx src/scripts/purge-bulk-fake-payroll.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.0.12",

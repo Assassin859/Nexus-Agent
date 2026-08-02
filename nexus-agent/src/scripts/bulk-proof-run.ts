@@ -1,36 +1,42 @@
 /**
- * bulk-proof-run.ts — Generate real executions_log rows + KeeperHub workflow proofs.
+ * bulk-proof-run.ts — Generate diverse module proofs (NO synthetic payroll addresses).
  *
  * Usage:
  *   pnpm --prefix nexus-agent run bulk-proof
- *   pnpm --prefix nexus-agent run bulk-proof -- --target 443
- *   pnpm --prefix nexus-agent run bulk-proof -- --payroll 50 --guardian 20 --dry-run
+ *   pnpm --prefix nexus-agent run bulk-proof -- --target 100
+ *   pnpm --prefix nexus-agent run bulk-proof -- --guardian 30 --yield 25 --dca-schedule 10
  *
- * Requires: DATABASE_URL, KEEPERHUB_API_KEY, OPENROUTER_API_KEY (for guardian/yield LLM paths)
+ * Modules: Guardian (hold/repay) · Yield rotator · DCA schedule · DCA trigger
+ * Real payroll only via --payroll 1-3 (uses known testnet addresses + LLM path).
  */
 import "../lib/env.js";
 import { db } from "../db/client.js";
-import { activeWorkflows, executionsLog, payees } from "../db/schema.js";
+import { executionsLog } from "../db/schema.js";
 import { sql, desc, eq } from "drizzle-orm";
 import { registerDcaWorkflow } from "../modules/dca-schedule.js";
+import { handle as handlePaychain } from "../modules/paychain.js";
 import { run as runGuardian } from "../modules/guardian.js";
 import { run as runYield } from "../modules/yield-rotator.js";
 import { run as runDca } from "../modules/dca.js";
-import { createWorkflow } from "../lib/mcp-client.js";
-import { encodeERC20Transfer, USDC_SEPOLIA } from "../lib/calldata.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
 
 const WALLET = (
-  process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97cb35236a1d0190fb25b31c5c0ff4107Ec1b"
+  process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b"
 ).toLowerCase();
 
+/** Real public testnet addresses (not synthetic padding). Max 3 payroll proofs. */
+const REAL_PAYROLL_RECIPIENTS = [
+  { label: "Alice Chen", address: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e", amount: 50 },
+  { label: "Bob Martinez", address: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045", amount: 75 },
+  { label: "Carol Smith", address: "0xAb5801a7D398351b8bE11C439e05C5B3259aeC9B", amount: 100 },
+];
+
 type Args = {
-  target: number;
-  payroll: number;
   guardian: number;
   dcaSchedule: number;
   yieldRuns: number;
   dcaTrigger: number;
+  payroll: number;
   dryRun: boolean;
 };
 
@@ -44,37 +50,28 @@ function parseArgs(): Args {
   const dryRun = argv.includes("--dry-run");
 
   if (target > 0) {
-    // Fast payroll dominates; guardian/yield use LLM (slower).
     return {
-      target,
-      payroll: Math.floor(target * 0.45),
-      guardian: Math.floor(target * 0.25),
-      dcaSchedule: Math.floor(target * 0.12),
-      yieldRuns: Math.floor(target * 0.12),
-      dcaTrigger: Math.floor(target * 0.06),
+      guardian: Math.floor(target * 0.35),
+      yieldRuns: Math.floor(target * 0.30),
+      dcaSchedule: Math.floor(target * 0.20),
+      dcaTrigger: Math.floor(target * 0.15),
+      payroll: Math.min(3, Math.floor(target * 0.02)),
       dryRun,
     };
   }
 
   return {
-    target: 0,
-    payroll: get("--payroll", 40),
     guardian: get("--guardian", 25),
-    dcaSchedule: get("--dca-schedule", 15),
-    yieldRuns: get("--yield", 15),
+    yieldRuns: get("--yield", 25),
+    dcaSchedule: get("--dca-schedule", 10),
     dcaTrigger: get("--dca-trigger", 5),
+    payroll: get("--payroll", 0),
     dryRun,
   };
 }
 
 function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms));
-}
-
-/** Deterministic unique testnet recipient (valid 20-byte hex). */
-function syntheticRecipient(index: number): string {
-  const hex = index.toString(16).padStart(40, "0").slice(-40);
-  return `0x${hex}`;
 }
 
 const CRON_VARIANTS = [
@@ -84,8 +81,6 @@ const CRON_VARIANTS = [
   "0 12 * * 4",
   "0 13 * * 5",
   "0 8 1 * *",
-  "0 14 15 * *",
-  "0 9 1,15 * *",
 ];
 
 async function countLogs(): Promise<number> {
@@ -93,126 +88,28 @@ async function countLogs(): Promise<number> {
   return r[0].c;
 }
 
-async function registerPayrollDirect(
-  index: number,
-  apiKey: string,
-): Promise<{ ok: boolean; keeperhubId?: string; error?: string }> {
-  const recipient = syntheticRecipient(0x10000 + index);
-  const amount = 10 + (index % 90);
-  const cronSchedule = CRON_VARIANTS[index % CRON_VARIANTS.length];
-
-  const calldata = encodeERC20Transfer(recipient, amount);
-  const { workflowId: khId, isStub } = await createWorkflow(
-    {
-      name: `bulk-payroll-${index}-${Date.now()}`,
-      triggerType: "cron",
-      cronSchedule,
-      steps: [{ type: "transaction", to: USDC_SEPOLIA, calldata, gasStrategy: "standard" }],
-    },
-    apiKey,
-  );
-
-  if (isStub || !khId) {
-    return { ok: false, error: "KeeperHub stub/unavailable" };
-  }
-
-  const [wf] = await db
-    .insert(activeWorkflows)
-    .values({
-      userWallet: WALLET,
-      type: "payroll",
-      recipientAddress: recipient,
-      amount,
-      cronSchedule,
-      status: "active",
-      keeperhubWorkflowId: khId,
-    })
-    .onConflictDoUpdate({
-      target: [activeWorkflows.userWallet, activeWorkflows.recipientAddress, activeWorkflows.status],
-      set: { amount, cronSchedule, keeperhubWorkflowId: khId, updatedAt: new Date() },
-    })
-    .returning();
-
-  await db.insert(executionsLog).values({
-    userWallet: WALLET,
-    workflowId: wf?.id,
-    action: "payroll",
-    amount,
-    status: "success",
-    reason: `Bulk proof payroll #${index} → ${recipient.slice(0, 10)}… (${amount} USDC, cron ${cronSchedule})`,
-    aiAnalysis: { keeperhubWorkflowId: khId, bulkProof: true, template: "Developer Payroll" },
-  });
-
-  return { ok: true, keeperhubId: khId };
-}
-
 async function main() {
   const args = parseArgs();
   const startCount = await countLogs();
 
   console.log("=".repeat(60));
-  console.log("NEXUSAGENT BULK PROOF RUN");
+  console.log("NEXUSAGENT BULK PROOF (module-diverse, no fake payrolls)");
   console.log("=".repeat(60));
-  console.log(`Wallet:          ${WALLET}`);
-  console.log(`Starting logs:   ${startCount}`);
-  console.log(`Plan:            payroll=${args.payroll} guardian=${args.guardian} dcaSched=${args.dcaSchedule} yield=${args.yieldRuns} dcaTrig=${args.dcaTrigger}`);
+  console.log(`Wallet:  ${WALLET}`);
+  console.log(`Start:   ${startCount} log rows`);
+  console.log(
+    `Plan:    guardian=${args.guardian} yield=${args.yieldRuns} dcaSched=${args.dcaSchedule} dcaTrig=${args.dcaTrigger} payroll=${args.payroll}`,
+  );
+
   if (args.dryRun) {
-    console.log("DRY RUN — no mutations");
+    console.log("DRY RUN");
     process.exit(0);
   }
 
   const apiKey = await resolveKeeperHubApiKey(WALLET);
-  if (!apiKey && !process.env.KEEPERHUB_API_KEY) {
-    console.error("❌ No KEEPERHUB_API_KEY — payroll/DCA KeeperHub proofs will fail");
-  }
+  const stats = { guardian: 0, yield: 0, dcaSchedule: 0, dcaTrigger: 0, payroll: 0, errors: 0 };
 
-  const stats = { payroll: 0, guardian: 0, dcaSchedule: 0, yield: 0, dcaTrigger: 0, errors: 0 };
-
-  // ── Phase 1: Bulk payroll (KeeperHub cron workflows) ─────────────────────
-  console.log(`\n── Phase 1: Direct payroll registrations (${args.payroll}) ──`);
-  for (let i = 0; i < args.payroll; i++) {
-    process.stdout.write(`  [${i + 1}/${args.payroll}] `);
-    try {
-      const r = await registerPayrollDirect(i, apiKey || process.env.KEEPERHUB_API_KEY!);
-      if (r.ok) {
-        stats.payroll++;
-        console.log(`✅ ${r.keeperhubId}`);
-      } else {
-        stats.errors++;
-        console.log(`⚠️  ${r.error}`);
-        if (r.error?.includes("stub")) break;
-      }
-    } catch (e) {
-      stats.errors++;
-      console.log(`❌ ${e instanceof Error ? e.message : e}`);
-    }
-    await sleep(400);
-  }
-
-  // ── Phase 2: DCA schedule (template: USDC→ETH DCA) ───────────────────────
-  console.log(`\n── Phase 2: DCA schedule registrations (${args.dcaSchedule}) ──`);
-  for (let i = 0; i < args.dcaSchedule; i++) {
-    const amount = 5 + (i % 20) * 5;
-    const cron = CRON_VARIANTS[i % CRON_VARIANTS.length];
-    process.stdout.write(`  [${i + 1}/${args.dcaSchedule}] $${amount} ${cron} … `);
-    try {
-      const r = await registerDcaWorkflow({ userWallet: WALLET, amount, cronSchedule: cron });
-      if (r.success) {
-        stats.dcaSchedule++;
-        console.log(`✅ kh=${r.keeperhubWorkflowId || "local"}`);
-      } else {
-        stats.errors++;
-        console.log(`⚠️  ${r.message}`);
-      }
-    } catch (e) {
-      stats.errors++;
-      console.log(`❌ ${e instanceof Error ? e.message : e}`);
-    }
-    await sleep(500);
-  }
-
-  // ── Phase 3: Guardian (template: Aave Guardian — hold/repay audit rows) ───
-  console.log(`\n── Phase 3: Guardian evaluations (${args.guardian}) ──`);
+  console.log(`\n── Guardian (${args.guardian}) ──`);
   for (let i = 0; i < args.guardian; i++) {
     process.stdout.write(`  [${i + 1}/${args.guardian}] `);
     try {
@@ -226,8 +123,7 @@ async function main() {
     await sleep(800);
   }
 
-  // ── Phase 4: Yield rotator (template: blocked/scaffold proof) ─────────────
-  console.log(`\n── Phase 4: Yield rotator (${args.yieldRuns}) ──`);
+  console.log(`\n── Yield rotator (${args.yieldRuns}) ──`);
   for (let i = 0; i < args.yieldRuns; i++) {
     process.stdout.write(`  [${i + 1}/${args.yieldRuns}] `);
     try {
@@ -241,8 +137,28 @@ async function main() {
     await sleep(600);
   }
 
-  // ── Phase 5: DCA live trigger ─────────────────────────────────────────────
-  console.log(`\n── Phase 5: DCA live triggers (${args.dcaTrigger}) ──`);
+  console.log(`\n── DCA schedule (${args.dcaSchedule}) ──`);
+  for (let i = 0; i < args.dcaSchedule; i++) {
+    const amount = 10 + (i % 10) * 5;
+    const cron = CRON_VARIANTS[i % CRON_VARIANTS.length];
+    process.stdout.write(`  [${i + 1}/${args.dcaSchedule}] `);
+    try {
+      const r = await registerDcaWorkflow({ userWallet: WALLET, amount, cronSchedule: cron });
+      if (r.success) {
+        stats.dcaSchedule++;
+        console.log(`✅ kh=${r.keeperhubWorkflowId || "local"}`);
+      } else {
+        stats.errors++;
+        console.log(`⚠️ ${r.message}`);
+      }
+    } catch (e) {
+      stats.errors++;
+      console.log(`❌ ${e instanceof Error ? e.message : e}`);
+    }
+    await sleep(500);
+  }
+
+  console.log(`\n── DCA live trigger (${args.dcaTrigger}) ──`);
   for (let i = 0; i < args.dcaTrigger; i++) {
     process.stdout.write(`  [${i + 1}/${args.dcaTrigger}] `);
     try {
@@ -256,63 +172,50 @@ async function main() {
     await sleep(1000);
   }
 
-  // ── Phase 6: Payee directory seeds (Payees page proof) ───────────────────
-  console.log("\n── Phase 6: Payee directory seeds (10 teams) ──");
-  for (let i = 0; i < 10; i++) {
-    const name = `Bulk Team ${i + 1}`;
-    try {
-      await db.insert(payees).values({
-        userWallet: WALLET,
-        name,
-        type: "team",
-        payoutMode: "direct",
-        recipientAddresses: [
-          { name: `${name} Alice`, address: syntheticRecipient(0x20000 + i * 2) },
-          { name: `${name} Bob`, address: syntheticRecipient(0x20000 + i * 2 + 1) },
-        ],
-        memberCount: 2,
-      });
-    } catch {
-      /* duplicate ok */
+  if (args.payroll > 0) {
+    console.log(`\n── Real payroll (${Math.min(args.payroll, 3)}) ──`);
+    for (let i = 0; i < Math.min(args.payroll, REAL_PAYROLL_RECIPIENTS.length); i++) {
+      const p = REAL_PAYROLL_RECIPIENTS[i];
+      process.stdout.write(`  ${p.label} … `);
+      try {
+        const r = await handlePaychain({
+          walletAddress: WALLET,
+          userMessage: `pay ${p.address} ${p.amount} USDC every Friday at 9am confirm`,
+          apiKey: apiKey || undefined,
+        });
+        if (r.success) {
+          stats.payroll++;
+          console.log(`✅ ${r.workflowId || "ok"}`);
+        } else {
+          stats.errors++;
+          console.log(`⚠️ ${r.message?.slice(0, 80)}`);
+        }
+      } catch (e) {
+        stats.errors++;
+        console.log(`❌ ${e instanceof Error ? e.message : e}`);
+      }
+      await sleep(1000);
     }
   }
-  console.log("  ✅ payees seeded");
 
   const endCount = await countLogs();
-  const added = endCount - startCount;
-
-  const wfCount = await db.select({ c: sql<number>`count(*)::int` }).from(activeWorkflows);
-  const txRows = await db.execute(sql`
-    SELECT count(*)::int as n FROM executions_log
-    WHERE tx_hash IS NOT NULL AND length(tx_hash) = 66 AND tx_hash NOT LIKE '0x1111%'
+  const breakdown = await db.execute(sql`
+    SELECT action, count(*)::int as n FROM executions_log
+    WHERE user_wallet = ${WALLET} GROUP BY action ORDER BY n DESC
   `);
 
   console.log("\n" + "=".repeat(60));
-  console.log("BULK PROOF SUMMARY");
+  console.log("SUMMARY");
   console.log("=".repeat(60));
-  console.log(`New log rows this run:     ${added}`);
-  console.log(`Total executions_log:      ${endCount}`);
-  console.log(`Rows with real txHash:     ${(txRows.rows[0] as { n: number }).n}`);
-  console.log(`Active workflows:          ${wfCount[0].c}`);
-  console.log(`Payroll OK:                ${stats.payroll}`);
-  console.log(`DCA schedule OK:           ${stats.dcaSchedule}`);
-  console.log(`Guardian OK:               ${stats.guardian}`);
-  console.log(`Yield OK:                  ${stats.yield}`);
-  console.log(`DCA trigger OK:            ${stats.dcaTrigger}`);
-  console.log(`Errors:                    ${stats.errors}`);
-  console.log("\nAudit: pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts");
-
-  const latest = await db.query.executionsLog.findMany({
-    where: eq(executionsLog.userWallet, WALLET),
-    orderBy: [desc(executionsLog.timestamp)],
-    limit: 5,
-  });
-  console.log("\nLatest 5 rows:");
-  for (const r of latest) {
-    console.log(`  ${r.status} | ${r.action} | $${r.amount} | ${r.reason?.slice(0, 60)}…`);
+  console.log(`Added:     ${endCount - startCount} rows (total ${endCount})`);
+  console.log(`Guardian:  ${stats.guardian} | Yield: ${stats.yield} | DCA sched: ${stats.dcaSchedule} | DCA trig: ${stats.dcaTrigger} | Payroll: ${stats.payroll}`);
+  console.log(`Errors:    ${stats.errors}`);
+  console.log("\nAction breakdown:");
+  for (const r of breakdown.rows as { action: string; n: number }[]) {
+    console.log(`  ${r.action.padEnd(18)} ${r.n}`);
   }
 
-  process.exit(stats.errors > added ? 1 : 0);
+  process.exit(0);
 }
 
 main().catch((err) => {

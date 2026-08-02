@@ -61,7 +61,8 @@ Browser: SIWE sign-in → KeeperHub Sync (`kh_...`) → Chat: *"What is my healt
 
 ```bash
 pnpm --prefix nexus-agent run verify              # 41 passed, 2 skipped
-pnpm --prefix nexus-agent run bulk-proof -- --target 100  # execution + workflow proofs
+pnpm --prefix nexus-agent run purge-fake-payrolls  # remove synthetic payrolls if needed
+pnpm --prefix nexus-agent run bulk-proof -- --target 50  # guardian + yield + DCA only
 pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts  # 350+ log rows (see runbook)
 pnpm --prefix nexus-agent run phase2
 ```
