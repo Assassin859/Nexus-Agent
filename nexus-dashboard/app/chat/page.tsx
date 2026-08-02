@@ -6,6 +6,7 @@ import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { HF_WARNING } from "@/lib/guardian-thresholds";
 
 type PortfolioData = {
   healthFactor: number | null;
@@ -162,7 +163,7 @@ export default function ChatPage() {
   const isPortfolioError = portfolio?.isError ?? false;
   const hasNoLoan = !isPortfolioError && portfolio !== null && portfolio.healthFactor === null;
   const hf = typeof portfolio?.healthFactor === "number" ? portfolio.healthFactor : null;
-  const isSafe = hf !== null ? hf > 1.3 : true;
+  const isSafe = hf !== null ? hf > HF_WARNING : true;
   const activeWorkflowsCount = portfolio?.workflows?.filter((w) => w.status === "active").length ?? 0;
   const lastWorkflow = portfolio?.workflows && portfolio.workflows.length > 0
     ? portfolio.workflows[portfolio.workflows.length - 1]

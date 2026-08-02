@@ -121,10 +121,10 @@ export default function EthPriceChart() {
                 margin: 0,
               }}
             >
-              ETH / USD Oracle
+              ETH / USD · WETH Collateral Oracle
             </h3>
             <p style={{ fontSize: 12, color: "var(--text-muted)", margin: "4px 0 0" }}>
-              Live Chainlink feed — drives Guardian priceTrend &amp; DCA slippage
+              Chainlink on Base Sepolia — ETH price moves WETH collateral → Guardian HF &amp; DCA swaps
             </p>
           </div>
         </div>

@@ -236,7 +236,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
         requiredRepaymentToTargetHF: 0,
         walletLimitExceeded: agenticBalance < position.debtUSD,
         cycleRemainingBudgetUSD: cycleRemaining,
-        safetyStatus: hf < 1.1 ? "critical_liquidation_risk" : hf < 1.3 ? "warning" : "safe",
+        safetyStatus: hf < 1.15 ? "critical_liquidation_risk" : hf < 1.40 ? "warning" : "safe",
       },
       candidateActions: critical
         ? [{

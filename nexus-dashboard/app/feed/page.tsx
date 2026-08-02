@@ -20,7 +20,6 @@ type FeedItem = {
   aiAnalysis?: Record<string, unknown>;
 };
 
-const STEPS = ["Triggered", "Simulating", "Broadcasting", "Mined"];
 const PAGE_SIZE = 10;
 
 export default function FeedPage() {
@@ -86,16 +85,6 @@ export default function FeedPage() {
 
       <DecisionMatrixCard items={feed} loading={loading} />
 
-      <div className="card" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
-        {STEPS.map((step, idx) => (
-          <div key={step} style={{ display: "flex", alignItems: "center", gap: 10 }}>
-            <div className={`step-num ${idx <= 2 ? "step-active" : "step-inactive"}`}>{idx + 1}</div>
-            <span className="step-label" style={{ color: idx <= 2 ? "var(--text)" : "var(--text-muted)" }}>{step}</span>
-            {idx < 3 && <div className="step-connector" />}
-          </div>
-        ))}
-      </div>
-
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {loading ? (
           <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
@@ -103,7 +92,9 @@ export default function FeedPage() {
           </div>
         ) : feed.length === 0 ? (
           <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
-            No executions logged yet for wallet <span style={{ fontFamily: "monospace", color: "#818cf8" }}>{walletAddress.slice(0, 8)}...</span>. Trigger a workflow in AI Chat or Templates to see live events.
+            No executions logged yet for wallet{" "}
+            <span style={{ fontFamily: "monospace", color: "#818cf8" }}>{walletAddress.slice(0, 8)}...</span>.
+            Trigger a workflow in AI Chat or Templates to see live events.
           </div>
         ) : (
           <>

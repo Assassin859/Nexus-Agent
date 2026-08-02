@@ -1,6 +1,7 @@
 "use client";
 
-import { CheckCircle2, Shield, RefreshCw, AlertTriangle, AlertOctagon, ShieldAlert } from "lucide-react";
+import { CheckCircle2, Shield, RefreshCw, AlertTriangle, AlertOctagon, ShieldAlert, Layers } from "lucide-react";
+import { HF_CRITICAL, HF_WARNING } from "@/lib/guardian-thresholds";
 
 export type ExecutionLogItem = {
   id?: string;
@@ -27,13 +28,16 @@ export function getDecisionBucket(item: ExecutionLogItem): "hold" | "partial" | 
   if (action === "hold") return "hold";
   if (action === "block_transaction") return "blocked";
   if (action === "rotate") return "yield";
+
   if (action === "repay" || action === "supply_collateral") {
-    if (hf != null && hf < 1.10) return "full";
+    if (hf != null && hf < HF_CRITICAL) return "full";
     if (ss === "critical_liquidation_risk") return "full";
-    if (hf != null && hf >= 1.10 && hf <= 1.40) return "partial";
+    if (hf != null && hf >= HF_CRITICAL && hf <= HF_WARNING) return "partial";
     if (ss === "warning") return "partial";
-    return "partial"; // legacy fallback
+    if (hf != null && hf > HF_WARNING) return "other";
+    return "partial";
   }
+
   return "other";
 }
 
@@ -145,7 +149,7 @@ export default function DecisionMatrixCard({ items, loading }: Props) {
             {loading ? "-" : counts.hold}
           </div>
           <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            HF &gt; 1.40 (Healthy)
+            Hold · HF &gt; {HF_WARNING} (Healthy)
           </div>
         </div>
 
@@ -168,7 +172,7 @@ export default function DecisionMatrixCard({ items, loading }: Props) {
             {loading ? "-" : counts.partial}
           </div>
           <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            1.10 ≤ HF ≤ 1.40 (Warning)
+            Repay · {HF_CRITICAL} ≤ HF ≤ {HF_WARNING}
           </div>
         </div>
 
@@ -191,7 +195,7 @@ export default function DecisionMatrixCard({ items, loading }: Props) {
             {loading ? "-" : counts.full}
           </div>
           <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            HF &lt; 1.10 (Critical)
+            Repay · HF &lt; {HF_CRITICAL} (Critical)
           </div>
         </div>
 
@@ -214,7 +218,7 @@ export default function DecisionMatrixCard({ items, loading }: Props) {
             {loading ? "-" : counts.yield}
           </div>
           <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            APY Arbitrage Optimization
+            Rotate · dual-wallet skip logs
           </div>
         </div>
 
@@ -237,7 +241,30 @@ export default function DecisionMatrixCard({ items, loading }: Props) {
             {loading ? "-" : counts.blocked}
           </div>
           <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            Risk Rule Blocked
+            Pending lock / risk block
+          </div>
+        </div>
+
+        {/* Other — DCA, PayChain, proactive repay */}
+        <div
+          style={{
+            background: "rgba(148, 163, 184, 0.03)",
+            border: "1px solid rgba(148, 163, 184, 0.15)",
+            borderRadius: "var(--radius-md)",
+            padding: "12px",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+            <span style={{ fontSize: "12px", fontWeight: 700, color: "#94a3b8", display: "flex", alignItems: "center", gap: "4px" }}>
+              ⚪ Other
+            </span>
+            <Layers size={14} color="#94a3b8" />
+          </div>
+          <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--text)" }}>
+            {loading ? "-" : counts.other}
+          </div>
+          <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
+            DCA · PayChain · safe-HF repay
           </div>
         </div>
       </div>

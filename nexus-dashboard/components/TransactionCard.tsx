@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp, Cpu, Copy, Check } from "lucide-react";
 import { isKeeperHubWorkflowId, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
+import ExecutionPipeline from "@/components/ExecutionPipeline";
 
 export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub" | "delayed";
 
@@ -97,6 +98,8 @@ export default function TransactionCard({
         {badge}
       </div>
 
+      <ExecutionPipeline status={status} action={action} txHash={txHash} />
+
       {/* Copyable Tx Hash Row */}
       {txHash && (
         <div style={{
@@ -130,6 +133,12 @@ export default function TransactionCard({
           }}>
             <span>🛡️ Harness: <strong style={{ color: "var(--text)" }}>{harnessAction}</strong></span>
             <span>· LLM: <strong style={{ color: "var(--text)" }}>{llmAction ?? "—"}</strong></span>
+            {aiAnalysis?.priceTrend != null && (
+              <span>· Market: <strong style={{ color: "var(--text)" }}>{String(aiAnalysis.priceTrend)}</strong></span>
+            )}
+            {aiAnalysis?.healthFactor != null && (
+              <span>· HF: <strong style={{ color: "var(--text)" }}>{Number(aiAnalysis.healthFactor).toFixed(2)}</strong></span>
+            )}
             {isOverride
               ? <span style={{ color: "#f87171" }}>· Override: YES</span>
               : <span style={{ color: "#34d399" }}>· Override: NO</span>}

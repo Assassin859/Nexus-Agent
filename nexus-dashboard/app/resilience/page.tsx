@@ -33,7 +33,7 @@ const INITIAL_SCENARIOS: ScenarioCard[] = [
     icon: CheckCircle2,
     title: "Happy Path Run",
     pill: { label: "Broadcast & Mined", cls: "pill-success" },
-    desc: "Transactions passing pre-flight simulation are broadcast to Sepolia and mined with zero errors.",
+    desc: "Transactions passing pre-flight simulation are broadcast to Base Sepolia and mined with zero errors.",
     code: { text: "Status: WAITING FOR RUN\nNo successful executions recorded yet.", color: "#34d399", bg: "rgba(16,185,129,0.09)", border: "rgba(16,185,129,0.25)" },
     accent: { color: "#34d399", bg: "rgba(16,185,129,0.10)", border: "rgba(16,185,129,0.3)" },
     side: "#10b981",
@@ -115,7 +115,7 @@ export default function ResiliencePage() {
           const updated = [...INITIAL_SCENARIOS];
           if (happy) {
             updated[0].desc = `Action ${happy.action.toUpperCase()} executed successfully for amount $${happy.amount}.`;
-            updated[0].code.text = `Status: SUCCESS (200 OK)\nReason: ${happy.reason || "Mined on Sepolia"}`;
+            updated[0].code.text = `Status: SUCCESS (200 OK)\nReason: ${happy.reason || "Mined on Base Sepolia"}`;
           }
           if (delayed) {
             updated[1].desc = `Action ${delayed.action.toUpperCase()} evaluated. Gas or cycle limit rules applied.`;
@@ -130,7 +130,7 @@ export default function ResiliencePage() {
             const isSim = revertTarget.status === "reverted_simulation";
             updated[3].pill = { label: isSim ? "Pre-Flight Intercepted" : "Reverted On-Chain", cls: isSim ? "pill-warning" : "pill-danger" };
             updated[3].desc = isSim
-              ? `Simulation intercepted revert before broadcasting to Sepolia (0 gas wasted).`
+              ? `Simulation intercepted revert before broadcasting to Base Sepolia (0 gas wasted).`
               : `Execution reverted on-chain during broadcast.`;
             updated[3].code.text = `Status: ${revertTarget.status.toUpperCase()}\nReason: ${revertTarget.reason || "Revert recorded"}`;
           }

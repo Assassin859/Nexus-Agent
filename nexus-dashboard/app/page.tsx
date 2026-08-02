@@ -8,6 +8,7 @@ import { proxyFetch } from "@/lib/agent-fetch";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import EthPriceChart from "@/components/EthPriceChart";
+import { HF_CRITICAL, HF_WARNING, NETWORK_LABEL } from "@/lib/guardian-thresholds";
 
 type PortfolioData = {
   walletAddress: string;
@@ -34,7 +35,7 @@ type WorkflowRow = { id: string; type: string; status: string; amount?: number }
 const APY_ROWS = [
   { protocol: "Aave V3", asset: "USDC", status: "Current Position", statusClass: "pill-success" as const },
   { protocol: "Compound V3", asset: "USDC", status: "Monitored", statusClass: "pill-cyan" as const },
-  { protocol: "Morpho Blue", asset: "USDC", status: "Not deployed on Sepolia", statusClass: "pill-warning" as const },
+  { protocol: "Morpho Blue", asset: "USDC", status: `Not on ${NETWORK_LABEL}`, statusClass: "pill-warning" as const },
 ];
 
 const WORKFLOW_PAGE_SIZE = 5;
@@ -74,8 +75,8 @@ export default function PortfolioPage() {
     ? "#f59e0b"                        // amber — degraded
     : hasNoLoan
     ? "#64748b"                        // slate — no loan
-    : (hf ?? 0) > 1.5 ? "#34d399"     // green — safe
-    : (hf ?? 0) > 1.15 ? "#fbbf24"   // yellow — warning
+    : (hf ?? 0) > HF_WARNING ? "#34d399"     // green — safe
+    : (hf ?? 0) > HF_CRITICAL ? "#fbbf24"   // yellow — warning
     : "#fb7185";                       // red — liquidation risk
   const hfPercent = hf !== null ? Math.min(Math.max((hf / 2.5) * 100, 10), 100) : 20;
 
