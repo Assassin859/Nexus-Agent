@@ -4,6 +4,8 @@ import { useState, useEffect, useRef } from "react";
 import { Send, Bot, User, Sparkles, Cpu } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import Pagination from "@/components/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 
 type PortfolioData = {
   healthFactor: number | null;
@@ -24,6 +26,8 @@ function chatKey(wallet: string) {
   return `nexus_chat_history_${wallet.toLowerCase()}`;
 }
 
+const PAGE_SIZE = 12;
+
 export default function ChatPage() {
   const { walletAddress, authToken, signInWithEthereum } = useWallet();
 
@@ -33,7 +37,14 @@ export default function ChatPage() {
   const [portfolio, setPortfolio] = useState<PortfolioData | null>(null);
   const isLoadedRef = useRef(false);
 
-  // 1. Load chat history per wallet (with legacy global key fallback); reload when wallet switches
+  const { page, setPage, totalPages, pagedItems, total, showPagination } = usePagination(
+    messages,
+    PAGE_SIZE,
+    [walletAddress],
+    { stickToEnd: true },
+  );
+
+  // 1. Load chat history per wallet
   useEffect(() => {
     if (typeof window === "undefined" || !walletAddress) return;
     const walletSpecificKey = chatKey(walletAddress);
@@ -204,12 +215,17 @@ export default function ChatPage() {
       <div style={{ display: "grid", gridTemplateColumns: "1fr 300px", gap: 24, alignItems: "start" }}>
         {/* Chat box */}
         <div className="card" style={{ display: "flex", flexDirection: "column", height: 580, padding: 0, overflow: "hidden" }}>
+          {showPagination && (
+            <div style={{ padding: "10px 16px 0", borderBottom: "1px solid var(--border)" }}>
+              <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            </div>
+          )}
           <div style={{ flex: 1, padding: 20, overflowY: "auto", display: "flex", flexDirection: "column", gap: 16 }}>
-            {messages.map((m, idx) => {
+            {pagedItems.map((m, idx) => {
               const isUser = m.sender === "user";
               return (
                 <div
-                  key={idx}
+                  key={`${page}-${idx}`}
                   style={{
                     display: "flex",
                     gap: 12,

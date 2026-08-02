@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { AlertCircle, AlertTriangle, Info } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import Pagination from "@/components/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 
 type LogItem = {
   action: string;
@@ -27,10 +29,18 @@ const COLOR: Record<string, { bg: string; color: string; border: string }> = {
   info:    { bg: "rgba(99,102,241,0.10)", color: "#818cf8", border: "rgba(99,102,241,0.45)" },
 };
 
+const PAGE_SIZE = 10;
+
 export default function AlertsPage() {
   const { walletAddress: wallet, authToken } = useWallet();
   const [alerts, setAlerts] = useState<AlertCardData[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const { page, setPage, totalPages, pagedItems, total, showPagination } = usePagination(
+    alerts,
+    PAGE_SIZE,
+    [wallet],
+  );
 
   useEffect(() => {
     async function loadAlerts() {
@@ -84,32 +94,40 @@ export default function AlertsPage() {
             No alert notifications logged. The system is operating normally.
           </div>
         ) : (
-          alerts.map((alert, i) => {
-            const c = COLOR[alert.type] || COLOR.info;
-            return (
-              <div
-                key={i}
-                className="alert-card"
-                style={{ borderLeftColor: c.border, borderLeftWidth: 3 }}
-              >
+          <>
+            {showPagination && (
+              <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            )}
+            {pagedItems.map((alert, i) => {
+              const c = COLOR[alert.type] || COLOR.info;
+              return (
                 <div
-                  className="alert-icon"
-                  style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}
+                  key={`${page}-${i}`}
+                  className="alert-card"
+                  style={{ borderLeftColor: c.border, borderLeftWidth: 3 }}
                 >
-                  {alert.type === "danger"  && <AlertCircle size={20} />}
-                  {alert.type === "warning" && <AlertTriangle size={20} />}
-                  {alert.type === "info"    && <Info size={20} />}
-                </div>
-                <div style={{ flex: 1 }}>
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-                    <div className="alert-title">{alert.title}</div>
-                    <span className="alert-time">{alert.time}</span>
+                  <div
+                    className="alert-icon"
+                    style={{ background: c.bg, color: c.color, border: `1px solid ${c.border}` }}
+                  >
+                    {alert.type === "danger"  && <AlertCircle size={20} />}
+                    {alert.type === "warning" && <AlertTriangle size={20} />}
+                    {alert.type === "info"    && <Info size={20} />}
                   </div>
-                  <p className="alert-msg">{alert.message}</p>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+                      <div className="alert-title">{alert.title}</div>
+                      <span className="alert-time">{alert.time}</span>
+                    </div>
+                    <p className="alert-msg">{alert.message}</p>
+                  </div>
                 </div>
-              </div>
-            );
-          })
+              );
+            })}
+            {showPagination && (
+              <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            )}
+          </>
         )}
       </div>
     </div>

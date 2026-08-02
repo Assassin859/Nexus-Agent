@@ -6,6 +6,8 @@ import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 
 import DecisionMatrixCard, { ExecutionLogItem } from "@/components/DecisionMatrixCard";
+import Pagination from "@/components/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 
 type LogItem = {
   id?: string;
@@ -65,12 +67,20 @@ const INITIAL_SCENARIOS: ScenarioCard[] = [
   },
 ];
 
+const PAGE_SIZE = 8;
+
 export default function ResiliencePage() {
   const { walletAddress: wallet, authToken } = useWallet();
   const [scenarios, setScenarios] = useState(INITIAL_SCENARIOS);
-  const [feed, setFeed] = useState<ExecutionLogItem[]>([]);
+  const [feed, setFeed] = useState<LogItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+
+  const { page, setPage, totalPages, pagedItems, total, showPagination } = usePagination(
+    feed,
+    PAGE_SIZE,
+    [wallet],
+  );
 
   useEffect(() => {
     async function loadResilience() {
@@ -95,7 +105,7 @@ export default function ResiliencePage() {
         setAuthError(null);
         if (Array.isArray(data) && data.length > 0) {
           const logs = data as LogItem[];
-          setFeed(logs as ExecutionLogItem[]);
+          setFeed(logs);
           const happy = logs.find(d => d.status === "success");
           const delayed = data.find(d => d.status === "delayed");
           const pending = data.find(d => d.status === "pending");
@@ -149,7 +159,7 @@ export default function ResiliencePage() {
       )}
 
       {/* AI Decision Matrix Component */}
-      <DecisionMatrixCard items={feed} loading={loading} />
+      <DecisionMatrixCard items={feed as ExecutionLogItem[]} loading={loading} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
         {scenarios.map((s) => {
@@ -187,6 +197,47 @@ export default function ResiliencePage() {
             </div>
           );
         })}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div className="page-header" style={{ margin: 0 }}>
+          <h2 style={{ fontFamily: "var(--font-space-grotesk), sans-serif", fontSize: 17, fontWeight: 800, color: "var(--text)" }}>
+            Execution Log
+          </h2>
+          <p className="page-subtitle" style={{ marginTop: 4 }}>Paginated history of simulated and broadcast actions</p>
+        </div>
+
+        {loading ? (
+          <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 24 }}>
+            Loading execution log...
+          </div>
+        ) : feed.length === 0 ? (
+          <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 24 }}>
+            No execution logs yet.
+          </div>
+        ) : (
+          <>
+            {showPagination && (
+              <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            )}
+            {pagedItems.map((item, i) => (
+              <div key={item.id ?? `${page}-${i}`} className="card" style={{ padding: 16, fontSize: 13 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 12, flexWrap: "wrap", marginBottom: 8 }}>
+                  <span style={{ fontWeight: 700, color: "var(--text)", textTransform: "uppercase" }}>{item.action}</span>
+                  <span className={`pill ${item.status === "success" ? "pill-success" : item.status === "reverted_simulation" || item.status === "reverted_chain" ? "pill-danger" : "pill-warning"}`}>
+                    {item.status}
+                  </span>
+                </div>
+                <div style={{ color: "var(--text-muted)", lineHeight: 1.5 }}>
+                  {item.reason || `Amount: $${item.amount} USDC`}
+                </div>
+              </div>
+            ))}
+            {showPagination && (
+              <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            )}
+          </>
+        )}
       </div>
     </div>
   );

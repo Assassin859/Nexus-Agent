@@ -6,6 +6,8 @@ import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 import KeeperHubSyncModal from "@/components/KeeperHubSyncModal";
 import { isKeeperHubWorkflowId, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
+import Pagination from "@/components/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 
 type WorkflowItem = {
   id: string;
@@ -53,6 +55,8 @@ function humanCron(cron: string): string {
   return cron;
 }
 
+const PAGE_SIZE = 6;
+
 export default function WorkflowsPage() {
   const { walletAddress: wallet, authToken } = useWallet();
   const [workflows, setWorkflows] = useState<WorkflowItem[]>([]);
@@ -62,6 +66,12 @@ export default function WorkflowsPage() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [apiKey, setApiKey] = useState("");
   const [connected, setConnected] = useState(true);
+
+  const { page, setPage, totalPages, pagedItems, total, showPagination } = usePagination(
+    workflows,
+    PAGE_SIZE,
+    [wallet],
+  );
 
   async function loadWorkflows() {
     setSpinning(true);
@@ -182,7 +192,11 @@ export default function WorkflowsPage() {
             </div>
           </div>
         ) : (
-          workflows.map((wf) => {
+          <>
+            {showPagination && (
+              <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            )}
+            {pagedItems.map((wf) => {
             const color = typeColors[wf.type] ?? typeColors.default;
             const isExpanded = expandedId === wf.id;
             const verifyUrl = wf.recipientAddress
@@ -334,7 +348,11 @@ export default function WorkflowsPage() {
                 )}
               </div>
             );
-          })
+          })}
+            {showPagination && (
+              <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+            )}
+          </>
         )}
       </div>
     </div>

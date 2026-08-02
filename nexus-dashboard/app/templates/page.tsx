@@ -5,6 +5,8 @@ import { useRouter } from "next/navigation";
 import { Shield, Calendar, Repeat, Banknote, Bell, Scale, ArrowRight } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import Pagination from "@/components/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 
 type DeployMode =
   | { mode: "api"; apiPath: string; body?: Record<string, unknown>; redirect?: string }
@@ -96,11 +98,19 @@ const TEMPLATES: Array<{
   },
 ];
 
+const PAGE_SIZE = 3;
+
 export default function TemplatesPage() {
   const router = useRouter();
   const { authToken } = useWallet();
   const [deploying, setDeploying] = useState<string | null>(null);
   const [statusMsg, setStatusMsg] = useState<string | null>(null);
+
+  const { page, setPage, totalPages, pagedItems, total, showPagination } = usePagination(
+    TEMPLATES,
+    PAGE_SIZE,
+    [],
+  );
 
   const handleFork = async (tmpl: (typeof TEMPLATES)[0]) => {
     if (tmpl.deploy.mode === "blocked") return;
@@ -164,8 +174,12 @@ export default function TemplatesPage() {
         </div>
       )}
 
+      {showPagination && (
+        <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+      )}
+
       <div className="grid-3">
-        {TEMPLATES.map((tmpl) => {
+        {pagedItems.map((tmpl) => {
           const Icon = tmpl.icon;
           const isSelected = deploying === tmpl.title;
           const isBlocked = tmpl.deploy.mode === "blocked";
@@ -227,6 +241,10 @@ export default function TemplatesPage() {
           );
         })}
       </div>
+
+      {showPagination && (
+        <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+      )}
     </div>
   );
 }

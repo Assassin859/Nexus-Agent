@@ -5,6 +5,8 @@ import Link from "next/link";
 import { Shield, RefreshCw, Layers, ArrowUpRight, CheckCircle2, TrendingUp, AlertCircle, Wallet } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import Pagination from "@/components/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 
 type PortfolioData = {
   walletAddress: string;
@@ -25,6 +27,17 @@ type PortfolioData = {
   _forbidden?: boolean;
   _agentError?: boolean;
 };
+
+type WorkflowRow = { id: string; type: string; status: string; amount?: number };
+
+const APY_ROWS = [
+  { protocol: "Aave V3", asset: "USDC", status: "Current Position", statusClass: "pill-success" as const },
+  { protocol: "Compound V3", asset: "USDC", status: "Monitored", statusClass: "pill-cyan" as const },
+  { protocol: "Morpho Blue", asset: "USDC", status: "Not deployed on Sepolia", statusClass: "pill-warning" as const },
+];
+
+const WORKFLOW_PAGE_SIZE = 5;
+const APY_PAGE_SIZE = 2;
 
 export default function PortfolioPage() {
   const { walletAddress: wallet, isConnected, authToken, signInWithEthereum } = useWallet();
@@ -71,6 +84,25 @@ export default function PortfolioPage() {
   const hasYieldDelta = !isError && compoundAPY > 0 && aaveAPY > 0 && delta > 0.1;
 
   const activeWorkflowCount = data?.workflows?.filter((w) => w.status === "active").length ?? 0;
+
+  const workflowRows: WorkflowRow[] = data?.workflows ?? [];
+  const {
+    page: wfPage,
+    setPage: setWfPage,
+    totalPages: wfTotalPages,
+    pagedItems: pagedWorkflows,
+    total: wfTotal,
+    showPagination: wfShowPagination,
+  } = usePagination(workflowRows, WORKFLOW_PAGE_SIZE, [wallet]);
+
+  const {
+    page: apyPage,
+    setPage: setApyPage,
+    totalPages: apyTotalPages,
+    pagedItems: pagedApyRows,
+    total: apyTotal,
+    showPagination: apyShowPagination,
+  } = usePagination(APY_ROWS, APY_PAGE_SIZE, []);
 
   const metrics = [
     { label: "Collateral Value", value: `$${(data?.collateralUSD ?? 0).toLocaleString()}`, sub: "USDC & WETH Deposited", icon: Shield, color: "#34d399", href: "/resilience", ltv: undefined },
@@ -210,6 +242,16 @@ export default function PortfolioPage() {
           )}
         </div>
 
+        {apyShowPagination && (
+          <Pagination
+            page={apyPage}
+            totalPages={apyTotalPages}
+            total={apyTotal}
+            pageSize={APY_PAGE_SIZE}
+            onPageChange={setApyPage}
+          />
+        )}
+
         <table className="table" style={{ width: "100%", borderCollapse: "collapse" }}>
           <thead>
             <tr>
@@ -221,29 +263,72 @@ export default function PortfolioPage() {
             </tr>
           </thead>
           <tbody>
-            <tr>
-              <td className="cell-bold">Aave V3</td>
-              <td>USDC</td>
-              <td className="cell-green">{loading ? "..." : isError ? "—" : aaveAPY > 0 ? `${aaveAPY.toFixed(2)}%` : "—"}</td>
-              <td>—</td>
-              <td><span className="pill pill-success">Current Position</span></td>
-            </tr>
-            <tr>
-              <td className="cell-bold">Compound V3</td>
-              <td>USDC</td>
-              <td className="cell-green">{loading ? "..." : compoundAPY > 0 ? `${compoundAPY.toFixed(2)}%` : "—"}</td>
-              <td>—</td>
-              <td><span className="pill pill-cyan">Monitored</span></td>
-            </tr>
-            <tr>
-              <td className="cell-bold">Morpho Blue</td>
-              <td>USDC</td>
-              <td>—</td>
-              <td>—</td>
-              <td><span className="pill pill-warning" style={{ background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-muted)" }}>Not deployed on Sepolia</span></td>
-            </tr>
+            {pagedApyRows.map((row) => (
+              <tr key={row.protocol}>
+                <td className="cell-bold">{row.protocol}</td>
+                <td>{row.asset}</td>
+                <td className="cell-green">
+                  {loading ? "..." : row.protocol === "Aave V3" ? (isError ? "—" : aaveAPY > 0 ? `${aaveAPY.toFixed(2)}%` : "—") : row.protocol === "Compound V3" ? (compoundAPY > 0 ? `${compoundAPY.toFixed(2)}%` : "—") : "—"}
+                </td>
+                <td>—</td>
+                <td><span className={`pill ${row.statusClass}`} style={row.protocol === "Morpho Blue" ? { background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-muted)" } : undefined}>{row.status}</span></td>
+              </tr>
+            ))}
           </tbody>
         </table>
+
+        {apyShowPagination && (
+          <Pagination
+            page={apyPage}
+            totalPages={apyTotalPages}
+            total={apyTotal}
+            pageSize={APY_PAGE_SIZE}
+            onPageChange={setApyPage}
+          />
+        )}
+      </div>
+
+      {/* Active Workflows */}
+      <div className="card">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16, flexWrap: "wrap", gap: 12 }}>
+          <h3 style={{ fontFamily: "var(--font-space-grotesk), sans-serif", fontSize: 17, fontWeight: 800, color: "var(--text)", margin: 0 }}>
+            Active Workflows
+          </h3>
+          <Link href="/workflows" style={{ fontSize: 12, color: "#818cf8", textDecoration: "none" }}>View all →</Link>
+        </div>
+
+        {loading ? (
+          <div style={{ color: "var(--text-muted)", fontSize: 13, padding: 12 }}>Loading workflows...</div>
+        ) : workflowRows.length === 0 ? (
+          <div style={{ color: "var(--text-muted)", fontSize: 13, padding: 12 }}>No active workflows registered yet.</div>
+        ) : (
+          <>
+            {wfShowPagination && (
+              <Pagination page={wfPage} totalPages={wfTotalPages} total={wfTotal} pageSize={WORKFLOW_PAGE_SIZE} onPageChange={setWfPage} />
+            )}
+            <table className="table" style={{ width: "100%", borderCollapse: "collapse" }}>
+              <thead>
+                <tr>
+                  <th>Type</th>
+                  <th>Status</th>
+                  <th>ID</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pagedWorkflows.map((wf) => (
+                  <tr key={wf.id}>
+                    <td className="cell-bold" style={{ textTransform: "capitalize" }}>{wf.type}</td>
+                    <td><span className={`pill ${wf.status === "active" ? "pill-success" : "pill-warn"}`}>{wf.status}</span></td>
+                    <td style={{ fontFamily: "monospace", fontSize: 12, color: "var(--text-muted)" }}>{wf.id.slice(0, 8)}…</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {wfShowPagination && (
+              <Pagination page={wfPage} totalPages={wfTotalPages} total={wfTotal} pageSize={WORKFLOW_PAGE_SIZE} onPageChange={setWfPage} />
+            )}
+          </>
+        )}
       </div>
     </div>
   );

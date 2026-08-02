@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Users, Plus, Trash2, Shield, Vault, User, ExternalLink, Cpu } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import Pagination from "@/components/Pagination";
+import { usePagination } from "@/hooks/usePagination";
 
 type PayeeMember = {
   name: string;
@@ -21,6 +23,8 @@ type PayeeItem = {
   parentTeamId?: string;
 };
 
+const PAGE_SIZE = 8;
+
 export default function PayeesPage() {
   const { walletAddress: wallet, authToken } = useWallet();
   const [payeesList, setPayeesList] = useState<PayeeItem[]>([]);
@@ -36,6 +40,12 @@ export default function PayeesPage() {
     { name: "", address: "" },
   ]);
   const [saving, setSaving] = useState(false);
+
+  const { page, setPage, totalPages, pagedItems, total, showPagination } = usePagination(
+    payeesList,
+    PAGE_SIZE,
+    [wallet],
+  );
 
   async function loadPayees() {
     if (!wallet) return;
@@ -172,7 +182,11 @@ export default function PayeesPage() {
               </div>
             </div>
           ) : (
-            payeesList.map((item) => (
+            <>
+              {showPagination && (
+                <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+              )}
+              {pagedItems.map((item) => (
               <div key={item.id} className="card" style={{ display: "flex", flexDirection: "column", gap: 12, padding: 20 }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
@@ -230,7 +244,11 @@ export default function PayeesPage() {
                   </div>
                 )}
               </div>
-            ))
+              ))}
+              {showPagination && (
+                <Pagination page={page} totalPages={totalPages} total={total} pageSize={PAGE_SIZE} onPageChange={setPage} />
+              )}
+            </>
           )}
         </div>
 
