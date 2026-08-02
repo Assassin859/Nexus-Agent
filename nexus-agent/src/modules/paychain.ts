@@ -113,7 +113,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
         await db.insert(executionsLog).values({
           userWallet: walletAddress,
           workflowId: insertedVaultWf.id,
-          action: "payroll",
+          action: "payroll_register",
           amount,
           status: "success",
           reason: `Deposited ${amount} USDC into '${matchedPayee.name}' Shared Vault Pool (${poolAddr.slice(0, 8)}...). Schedule: ${cronSchedule}.`,
@@ -213,7 +213,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
           await tx.insert(executionsLog).values({
             userWallet: walletAddress,
             workflowId: insertedWf.id,
-            action: "payroll",
+            action: "payroll_register",
             amount: item.memberAmount,
             status: "success",
             reason: `Registered ${item.memberAmount} USDC payroll workflow for ${item.memberName} (${item.targetAddr.slice(0, 8)}...).`,
@@ -372,7 +372,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
   await db.insert(executionsLog).values({
     userWallet: walletAddress,
     workflowId: newWf[0]?.id,
-    action: "payroll",
+    action: "payroll_register",
     amount: decision.recommendation.amount,
     status: "success",
     reason: `Payroll workflow created for ${recipientAddr} (${decision.recommendation.amount} USDC ${decision.recommendation.frequency}).`,

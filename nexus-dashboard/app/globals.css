@@ -250,6 +250,114 @@ body {
 .step-label { font-size: 13px; font-weight: 600; }
 .step-connector { width: 28px; height: 1px; background: var(--border); }
 
+/* ====== EXECUTION PIPELINE (per feed row) ====== */
+.exec-pipeline {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-items: start;
+  gap: 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.02);
+  border: 1px solid var(--border);
+  position: relative;
+}
+.exec-pipeline-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  text-align: center;
+}
+.exec-pipeline-track {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  justify-content: center;
+  position: relative;
+}
+.exec-pipeline-dot {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 800;
+  z-index: 1;
+}
+.exec-pipeline-line {
+  position: absolute;
+  left: calc(50% + 11px);
+  right: calc(-50% + 11px);
+  height: 1px;
+  background: rgba(255,255,255,0.08);
+  top: 50%;
+}
+.exec-pipeline-line[data-filled="true"] {
+  background: rgba(129,140,248,0.35);
+}
+.exec-pipeline-label {
+  font-size: 10px;
+  font-weight: 600;
+  line-height: 1.2;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.exec-pipeline-step--inactive .exec-pipeline-dot {
+  background: rgba(255,255,255,0.06);
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+.exec-pipeline-step--inactive .exec-pipeline-label {
+  color: var(--text-muted);
+  opacity: 0.45;
+}
+.exec-pipeline-step--complete .exec-pipeline-dot {
+  background: rgba(99,102,241,0.2);
+  color: #818cf8;
+}
+.exec-pipeline-step--complete .exec-pipeline-label {
+  color: var(--text);
+  font-weight: 700;
+}
+.exec-pipeline-step--current .exec-pipeline-dot {
+  background: rgba(99,102,241,0.35);
+  color: #c7d2fe;
+}
+.exec-pipeline-step--current .exec-pipeline-label {
+  color: var(--text);
+  font-weight: 700;
+}
+.exec-pipeline-step--failed .exec-pipeline-dot {
+  background: rgba(239,68,68,0.15);
+  color: #fb7185;
+}
+.exec-pipeline-step--failed .exec-pipeline-label {
+  color: #fb7185;
+  font-weight: 700;
+}
+.exec-pipeline-step[data-last="true"] .exec-pipeline-line {
+  display: none;
+}
+.exec-pipeline-outcome {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 10px;
+  font-weight: 700;
+  color: #94a3b8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  pointer-events: none;
+}
+
 /* ====== CHAT ====== */
 .chat-panel {
   display: flex; flex-direction: column;

@@ -256,7 +256,7 @@ export default function PortfolioPage() {
           />
         )}
 
-        <table className="table" style={{ width: "100%", borderCollapse: "collapse" }}>
+        <table className="kh-table">
           <thead>
             <tr>
               <th>Protocol</th>
@@ -310,7 +310,7 @@ export default function PortfolioPage() {
             {wfShowPagination && (
               <Pagination page={wfPage} totalPages={wfTotalPages} total={wfTotal} pageSize={WORKFLOW_PAGE_SIZE} onPageChange={setWfPage} />
             )}
-            <table className="table" style={{ width: "100%", borderCollapse: "collapse" }}>
+            <table className="kh-table">
               <thead>
                 <tr>
                   <th>Type</th>

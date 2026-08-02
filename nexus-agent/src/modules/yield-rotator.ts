@@ -50,7 +50,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     log.info("Cannot rotate watched wallet's Aave supply without shared wallet ownership — skipping.");
     await db.insert(executionsLog).values({
       userWallet: monitoredWallet,
-      action: "rotate",
+      action: "hold",
       amount: 0,
       status: "success",
       reason: "Cannot rotate watched wallet's Aave supply without shared wallet ownership (userWallet !== AGENTIC_WALLET)",

@@ -64,3 +64,93 @@ console.log(`\n=== PAYEES (${ps.length}) ===`);
 for (const p of ps) {
   console.log(`${p.name} | ${p.type} | members=${p.memberCount} | ${p.userWallet.slice(0, 10)}…`);
 }
+
+const CHAIN_ACTIONS = new Set(["repay", "supply_collateral", "swap", "rotate", "payroll"]);
+const VALID_TX = /^0x[a-fA-F0-9]{64}$/;
+
+function isValidTxHash(h: string | null | undefined): boolean {
+  return typeof h === "string" && VALID_TX.test(h) && !h.includes("11111111");
+}
+
+const allExec = await db.select().from(executionsLog).orderBy(desc(executionsLog.timestamp));
+console.log(`\n=== DATA INTEGRITY AUDIT (${allExec.length} rows) ===`);
+
+type Issue = { id: string; action: string; status: string; issue: string; ts?: Date | null };
+const issues: Issue[] = [];
+
+const cutoff15m = new Date(Date.now() - 15 * 60 * 1000);
+
+for (const row of allExec) {
+  const chain = CHAIN_ACTIONS.has(row.action);
+  const hasTx = isValidTxHash(row.txHash);
+
+  if (row.status === "success" && chain && !hasTx) {
+    issues.push({
+      id: row.id,
+      action: row.action,
+      status: row.status,
+      issue: "success without valid tx_hash for chain action",
+      ts: row.timestamp,
+    });
+  }
+  if (row.status === "success" && hasTx && !chain) {
+    issues.push({
+      id: row.id,
+      action: row.action,
+      status: row.status,
+      issue: "success with tx_hash but action is non-chain",
+      ts: row.timestamp,
+    });
+  }
+  if (row.status === "pending" && row.timestamp && row.timestamp < cutoff15m) {
+    issues.push({
+      id: row.id,
+      action: row.action,
+      status: row.status,
+      issue: "pending older than 15m TTL (stale lock)",
+      ts: row.timestamp,
+    });
+  }
+  if (row.status === "reverted_chain" && hasTx) {
+    issues.push({
+      id: row.id,
+      action: row.action,
+      status: row.status,
+      issue: "reverted_chain but has tx_hash (mined revert — expected)",
+      ts: row.timestamp,
+    });
+  }
+  if (row.status === "simulated_stub" && hasTx) {
+    issues.push({
+      id: row.id,
+      action: row.action,
+      status: row.status,
+      issue: "simulated_stub with real tx_hash",
+      ts: row.timestamp,
+    });
+  }
+}
+
+const swapRows = allExec.filter((r) => r.action === "swap");
+console.log(`\n=== SWAP SUMMARY (${swapRows.length} rows) ===`);
+const swapByStatus = new Map<string, number>();
+for (const s of swapRows) {
+  swapByStatus.set(s.status, (swapByStatus.get(s.status) ?? 0) + 1);
+}
+for (const [st, n] of [...swapByStatus.entries()].sort((a, b) => b[1] - a[1])) {
+  console.log(`  ${st.padEnd(22)} ${n}`);
+}
+for (const s of swapRows.slice(0, 8)) {
+  console.log(
+    `  ${s.timestamp?.toISOString()?.slice(0, 19) ?? "?"} | ${s.status.padEnd(20)} | $${s.amount} | tx=${s.txHash ? "yes" : "no"} | ${(s.reason ?? "").slice(0, 80)}`,
+  );
+}
+
+const realIssues = issues.filter((i) => !i.issue.includes("mined revert — expected"));
+console.log(`\n=== MISMATCH ISSUES (${realIssues.length} actionable, ${issues.length - realIssues.length} informational) ===`);
+for (const i of realIssues.slice(0, 40)) {
+  console.log(
+    `[${i.ts?.toISOString()?.slice(0, 19) ?? "?"}] ${i.action}/${i.status}: ${i.issue} (id=${i.id.slice(0, 8)}…)`,
+  );
+}
+if (realIssues.length > 40) console.log(`  … and ${realIssues.length - 40} more`);

@@ -81,7 +81,7 @@ export async function registerDcaWorkflow({
   await db.insert(executionsLog).values({
     userWallet: wallet,
     workflowId,
-    action: "swap",
+    action: "dca_register",
     amount,
     status: keeperhubWorkflowId ? "success" : "simulated_stub",
     reason: keeperhubWorkflowId

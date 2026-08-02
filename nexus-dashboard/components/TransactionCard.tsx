@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp, Cpu, Copy, Check } from "lucide-react";
 import { isKeeperHubWorkflowId, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
 import ExecutionPipeline from "@/components/ExecutionPipeline";
+import { getExecutionDisplay, hasMinedTx } from "@/lib/execution-pipeline";
 
 export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub" | "delayed";
 
@@ -31,7 +32,8 @@ export default function TransactionCard({
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const isStubTx = status === "simulated_stub" || !txHash || txHash.length !== 66 || txHash.includes("11111111") || txHash === "0x" + "1".repeat(64);
+  const display = getExecutionDisplay(status, action, txHash);
+  const isStubTx = status === "simulated_stub" || !hasMinedTx(txHash);
 
   // Strict workflow ID extraction — no executionId fallback (would 404 on /workflows/...)
   const rawWfId = aiAnalysis?.keeperhubWorkflowId ?? aiAnalysis?.workflowId;
@@ -60,14 +62,41 @@ export default function TransactionCard({
     </span>
   );
 
-  const badge = {
-    success:             <span className="pill pill-success"><CheckCircle2 size={12} /> Executed</span>,
-    simulated_stub:      <span className="pill pill-warning" style={{ background: "rgba(245,158,11,0.15)", color: "#f59e0b", borderColor: "rgba(245,158,11,0.3)" }}><AlertTriangle size={12} /> Simulated</span>,
-    reverted_simulation: <span className="pill pill-warning"><AlertTriangle size={12} /> ⚡ Pre-Flight Intercept</span>,
-    reverted_chain:      <span className="pill pill-danger"><XCircle size={12} /> Chain Revert</span>,
-    pending:             <span className="pill pill-cyan"><Clock size={12} /> Pending</span>,
-    delayed:             <span className="pill pill-warning" style={{ background: "rgba(245,158,11,0.12)", color: "#fbbf24", borderColor: "rgba(245,158,11,0.3)" }}><Clock size={12} /> Delayed</span>,
-  }[status] || <span className="pill pill-warning"><AlertTriangle size={12} /> Simulated</span>;
+  const badgeIcon = {
+    success: CheckCircle2,
+    warning: AlertTriangle,
+    danger: XCircle,
+    cyan: Clock,
+    muted: AlertTriangle,
+  }[display.badgeVariant];
+
+  const badgeClass = {
+    success: "pill-success",
+    warning: "pill-warning",
+    danger: "pill-danger",
+    cyan: "pill-cyan",
+    muted: "pill-warning",
+  }[display.badgeVariant];
+
+  const BadgeIcon = badgeIcon;
+
+  const badge = (
+    <span
+      className={`pill ${badgeClass}`}
+      title={display.summary}
+      style={
+        display.badgeVariant === "muted"
+          ? { background: "rgba(255,255,255,0.05)", border: "1px solid var(--border)", color: "var(--text-muted)" }
+          : display.badgeLabel === "Delayed"
+          ? { background: "rgba(245,158,11,0.12)", color: "#fbbf24", borderColor: "rgba(245,158,11,0.3)" }
+          : display.badgeLabel === "Simulated"
+          ? { background: "rgba(245,158,11,0.15)", color: "#f59e0b", borderColor: "rgba(245,158,11,0.3)" }
+          : undefined
+      }
+    >
+      <BadgeIcon size={12} /> {display.badgeLabel}
+    </span>
+  );
 
   return (
     <div className="card card-interactive" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
@@ -86,7 +115,7 @@ export default function TransactionCard({
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontFamily: "var(--font-space-grotesk), sans-serif", fontWeight: 800, fontSize: 15, color: "var(--text)", textTransform: "capitalize" }}>
-                {action} Action
+                {action.replace(/_/g, " ")}
               </span>
               {providerBadge}
             </div>
