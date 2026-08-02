@@ -135,8 +135,10 @@ KeeperHub: [execution `80bk5zy4fwdfedy3w1rdi`](https://app.keeperhub.com/executi
 
 | Time | Scene | Say |
 |------|-------|-----|
-| 0:00 | Portfolio (HF ~1.32) | Real Aave V3.2 on Base Sepolia |
-| 0:30 | Chat: *"What is my health factor?"* | NL → live chain read |
+| 0:00 | Portfolio → **Integrations** card (Tempo balance + proof links) | Base Sepolia + Tempo Moderato tier-2 proofs |
+| 0:20 | **Query HF via Marketplace** widget | KeeperHub listing or local Aave fallback (x402 badge) |
+| 0:40 | Feed → Tempo proof row + BaseScan repay links | Live chain-aware explorers |
+| 1:00 | Chat: *"What is my health factor?"* | NL → live chain read |
 | 1:00 | Feed → BaseScan repay links | Autonomous repay, HF recovered |
 | 1:30 | Decision Matrix | Harness ranked repay vs hold |
 | 2:00 | Resilience | Simulation intercept → success |

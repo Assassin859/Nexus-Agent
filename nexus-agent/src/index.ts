@@ -44,8 +44,12 @@ import {
   AuthError,
 } from "./middleware/auth.js";
 import { resolveKeeperHubApiKey } from "./lib/user-context.js";
-import { sendKeeperNotification } from "./lib/mcp-client.js";
+import { sendKeeperNotification, callListedWorkflow } from "./lib/mcp-client.js";
 import { shouldAlert } from "./lib/alert-throttle.js";
+import { getTempoPathUsdBalance } from "./lib/tempo-balance.js";
+import { logExternalExecution } from "./lib/log-external-execution.js";
+import { parseHfMarketplaceResult } from "./lib/parse-hf-marketplace.js";
+import { HF_READ_SLUG, TEMPO_CHAIN_ID, tempoAddressUrl } from "./lib/tier2-proofs.js";
 import { pinoHttp } from "pino-http";
 import crypto from "node:crypto";
 
@@ -438,6 +442,23 @@ app.get("/api/portfolio/:walletAddress", requireAuth, async (req: express.Reques
       ? parseFloat(((position.debtUSD / position.collateralUSD) * 100).toFixed(1))
       : 0;
 
+    let tempo: {
+      chainId: number;
+      agenticWallet: string;
+      pathUsdBalance: number | null;
+      explorerUrl: string;
+    } | null = null;
+
+    if (ctx?.signerWallet) {
+      const pathUsdBalance = await getTempoPathUsdBalance(ctx.signerWallet);
+      tempo = {
+        chainId: TEMPO_CHAIN_ID,
+        agenticWallet: ctx.signerWallet,
+        pathUsdBalance,
+        explorerUrl: tempoAddressUrl(ctx.signerWallet),
+      };
+    }
+
     res.json({
       walletAddress,
       healthFactor: position.healthFactor !== null ? parseFloat(position.healthFactor.toFixed(2)) : null,
@@ -457,12 +478,107 @@ app.get("/api/portfolio/:walletAddress", requireAuth, async (req: express.Reques
       isError: position.isError ?? false,
       errorReason: position.errorReason,
       workflows,
+      tempo,
     });
   } catch (err) {
     if (err instanceof AuthError) {
       return res.status(err.statusCode).json({ error: err.message });
     }
     res.status(500).json({ error: err instanceof Error ? err.message : "Portfolio fetch failed" });
+  }
+});
+
+app.post("/api/marketplace/hf-read", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const walletAddress = authedReq.userWallet.toLowerCase();
+    const bodyWallet = typeof req.body?.walletAddress === "string"
+      ? req.body.walletAddress.toLowerCase()
+      : walletAddress;
+    assertWalletScope(authedReq, bodyWallet);
+
+    const apiKey = await resolveKeeperHubApiKey(walletAddress);
+    let source: "keeperhub_marketplace" | "local_aave_read" = "keeperhub_marketplace";
+    let listing402 = false;
+    let raw: unknown;
+
+    const call = await callListedWorkflow(HF_READ_SLUG, { walletAddress: bodyWallet }, apiKey);
+
+    if (call.is402) {
+      listing402 = true;
+      source = "local_aave_read";
+    } else if (call.isStub) {
+      listing402 = false;
+      source = "local_aave_read";
+    } else {
+      raw = call.data;
+      const rawStr = JSON.stringify(raw ?? "");
+      if (rawStr.includes("402") || rawStr.toLowerCase().includes("payment required")) {
+        listing402 = true;
+        source = "local_aave_read";
+      }
+    }
+
+    let healthFactor: number | null;
+    let totalCollateralUSD: number;
+    let totalDebtUSD: number;
+
+    if (source === "local_aave_read") {
+      const position = await getAavePosition(bodyWallet);
+      healthFactor = position.healthFactor !== null
+        ? parseFloat(position.healthFactor.toFixed(2))
+        : null;
+      totalCollateralUSD = parseFloat(position.collateralUSD.toFixed(0));
+      totalDebtUSD = parseFloat(position.debtUSD.toFixed(0));
+    } else {
+      const parsed = parseHfMarketplaceResult(raw);
+      if (parsed.healthFactor === null) {
+        const position = await getAavePosition(bodyWallet);
+        healthFactor = position.healthFactor !== null
+          ? parseFloat(position.healthFactor.toFixed(2))
+          : null;
+        totalCollateralUSD = parseFloat(position.collateralUSD.toFixed(0));
+        totalDebtUSD = parseFloat(position.debtUSD.toFixed(0));
+        source = "local_aave_read";
+      } else {
+        healthFactor = parsed.healthFactor;
+        totalCollateralUSD = parsed.totalCollateralUSD ?? 0;
+        totalDebtUSD = parsed.totalDebtUSD ?? 0;
+      }
+    }
+
+    await logExternalExecution({
+      userWallet: bodyWallet,
+      action: "marketplace_hf_read",
+      amount: 0,
+      status: "success",
+      reason: listing402
+        ? "HF read via local Aave fallback (marketplace x402)"
+        : "HF read via KeeperHub marketplace listing",
+      aiAnalysis: {
+        chainId: 84532,
+        source,
+        listing402,
+        healthFactor,
+        totalCollateralUSD,
+        totalDebtUSD,
+        listingSlug: HF_READ_SLUG,
+      },
+    });
+
+    res.json({
+      healthFactor,
+      totalCollateralUSD,
+      totalDebtUSD,
+      source,
+      listing402: listing402 || undefined,
+      raw: source === "keeperhub_marketplace" ? raw : undefined,
+    });
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "HF read failed" });
   }
 });
 

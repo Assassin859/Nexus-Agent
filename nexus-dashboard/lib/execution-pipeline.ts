@@ -1,4 +1,6 @@
 import type { TransactionStatus } from "@/components/TransactionCard";
+import { TEMPO_CHAIN_ID } from "@/lib/tier2-proofs";
+import { chainLabel } from "@/lib/tx-explorer";
 
 export const PIPELINE_STEPS = ["Triggered", "Simulating", "Broadcasting", "Mined"] as const;
 
@@ -26,6 +28,8 @@ const CHAIN_ACTIONS = new Set([
   "swap",
   "rotate",
   "payroll",
+  "tempo_transfer",
+  "marketplace_hf_read",
 ]);
 
 const EVALUATED_ACTIONS = new Set(["hold", "block_transaction"]);
@@ -96,11 +100,13 @@ export function getExecutionDisplay(
   status: TransactionStatus,
   action: string,
   txHash?: string,
+  aiAnalysis?: Record<string, unknown> | null,
 ): ExecutionDisplay {
   const pipeline = getExecutionPipeline(status, action, txHash);
   const chainAction = CHAIN_ACTIONS.has(action);
   const mined = status === "success" && hasMinedTx(txHash);
   const stub = isStubTx(status, txHash);
+  const chain = chainLabel(aiAnalysis?.chainId);
 
   if (EVALUATED_ACTIONS.has(action)) {
     return {
@@ -112,11 +118,14 @@ export function getExecutionDisplay(
   }
 
   if (status === "success" && mined) {
+    const tempoMined = aiAnalysis?.chainId === TEMPO_CHAIN_ID || aiAnalysis?.chainId === "42431";
     return {
       ...pipeline,
       badgeLabel: "Mined",
       badgeVariant: "success",
-      summary: "Pre-flight simulation passed, transaction broadcast, and confirmed on Base Sepolia.",
+      summary: tempoMined
+        ? "Tempo transfer-with-memo confirmed on Moderato testnet via KeeperHub MCP."
+        : `Pre-flight simulation passed, transaction broadcast, and confirmed on ${chain}.`,
     };
   }
 
@@ -173,6 +182,15 @@ export function getExecutionDisplay(
       badgeLabel: "Simulated",
       badgeVariant: "warning",
       summary: "KeeperHub MCP unavailable — recorded as stub without real broadcast.",
+    };
+  }
+
+  if (action === "marketplace_hf_read" && status === "success") {
+    return {
+      ...pipeline,
+      badgeLabel: "Read",
+      badgeVariant: "success",
+      summary: "Health factor read via KeeperHub marketplace listing (or local Aave fallback).",
     };
   }
 

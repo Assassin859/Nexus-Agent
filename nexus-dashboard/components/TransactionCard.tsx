@@ -5,6 +5,7 @@ import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown,
 import { isKeeperHubWorkflowId, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
 import ExecutionPipeline from "@/components/ExecutionPipeline";
 import { getExecutionDisplay, hasMinedTx } from "@/lib/execution-pipeline";
+import { getTxExplorerUrl } from "@/lib/tx-explorer";
 
 export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub" | "delayed";
 
@@ -32,8 +33,9 @@ export default function TransactionCard({
   const [expanded, setExpanded] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const display = getExecutionDisplay(status, action, txHash);
+  const display = getExecutionDisplay(status, action, txHash, aiAnalysis);
   const isStubTx = status === "simulated_stub" || !hasMinedTx(txHash);
+  const explorer = txHash && !isStubTx ? getTxExplorerUrl(txHash, aiAnalysis) : null;
 
   // Strict workflow ID extraction — no executionId fallback (would 404 on /workflows/...)
   const rawWfId = aiAnalysis?.keeperhubWorkflowId ?? aiAnalysis?.workflowId;
@@ -238,14 +240,14 @@ export default function TransactionCard({
             </span>
           )}
 
-          {!isStubTx && txHash && (
+          {!isStubTx && explorer && (
             <a
-              href={`https://sepolia.basescan.org/tx/${txHash}`}
+              href={explorer.url}
               target="_blank"
               rel="noopener noreferrer"
               style={{ display: "flex", alignItems: "center", gap: 4, color: "#34d399", fontWeight: 600, textDecoration: "none" }}
             >
-              Live BaseScan <ExternalLink size={12} />
+              {explorer.label} <ExternalLink size={12} />
             </a>
           )}
         </div>

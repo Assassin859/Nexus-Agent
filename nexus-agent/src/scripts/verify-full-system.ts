@@ -22,6 +22,10 @@ import {
   TEMPO_PROOF_MEMO,
   TEMPO_TESTNET_CHAIN,
 } from "../lib/tempo-proof-workflow.js";
+import { getTxExplorerUrl, chainLabel } from "../lib/tx-explorer.js";
+import { parsePathUsdBalance } from "../lib/tempo-balance.js";
+import { parseHfMarketplaceResult } from "../lib/parse-hf-marketplace.js";
+import { TEMPO_CHAIN_ID, TEMPO_PROOF_TX } from "../lib/tier2-proofs.js";
 
 async function main() {
   const isIntegration = process.argv.includes("--integration");
@@ -239,6 +243,24 @@ async function main() {
   assert(tempoStep?.data?.config?.actionType === "tempo/transfer-with-memo", "Tempo Proof Graph — transfer-with-memo action");
   assert(tempoStep?.data?.config?.network === TEMPO_TESTNET_CHAIN, "Tempo Proof Graph — Moderato chain 42431");
   assert(tempoStep?.data?.config?.memo === TEMPO_PROOF_MEMO, "Tempo Proof Graph — default memo");
+
+  // 10. Tier 2 — tx explorer + tempo balance parser
+  const tempoExplorer = getTxExplorerUrl(TEMPO_PROOF_TX, { chainId: TEMPO_CHAIN_ID });
+  assert(tempoExplorer.url.includes("explore.testnet.tempo.xyz"), "Tx Explorer — Tempo Moderato URL");
+  assert(tempoExplorer.label === "Live Tempo Explorer", "Tx Explorer — Tempo label");
+  const baseExplorer = getTxExplorerUrl("0x" + "a".repeat(64), { chainId: 84532 });
+  assert(baseExplorer.url.includes("sepolia.basescan.org"), "Tx Explorer — Base Sepolia URL");
+  assert(chainLabel(TEMPO_CHAIN_ID) === "Tempo Moderato", "Tx Explorer — chainLabel Tempo");
+  assert(parsePathUsdBalance(1_000_000n) === 1, "Tempo Balance — 6-decimal PathUSD parse");
+
+  const hfParsed = parseHfMarketplaceResult({
+    healthFactor: "1500000000000000000",
+    totalCollateralBase: "50000000000",
+    totalDebtBase: "10000000000",
+  });
+  assert(hfParsed.healthFactor === 1.5, "HF Marketplace Parser — 1e18 health factor");
+  assert(hfParsed.totalCollateralUSD === 500, "HF Marketplace Parser — 1e8 collateral USD");
+  assert(hfParsed.totalDebtUSD === 100, "HF Marketplace Parser — 1e8 debt USD");
 
   // ── Tier B: On-Chain RPC Integrations (Optional) ──────────────────────────
   console.log("\n── Tier B: On-Chain RPC Queries (Optional) ──");

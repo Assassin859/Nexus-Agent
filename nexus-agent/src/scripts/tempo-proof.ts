@@ -17,11 +17,17 @@ import {
   TEMPO_PROOF_WORKFLOW_NAME,
   TEMPO_TESTNET_CHAIN,
 } from "../lib/tempo-proof-workflow.js";
+import { logExternalExecution } from "../lib/log-external-execution.js";
+import { TEMPO_CHAIN_ID, tempoTxUrl } from "../lib/tier2-proofs.js";
 
 const agentic =
   process.env.AGENTIC_WALLET_ADDRESS ||
   process.env.NEXT_PUBLIC_WALLET_ADDRESS ||
   "0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b";
+
+const monitoredWallet = (
+  process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b"
+).toLowerCase();
 
 async function main() {
   console.log("=================================================");
@@ -93,6 +99,25 @@ async function main() {
     console.error("   2. Fund with PathUSD on chain 42431 (see submission_runbook.md)");
     console.error("   3. Verify: https://explore.testnet.tempo.xyz/address/" + agentic);
     process.exit(1);
+  }
+
+  if (settled.txHash) {
+    const { inserted } = await logExternalExecution({
+      userWallet: monitoredWallet,
+      action: "tempo_transfer",
+      amount: 0,
+      status: "success",
+      txHash: settled.txHash,
+      reason: "Tempo Moderato transfer-with-memo proof",
+      aiAnalysis: {
+        chainId: TEMPO_CHAIN_ID,
+        explorerUrl: tempoTxUrl(settled.txHash),
+        keeperhubWorkflowId: workflowId,
+        executionId,
+        memo: TEMPO_PROOF_MEMO,
+      },
+    });
+    console.log(`\n  Feed log: ${inserted ? "inserted" : "already present"} in executions_log`);
   }
 
   console.log("\n=================================================");

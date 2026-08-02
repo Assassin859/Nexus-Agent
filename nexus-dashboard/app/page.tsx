@@ -8,6 +8,8 @@ import { proxyFetch } from "@/lib/agent-fetch";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import EthPriceChart from "@/components/EthPriceChart";
+import IntegrationsProofCard from "@/components/IntegrationsProofCard";
+import HfReadWidget from "@/components/HfReadWidget";
 import { HF_CRITICAL, HF_WARNING, NETWORK_LABEL } from "@/lib/guardian-thresholds";
 
 type PortfolioData = {
@@ -28,6 +30,12 @@ type PortfolioData = {
   _unauthorized?: boolean;
   _forbidden?: boolean;
   _agentError?: boolean;
+  tempo?: {
+    chainId: number;
+    agenticWallet: string;
+    pathUsdBalance: number | null;
+    explorerUrl: string;
+  } | null;
 };
 
 type WorkflowRow = { id: string; type: string; status: string; amount?: number };
@@ -229,6 +237,11 @@ export default function PortfolioPage() {
       </div>
 
       <EthPriceChart />
+
+      <div>
+        <IntegrationsProofCard tempo={data?.tempo} />
+        <HfReadWidget />
+      </div>
 
       {/* APY Table */}
       <div className="card">

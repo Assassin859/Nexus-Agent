@@ -2,7 +2,12 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Calendar, Repeat, Banknote, Bell, Scale, ArrowRight } from "lucide-react";
+import { Shield, Calendar, Repeat, Banknote, Bell, Scale, ArrowRight, Store, Zap, Terminal } from "lucide-react";
+import {
+  MARKETPLACE_URL,
+  TEMPO_PROOF_TX,
+  tempoTxUrl,
+} from "@/lib/tier2-proofs";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 import Pagination from "@/components/Pagination";
@@ -11,6 +16,7 @@ import { usePagination } from "@/hooks/usePagination";
 type DeployMode =
   | { mode: "api"; apiPath: string; body?: Record<string, unknown>; redirect?: string }
   | { mode: "chat" }
+  | { mode: "link"; href: string; external?: boolean }
   | { mode: "blocked"; reason: string };
 
 const TEMPLATES: Array<{
@@ -96,6 +102,36 @@ const TEMPLATES: Array<{
       reason: "Requires monitored wallet = agentic MPC wallet for on-chain rotation.",
     },
   },
+  {
+    icon: Store,
+    color: "#06b6d4",
+    title: "Marketplace HF-read",
+    desc: "Published read-only Aave HF snapshot callable by external agents ($0.01/call x402).",
+    tag: "KeeperHub Marketplace",
+    prompt: "Query my health factor via the nexus-guardian-hf-read marketplace listing.",
+    deploy: { mode: "link", href: MARKETPLACE_URL, external: true },
+  },
+  {
+    icon: Zap,
+    color: "#f59e0b",
+    title: "Tempo transfer-with-memo",
+    desc: "On-chain proof: PathUSD transfer-with-memo on Tempo Moderato via KeeperHub MCP.",
+    tag: "Tempo Moderato",
+    prompt: "Show the Tempo Moderato transfer-with-memo proof transaction.",
+    deploy: { mode: "link", href: tempoTxUrl(TEMPO_PROOF_TX), external: true },
+  },
+  {
+    icon: Terminal,
+    color: "#64748b",
+    title: "Run Tempo proof",
+    desc: "Execute a fresh Tempo transfer-with-memo attestation from the agent CLI.",
+    tag: "CLI Proof",
+    prompt: "How do I run the Tempo proof script?",
+    deploy: {
+      mode: "blocked",
+      reason: "Run `pnpm run tempo:proof` from nexus-agent (requires funded agentic wallet).",
+    },
+  },
 ];
 
 const PAGE_SIZE = 3;
@@ -114,6 +150,10 @@ export default function TemplatesPage() {
 
   const handleFork = async (tmpl: (typeof TEMPLATES)[0]) => {
     if (tmpl.deploy.mode === "blocked") return;
+    if (tmpl.deploy.mode === "link") {
+      window.open(tmpl.deploy.href, tmpl.deploy.external !== false ? "_blank" : "_self");
+      return;
+    }
 
     setDeploying(tmpl.title);
     setStatusMsg(null);
@@ -183,6 +223,7 @@ export default function TemplatesPage() {
           const Icon = tmpl.icon;
           const isSelected = deploying === tmpl.title;
           const isBlocked = tmpl.deploy.mode === "blocked";
+          const isLink = tmpl.deploy.mode === "link";
           const blockedReason = tmpl.deploy.mode === "blocked" ? tmpl.deploy.reason : undefined;
           return (
             <div
@@ -205,11 +246,11 @@ export default function TemplatesPage() {
                     <Icon size={24} />
                   </div>
                   <span
-                    className={isBlocked ? "pill" : "pill pill-success"}
+                    className={isBlocked ? "pill" : isLink ? "pill pill-cyan" : "pill pill-success"}
                     style={{ fontSize: 10.5 }}
                     title={blockedReason}
                   >
-                    {isBlocked ? "Same wallet required" : "Deploy in 60s"}
+                    {isBlocked ? "Same wallet required" : isLink ? "View proof" : "Deploy in 60s"}
                   </span>
                 </div>
                 <div className="tmpl-name">{tmpl.title}</div>
@@ -225,6 +266,14 @@ export default function TemplatesPage() {
                 {isBlocked ? (
                   <button disabled className="btn" style={{ padding: "7px 14px", fontSize: 12, opacity: 0.5 }}>
                     Unavailable
+                  </button>
+                ) : isLink ? (
+                  <button
+                    onClick={() => handleFork(tmpl)}
+                    className="btn btn-primary"
+                    style={{ padding: "7px 14px", fontSize: 12 }}
+                  >
+                    View proof <ArrowRight size={13} />
                   </button>
                 ) : (
                   <button
