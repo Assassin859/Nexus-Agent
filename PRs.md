@@ -1,6 +1,6 @@
 # KeeperHub Onboarding UX Bounty — Pull Request Specifications
 
-> **Status:** Upstream PR drafts for KeeperHub repo. Still valid for bounty submission. NexusAgent integration workarounds documented in [KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md).
+> **Status:** Upstream PR drafts for KeeperHub repo. Still valid for bounty submission. NexusAgent integration workarounds documented in [BUGS.md](BUGS.md).
 
 ---
 

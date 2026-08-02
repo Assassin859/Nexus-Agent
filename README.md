@@ -29,7 +29,7 @@ AI brain that monitors Aave V3.2 health factors, runs a **multi-candidate Reason
 nexus-agent/       # Express API, cron modules, MCP, Postgres
 nexus-dashboard/   # Next.js 14 dashboard
 docs/              # TECHNICAL_SPEC.md (authoritative architecture)
-submission_runbook.md · railway_setup.md · KEEPERHUB_BUGS.md
+submission_runbook.md · railway_setup.md · BUGS.md
 ```
 
 ---
@@ -104,9 +104,9 @@ See [railway_setup.md](railway_setup.md). Dashboard uses **Next.js API proxies**
 | [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Architecture, harness, schemas, modules (judges) |
 | [submission_runbook.md](submission_runbook.md) | Demo script, submission fields, checklist |
 | [railway_setup.md](railway_setup.md) | Production env vars & troubleshooting |
-| [KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md) | UX bounty — reproducible KeeperHub friction |
+| [BUGS.md](BUGS.md) | UX bounty — reproducible KeeperHub friction (verified Aug 2026) |
 | [PRs.md](PRs.md) | Upstream PR drafts |
-| [plan.md](plan.md) | Submission batches & status |
+| [PLAN.md](PLAN.md) | Full submission roadmap + competitor win plan |
 | [model.md](model.md) | Zod schemas reference |
 
 **Archived (historical):** [goal.md](goal.md) · [context.md](context.md) · [implementation_plan.md](implementation_plan.md) · [KeeperHub_Guardian_Project_Plan.md](KeeperHub_Guardian_Project_Plan.md)
@@ -117,7 +117,7 @@ See [railway_setup.md](railway_setup.md). Dashboard uses **Next.js API proxies**
 
 KeeperHub OAuth ≠ API key (BUG-02) · MCP cold-start stubs · Guardian `hold` at safe HF · Compound APY fallback on Sepolia · dual-wallet yield skip · OpenRouter paid model recommended
 
-Details: [submission_runbook.md](submission_runbook.md) · [KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md)
+Details: [submission_runbook.md](submission_runbook.md) · [BUGS.md](BUGS.md)
 
 ---
 

@@ -137,7 +137,7 @@ pnpm --prefix nexus-agent run surfaces
 ## Known limitations (tell judges)
 
 1. Dual-wallet → Yield skips on-chain (roadmap: unified wallet)
-2. KeeperHub OAuth ≠ API key — paste `kh_...` ([BUG-02](KEEPERHUB_BUGS.md))
+2. KeeperHub OAuth ≠ API key — paste `kh_...` ([BUG-02](BUGS.md))
 3. MCP cold start may return stubs — warm with `pnpm run surfaces`
 4. Guardian at safe HF logs `hold`, not a new repay
 5. Paid OpenRouter model recommended
