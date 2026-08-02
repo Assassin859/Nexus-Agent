@@ -4,6 +4,7 @@ import { DCASchema, DCA_SYSTEM_PROMPT } from "../brain/schemas.js";
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog } from "../db/schema.js";
 import { simulateErc20Action } from "../lib/simulate.js";
+import { acquirePendingLock } from "../lib/pending-lock.js";
 import { createWorkflow, executeWorkflow, pollExecutionUntilSettled, type WorkflowStep } from "../lib/mcp-client.js";
 import { getProvider } from "../lib/rpc.js";
 import { encodeUniswapSwap, UNISWAP_V3_ROUTER, USDC_SEPOLIA } from "../lib/calldata.js";
@@ -165,15 +166,19 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
   steps.push({ type: "transaction", to: UNISWAP_V3_ROUTER, calldata, gasStrategy: "standard" });
 
-  // Insert pending row before execution
-  const [pendingRow] = await db.insert(executionsLog).values({
+  // Atomically acquire pending lock before execution
+  const pendingLock = await acquirePendingLock({
     userWallet: context.monitoredWallet,
     action: "swap",
     amount: Math.round(workflow.amount),
-    status: "pending",
     reason: decision.userExplanation,
     aiAnalysis: decision.analysis,
-  }).returning({ id: executionsLog.id });
+  });
+  if (!pendingLock) {
+    log.warn("Concurrent DCA swap pending lock — skipping.");
+    return;
+  }
+  const pendingRow = { id: pendingLock.id };
 
   try {
     const { workflowId, isStub: createStub } = await createWorkflow({

@@ -1,4 +1,5 @@
 import { pgTable, uuid, varchar, integer, timestamp, uniqueIndex, index, jsonb } from "drizzle-orm/pg-core";
+import { sql } from "drizzle-orm";
 
 // 1. Repayment Cycles Table: Enforces spending limits per cycle per wallet
 export const repaymentCycles = pgTable("repayment_cycles", {
@@ -46,6 +47,9 @@ export const executionsLog = pgTable("executions_log", {
   timestamp: timestamp("timestamp").defaultNow(),
 }, (table) => ({
   userWalletIdx: index("executions_log_user_wallet_idx").on(table.userWallet),
+  pendingLockIdx: uniqueIndex("executions_log_pending_lock_idx")
+    .on(table.userWallet, table.action)
+    .where(sql`${table.status} = 'pending'`),
 }));
 
 // 4. User Settings Table: Stores per-user KeeperHub credentials in Postgres for production

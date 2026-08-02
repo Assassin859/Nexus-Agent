@@ -6,6 +6,7 @@ import { executionsLog } from "../db/schema.js";
 import { simulate } from "../lib/simulate.js";
 import { createWorkflow, executeWorkflow, sendKeeperNotification, pollExecutionUntilSettled, type WorkflowStep } from "../lib/mcp-client.js";
 import { ensureAllowance } from "../lib/allowance.js";
+import { acquirePendingLock } from "../lib/pending-lock.js";
 import {
   encodeAaveWithdraw,
   encodeCompoundSupply,
@@ -202,15 +203,19 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
   steps.push({ type: "transaction", to: COMPOUND_V3_USDC, calldata: supplyCalldata, gasStrategy: "standard" });
 
-  // Insert pending row before execution
-  const [pendingRow] = await db.insert(executionsLog).values({
+  // Atomically acquire pending lock before execution
+  const pendingLock = await acquirePendingLock({
     userWallet: monitoredWallet,
     action: "rotate",
     amount: Math.round(rotateAmount),
-    status: "pending",
     reason: decision.userExplanation,
     aiAnalysis: decision.analysis,
-  }).returning({ id: executionsLog.id });
+  });
+  if (!pendingLock) {
+    log.warn("Concurrent yield rotate pending lock — skipping.");
+    return;
+  }
+  const pendingRow = { id: pendingLock.id };
 
   try {
     const { workflowId, isStub: createStub } = await createWorkflow({

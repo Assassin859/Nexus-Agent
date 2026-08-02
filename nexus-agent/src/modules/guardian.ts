@@ -25,6 +25,7 @@ import {
   shouldReleaseCycleBudget,
   resolveExecutionLogStatus,
 } from "../lib/repayment-cycle.js";
+import { acquirePendingLock } from "../lib/pending-lock.js";
 import { eq, and, lt, desc, gte } from "drizzle-orm";
 
 const ALLOWED_CHANNELS = ["telegram", "discord", "email"] as const;
@@ -495,15 +496,22 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
     budgetReserved = Math.round(clampedAmount);
   }
 
-  // ── Step 10: Insert pending row before execution ─────────────────────────
-  const [pendingRow] = await db.insert(executionsLog).values({
+  // ── Step 10: Atomically acquire pending lock before execution ─────────────
+  const pendingLock = await acquirePendingLock({
     userWallet: monitoredWallet,
     action: selectedRecommendation.action,
     amount: Math.round(clampedAmount),
-    status: "pending",
     reason: decision.userExplanation,
     aiAnalysis: aiAnalysisPayload,
-  }).returning({ id: executionsLog.id });
+  });
+  if (!pendingLock) {
+    if (budgetReserved > 0 && cycle) {
+      await releaseCycleBudget(cycle.id, budgetReserved);
+    }
+    log.warn("Concurrent pending lock — another execution in flight; skipping.");
+    return;
+  }
+  const pendingRow = { id: pendingLock.id };
 
   try {
     // ── Step 11: KeeperHub execution with ERC20 approval prepended ──────

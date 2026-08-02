@@ -109,11 +109,11 @@ pnpm --prefix nexus-agent run surfaces        → 17/17 MCP surfaces verified
 | P0 | `fix-cycle-budget-timeout` | done | Budget released on poll timeout |
 | P0 | `fix-mcp-apikey` | done | Per-wallet `kh_...` ignored by MCP |
 | P0 | `fix-dca-double-exec` | done | KeeperHub cron + local cron both fire |
-| P1 | `fix-pending-lock-atomic` | next | Duplicate execution race |
-| P1 | `fix-simulate-full-sequence` | pending | Main tx skipped after approve sim |
+| P1 | `fix-pending-lock-atomic` | done | Duplicate execution race |
+| P1 | `fix-simulate-full-sequence` | next | Main tx skipped after approve sim |
 | P2 | Dashboard wave (10–13) | pending | Portfolio fallback, OAuth false connected, workflow counts |
 | P3 | Medium hardening (14–22) | pending | Schema unique, RPC fail-closed, SIWE nonce, labels |
 
-**Start here:** `fix-pending-lock-atomic` in `nexus-agent/src/modules/guardian.ts`.
+**Start here:** `fix-simulate-full-sequence` in `nexus-agent/src/lib/simulate.ts`.
 
 **Gate 5 exit criteria:** Wave 1–2 complete; Guardian cannot hold at critical HF with funds; DCA single-fire verified; dashboard shows real auth errors.

@@ -10,6 +10,7 @@ import { ensureAllowance } from "../lib/allowance.js";
 import { selectBestCandidate, enforceCriticalHfFloor } from "../lib/guardian-candidate-select.js";
 import { getCycleRemaining, shouldReleaseCycleBudget, resolveExecutionLogStatus } from "../lib/repayment-cycle.js";
 import { buildWorkflowGraph } from "../lib/workflow-graph.js";
+import { isPendingLockConflict } from "../lib/pending-lock.js";
 
 async function main() {
   const isIntegration = process.argv.includes("--integration");
@@ -193,6 +194,11 @@ async function main() {
     steps: [sampleStep],
   });
   assert(cronDisabledRemote.enabled === false, "Workflow Graph — remoteCronEnabled false → enabled false");
+
+  // 6h. Pending lock conflict detection (Postgres 23505)
+  assert(isPendingLockConflict({ code: "23505" }) === true, "Pending Lock — detects unique_violation 23505");
+  assert(isPendingLockConflict({ code: "23503" }) === false, "Pending Lock — ignores non-unique errors");
+  assert(isPendingLockConflict(new Error("fail")) === false, "Pending Lock — ignores generic errors");
 
   // 7. Repayment cycle remaining (never negative)
   assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: 2000 }) === 0, "Cycle Remaining — Clamps negative to 0 when over budget");
