@@ -1,6 +1,6 @@
 # NexusAgent — Technical Architecture & Implementation Specification
 
-> **Document status:** **Authoritative** for DoraHacks / Agents Onchain 2026 submission · **Last verified:** 2026-08-02 (live harness + Postgres `executions_log`)  
+> **Document status:** **Authoritative** for DoraHacks / Agents Onchain 2026 submission · **Last verified:** 2026-08-02 (bugfix sprint complete — live harness 41/42 + Postgres `executions_log`)  
 > **Brain provider:** OpenRouter `google/gemini-2.5-flash` via [`getBrainModel()`](../nexus-agent/src/brain/provider.ts). Do **not** use legacy GitHub Models references in [goal.md](../goal.md) (archived) or [implementation_plan.md](../implementation_plan.md) (historical).
 
 > **Target Audience:** Hackathon Judges (DoraHacks / Agents Onchain 2026), AI Engineers, Web3 Protocol Developers  
@@ -362,18 +362,18 @@ Built with Next.js 14 (App Router), Vanilla CSS tokens, and Lucide React icons a
 ## 9. System Verification Harness (`verify-full-system.ts`)
 
 Run via `pnpm verify`:
-* **Tier A (34 offline unit tests — mandatory)**: Wallet normalization, MCP parsers, candidate selection, safety floor, cycle budget, MCP key cache, workflow graph enabled flag, payroll split, cron evaluator/resolver, ERC20 approve calldata, cycle remaining clamp.
+* **Tier A (39 offline unit tests — mandatory)**: Wallet normalization, MCP parsers, candidate selection, safety floor, cycle budget, MCP key cache, workflow graph enabled flag, cron `*/n` steps, pending-lock conflict detection, payroll split, cron evaluator/resolver, ERC20 approve calldata, cycle remaining clamp.
 * **Tier B (On-Chain RPC)**: Compound V3 APY (fallback on Sepolia), `ensureAllowance` capped calldata.
 * **Tier C (Integration, `--integration`)**: DB connectivity only; 2 workflow tests skipped (not yet implemented).
 
-**Live output (2026-08-02)** — paste exact Summary line, do not round:
+**Live output (2026-08-02, post bugfix sprint)** — paste exact Summary line, do not round:
 
 ```bash
 pnpm --prefix nexus-agent run verify
 ```
 
 ```
-Summary: ✓ 36 passed | ⚠ 2 skipped | ✗ 0 failed
+Summary: ✓ 41 passed | ⚠ 2 skipped | ✗ 0 failed
 ```
 
 ```bash
@@ -381,7 +381,7 @@ pnpm --prefix nexus-agent run verify:integration
 ```
 
 ```
-Summary: ✓ 37 passed | ⚠ 2 skipped | ✗ 0 failed
+Summary: ✓ 42 passed | ⚠ 2 skipped | ✗ 0 failed
 ```
 
 Additional scripts: `pnpm run e2e` (full system), `pnpm run phase2` (4 modules), `pnpm run surfaces` (17 MCP surfaces), `pnpm run logs`, `pnpm exec tsx src/scripts/db-audit.ts`.
@@ -394,4 +394,4 @@ Additional scripts: `pnpm run e2e` (full system), `pnpm run phase2` (4 modules),
 2. **Capped Security Philosophy**: Replaces dangerous `uint256.max` approvals with exact-amount approvals (+10% safety buffer), matching KeeperHub's security posture.
 3. **Zero Wasted Gas**: Pre-flight simulations intercept failing calls before broadcast.
 4. **Onboarding UX**: Solves address mismatch and key management issues via SIWE Web3 auth, Turnkey MPC alignment, and native AI tool calling.
-5. **Production Resilience**: Implements 15m pending lock TTL cleanup, remainder cent division rules, and compensating rollback cancellations.
+5. **Production Resilience**: Implements atomic pending locks (partial unique index), action-scoped 15m TTL cleanup, server-issued SIWE nonces, remainder cent division rules, full approve+main simulation, and compensating rollback cancellations.

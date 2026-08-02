@@ -1,6 +1,6 @@
 # NexusAgent — Submission Runbook (DoraHacks / Agents Onchain 2026)
 
-> **Last verified:** 2026-08-02 (live harness run) · **Chain:** Base Sepolia (84532)
+> **Last verified:** 2026-08-02 (bugfix sprint complete — harness 41/42) · **Chain:** Base Sepolia (84532)
 
 ---
 
@@ -47,14 +47,14 @@ Re-run: `pnpm --prefix nexus-agent run phase2` then `pnpm --prefix nexus-agent r
 
 ## Verification commands (exact counts)
 
-Live output from **2026-08-02** (re-run before submission; paste exact Summary line, do not round):
+Live output from **2026-08-02** (post bugfix sprint; re-run before submission; paste exact Summary line, do not round):
 
 ```bash
 pnpm --prefix nexus-agent run verify
 ```
 
 ```
-Summary: ✓ 36 passed | ⚠ 2 skipped | ✗ 0 failed
+Summary: ✓ 41 passed | ⚠ 2 skipped | ✗ 0 failed
 ```
 
 ```bash
@@ -62,7 +62,7 @@ pnpm --prefix nexus-agent run verify:integration
 ```
 
 ```
-Summary: ✓ 37 passed | ⚠ 2 skipped | ✗ 0 failed
+Summary: ✓ 42 passed | ⚠ 2 skipped | ✗ 0 failed
 ```
 
 Other commands:

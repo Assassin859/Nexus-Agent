@@ -388,12 +388,12 @@ pnpm --prefix nexus-agent run surfaces # warm KeeperHub MCP (surfaces 3–12)
 ```bash
 # Unit tests (CI fast-track) — requires ALCHEMY_RPC_URL for full Tier B coverage
 pnpm --prefix nexus-agent run verify
-# Live 2026-08-02: Summary: ✓ 36 passed | ⚠ 2 skipped | ✗ 0 failed
+# Live 2026-08-02 (post bugfix sprint): Summary: ✓ 41 passed | ⚠ 2 skipped | ✗ 0 failed
 # Minimal env (no RPC): fewer Tier B runs — paste exact Summary line, do not round
 
 # Integration (+ DB connectivity)
 pnpm --prefix nexus-agent run verify:integration
-# Live 2026-08-02: Summary: ✓ 37 passed | ⚠ 2 skipped | ✗ 0 failed
+# Live 2026-08-02 (post bugfix sprint): Summary: ✓ 42 passed | ⚠ 2 skipped | ✗ 0 failed
 
 # End-to-end module triggers (local or Railway via AGENT_URL)
 pnpm --prefix nexus-agent run e2e        # markets + chat + templates + feed audit
@@ -418,6 +418,8 @@ pnpm --prefix nexus-dashboard build
 ```
 
 **Tier C tests always skipped** (not yet in harness): Guardian cycle TTL rollover, PayChain compensating cancel workflow.
+
+**Post–bugfix sprint (Batch 5 complete, commit `be61eef`):** All 22 audit items addressed — Guardian critical-HF safety, cycle budget on poll timeout, per-wallet MCP keys, DCA single executor, atomic pending locks, full approve+main simulation, scoped module locks, dashboard auth error propagation, SIWE server nonce, RPC fail-closed allowance/balance checks.
 
 **Expected smoke test output:**
 
@@ -507,7 +509,7 @@ Details: [submission_runbook.md](submission_runbook.md)
 
 | Document | Contents |
 |----------|----------|
-| [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | **Authoritative** architecture, schemas, Phase 2 proofs, verify harness (36/37 passed, last verified 2026-08-02) |
+| [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | **Authoritative** architecture, schemas, Phase 2 proofs, verify harness (41/42 passed, last verified 2026-08-02) |
 | [submission_runbook.md](submission_runbook.md) | Verification commands, deployment, honest execution limits |
 | [plan.md](plan.md) | Master execution roadmap (batches & gates) |
 | [KEEPERHUB_BUGS.md](KEEPERHUB_BUGS.md) | Reproducible KeeperHub bugs (bounty material) |
