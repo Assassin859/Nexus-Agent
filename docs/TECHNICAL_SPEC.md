@@ -3,10 +3,8 @@
 > **Document status:** **Authoritative** for DoraHacks / Agents Onchain 2026 submission · **Last verified:** 2026-08-02 (bugfix sprint complete — live harness 41/42 + Postgres `executions_log`)  
 > **Brain provider:** OpenRouter `google/gemini-2.5-flash` via [`getBrainModel()`](../nexus-agent/src/brain/provider.ts). Do **not** use legacy GitHub Models references in [goal.md](../goal.md) (archived) or [implementation_plan.md](../implementation_plan.md) (historical).
 
-> **Target Audience:** Hackathon Judges (DoraHacks / Agents Onchain 2026), AI Engineers, Web3 Protocol Developers  
-> **Repository:** [nexus-agent](https://github.com/Assassin859/Nexus-Agent)  
-> **Tech Stack:** Node.js 22 + Next.js 14 (App Router) + Vercel AI SDK v4 + OpenRouter (`google/gemini-2.5-flash`) + KeeperHub MCP + SIWE + Postgres (Drizzle ORM) + Ethers.js v6  
-> **Chain:** Base Sepolia (84532) · **Aave V3.2 Pool:** `0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27`
+> **Live demo:** [Dashboard](https://spirited-heart-production-b5c5.up.railway.app) · [Agent API](https://nexus-agent-production-7783.up.railway.app)  
+> **Runbook (proofs + demo):** [submission_runbook.md](../submission_runbook.md)
 
 ---
 
@@ -30,22 +28,11 @@ The end user never manually builds calldata, calculates gas limits, or construct
 
 **Brain:** OpenRouter `google/gemini-2.5-flash` via `getBrainModel()` in [`nexus-agent/src/brain/provider.ts`](../nexus-agent/src/brain/provider.ts) — not GitHub Models.
 
-### 1.2 Verified execution proofs (Postgres `executions_log`, Base Sepolia)
+### 1.2 Verified execution proofs
 
-Judges can replay this arc in `/resilience` and `/feed` — all rows are real DB history from 2026-08-01 UTC.
+Full resilience arc table, BaseScan links, and demo script: **[submission_runbook.md](../submission_runbook.md)**.
 
-| Order | Module | Action | Status | Proof |
-|-------|--------|--------|--------|-------|
-| 1 | **Guardian** | `repay` | `reverted_simulation` | 18:41:53 — `ERC20: transfer amount exceeds allowance` (zero gas) |
-| 2 | **Guardian** | `repay` | `reverted_simulation` | 18:45:04 — same pre-fix intercept |
-| 3 | **Guardian** | `repay` | `success` + txHash | [0x23f6424…770df3](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) — $1000 repay after allowance-aware fix |
-| 4 | **Guardian** | `repay` | `success` + txHash | [0xd2d8ce6…a4f127](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) — second $1000 repay; HF ~1.05 → ~1.32 |
-| 5 | **Guardian** | `hold` | `success` | Latest cron — HF ~1.32, no broadcast |
-| — | **Yield** | `rotate` | `success` | Dual-wallet ownership guard skip (documented constraint) |
-| — | **DCA** | `swap` | schedule OK | KeeperHub workflow `xle0r4d0ozhhxd1rqeb28` (remote cron disabled; local executor) |
-| — | **PayChain** | `payroll` | workflow registered | KeeperHub cron `iu0toy0rena606e07ikxu` |
-
-Re-run audit: `pnpm --prefix nexus-agent run logs` · Full runbook: [submission_runbook.md](../submission_runbook.md)
+Re-run audit: `pnpm --prefix nexus-agent run logs`
 
 ---
 
@@ -160,14 +147,9 @@ Rather than passing unstructured text to an LLM or relying on flat single-shot o
 > **Market Oracle — `priceTrend`**: Derived at runtime from the Chainlink ETH/USD aggregator (Base Sepolia) by comparing the latest round to the previous round (approximate short-term move; on Base Sepolia, typically ~1h apart when markets are calm). `crash` is emitted if delta ≤ −7%; `volatile` if |delta| ≥ 3%; otherwise `stable`. Graceful fallback to `"stable"` on any RPC error so Guardian evaluation is never blocked.
 
 ### 2. Candidate Action Evaluation & Ranking Rules
-In every decision cycle, the brain generates an array of 4 distinct **Candidate Actions** (`CandidateActionSchema`):
-- **Network**: Base Sepolia Testnet (Chain ID `84532`)
-- **Aave V3.2 Pool**: `0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27`
-- **Aave Test USDC**: `0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f`
-- **Block Explorer**: BaseScan (`https://sepolia.basescan.org`)
-- **Note**: Legacy pool `0x07eA79...` is a separate deployment — not used by Aave app frontend.
-- **Option C**: Supply Collateral
-- **Option D**: Hold / Do Nothing
+In every decision cycle, the brain generates an array of distinct **Candidate Actions** (`CandidateActionSchema`): repay, supply_collateral, hold, block_transaction.
+
+Network: Base Sepolia (84532) · Aave V3.2 Pool: `0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27`
 
 The runtime harness evaluates candidates using `selectBestCandidate(candidates, fallback)`:
 
@@ -194,9 +176,9 @@ Before any candidate action output by the LLM can reach KeeperHub execution, it 
 
 ### 1. Web3 Wallet SIWE Auth (JWT)
 * Users sign an EIP-4361 SIWE message via MetaMask.
-* Backend verifies signature via `ethers.verifyMessage` and issues a signed JWT (`Bearer <token>`).
-* Express middleware (`requireAuth`) decodes token and attaches `req.userWallet`.
-* `assertWalletScope(req, targetWallet)` prevents IDOR vulnerabilities.
+* Backend verifies signature and issues JWT. Server-issued one-time nonce on `/api/auth/challenge`.
+* **Production:** Dashboard proxies auth via Next.js API routes (`/api/auth/*`) — browser never calls agent cross-origin.
+* `assertWalletScope(req, targetWallet)` prevents IDOR.
 
 ### 2. UI & System Status Model
 The dashboard clearly separates **End-User Authentication** from **KeeperHub MCP Connection Health**:
@@ -277,85 +259,23 @@ OPENROUTER_API_KEY  →  GEMINI_API_KEY  →  OPENAI_API_KEY  →  GITHUB_TOKEN
 
 ---
 
-## 7. Database Schema Reference (PostgreSQL / Drizzle ORM)
+## 7. Database Schema
 
-> **Schema Source of Truth**: The authoritative definitions for all database tables are defined in `nexus-agent/src/db/schema.ts`.
-```typescript
-// 1. repayment_cycles — Enforces spending limits per cycle per wallet
-export const repaymentCycles = pgTable("repayment_cycles", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userWallet: varchar("user_wallet", { length: 42 }).notNull(),
-  cycleStart: timestamp("cycle_start").notNull(),        // ← cycleStart, not cycleStartDate
-  cycleEnd: timestamp("cycle_end").notNull(),
-  cycleLimitUSD: integer("cycle_limit_usd").notNull(),   // ← integer, not doublePrecision
-  totalRepaidThisCycleUSD: integer("total_repaid_this_cycle_usd").default(0),
-});
+**Source of truth:** `nexus-agent/src/db/schema.ts`
 
-// 2. active_workflows — Tracks scheduled triggers (DCA, Payroll, Guardian, Yield)
-export const activeWorkflows = pgTable("active_workflows", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userWallet: varchar("user_wallet", { length: 42 }).notNull(),
-  type: varchar("type").notNull(),                       // 'dca' | 'payroll' | 'guardian' | 'yield'
-  recipientAddress: varchar("recipient_address", { length: 42 }),
-  amount: integer("amount").notNull(),                   // ← integer, not doublePrecision
-  cronSchedule: varchar("cron_schedule", { length: 100 }),
-  status: varchar("status", { length: 20 }).default("active"),
-  keeperhubWorkflowId: varchar("keeperhub_workflow_id", { length: 255 }),
-  updatedAt: timestamp("updated_at").defaultNow(),       // ← updatedAt only; no createdAt
-});
+Tables: `repayment_cycles` · `active_workflows` · `executions_log` · `user_settings` · `payees`
 
-// 3. executions_log — Audit log for all transactions, simulations, and dry runs
-export const executionsLog = pgTable("executions_log", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userWallet: varchar("user_wallet", { length: 42 }).notNull(),
-  workflowId: uuid("workflow_id").references(() => activeWorkflows.id),
-  action: varchar("action").notNull(),                   // 'repay' | 'swap' | 'rotate' | 'payroll' | 'hold'
-  amount: integer("amount").notNull(),                   // ← integer, not doublePrecision
-  status: varchar("status").notNull(),                   // 'pending' | 'success' | 'delayed' | 'reverted_simulation' | 'reverted_chain' | 'simulated_stub'
-  reason: varchar("reason"),                             // ← varchar nullable, not text.notNull()
-  aiAnalysis: jsonb("ai_analysis"),                      // Full harness audit payload
-  txHash: varchar("tx_hash", { length: 66 }),
-  timestamp: timestamp("timestamp").defaultNow(),
-});
-
-// 4. user_settings — Per-user KeeperHub credentials
-export const userSettings = pgTable("user_settings", {
-  userWallet: varchar("user_wallet", { length: 42 }).primaryKey(),
-  keeperhubApiKey: varchar("keeperhub_api_key", { length: 255 }), // ← varchar(255), not text
-  updatedAt: timestamp("updated_at").defaultNow(),
-});
-
-// 5. payees — Payee directory (single recipients, teams, vault pools)
-export const payees = pgTable("payees", {
-  id: uuid("id").defaultRandom().primaryKey(),
-  userWallet: varchar("user_wallet", { length: 42 }).notNull(),
-  name: varchar("name").notNull(),
-  type: varchar("type").notNull(),                       // 'single' | 'team'
-  payoutMode: varchar("payout_mode").default("direct"),  // 'direct' | 'vault_pool'
-  vaultPoolAddress: varchar("vault_pool_address", { length: 42 }),
-  recipientAddresses: jsonb("recipient_addresses").notNull(),
-  memberCount: integer("member_count").default(1),
-  parentTeamId: uuid("parent_team_id"),
-  createdAt: timestamp("created_at").defaultNow(),
-});
-```
+Migrations: `nexus-agent/drizzle/`. Partial unique index on `executions_log (user_wallet, action) WHERE status = 'pending'` for atomic pending locks.
 
 ---
 
-## 8. Dashboard & Frontend Architecture (`nexus-dashboard`)
+## 8. Dashboard (`nexus-dashboard`)
 
-Built with Next.js 14 (App Router), Vanilla CSS tokens, and Lucide React icons across 7 core pages + Template Store:
+Next.js 14 on Railway: **https://spirited-heart-production-b5c5.up.railway.app**
 
-| Page | Route | Description |
-|---|---|---|
-| **Portfolio** | `/` | Live Aave V3 Health Factor SVG gauge, LTV bar, debt/collateral metrics, dynamic Compound APY comparison, offline fallback state banner |
-| **Active Workflows** | `/workflows` | Registered KeeperHub workflows, payload inspection, manual trigger controls, `KeeperHubSyncModal` key config |
-| **Live Feed** | `/feed` | Audit log of all onchain transactions with 1-click Etherscan links |
-| **Resilience Log** | `/resilience` | 4-card grid detailing pre-flight simulation reverts, gas delays, and safety intercepts |
-| **Alerts** | `/alerts` | Categorized notification feed (Danger, Warning, Success, Info) with green success badges |
-| **AI Chat** | `/chat` | Conversational command center with SIWE auth banners, quick prompts, and tool execution status |
-| **Payees** | `/payees` | Payee directory manager for single recipients, dev teams, and vault pools |
-| **Template Store** | `/templates` | 6 templates; Guardian/DCA/Payroll direct Fork & Deploy; Yield/Rebalancer blocked (dual-wallet) |
+Pages: Portfolio · Chat · Workflows · Payees · Feed · Resilience · Alerts · Templates
+
+Server-side API proxies forward auth, portfolio, feed, chat, and settings to the agent (avoids browser CORS).
 
 ---
 

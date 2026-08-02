@@ -96,10 +96,12 @@ Expect exit 0 and new rows in shared Postgres.
 
 ## 6. Dashboard smoke test (live URL)
 
-1. Open `https://spirited-heart-production-b5c5.up.railway.app`
-2. MetaMask → Base Sepolia → SIWE sign-in (no CORS error in DevTools)
-3. Portfolio → live HF; Feed → BaseScan repay links; Resilience → simulation cards
-4. Paste `kh_...` in KeeperHub Sync modal → green MCP badge
+1. Open https://spirited-heart-production-b5c5.up.railway.app
+2. MetaMask → Base Sepolia → SIWE sign-in
+3. Portfolio → live HF; Feed → BaseScan links; Resilience → simulation cards
+4. Paste `kh_...` → green MCP badge
+
+Auth/settings use **Next.js API proxies** — browser does not call agent directly (no CORS config required for SIWE).
 
 ---
 
@@ -109,7 +111,7 @@ Expect exit 0 and new rows in shared Postgres.
 |---------|-----|
 | Railway build blocked (Next.js CVE) | Upgrade to `next@14.2.35+` in `nexus-dashboard`, push, redeploy |
 | Dashboard 404 "Application not found" | Deploy failed or service not running — check Railway build logs |
-| SIWE / CORS 500 on agent | Add dashboard URL to agent `ALLOWED_ORIGINS`, redeploy **agent** |
+| SIWE / CORS errors (legacy direct calls) | Fixed in dashboard — auth proxied via Next.js; redeploy dashboard |
 | 401 on API routes | JWT mismatch — align `JWT_SECRET` between sign-in and agent |
 | Chat 404/429 | Set `BRAIN_MODEL=google/gemini-2.5-flash` on **agent** |
 | `simulated_stub` in Feed | Warm MCP: `pnpm run surfaces`; confirm `KEEPERHUB_API_KEY` on **agent** |

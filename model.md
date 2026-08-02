@@ -1,7 +1,6 @@
 # NexusAgent AI Brain — Model Reference & Zod Schemas
 
-> Reference for the **Vercel AI SDK + OpenRouter** integration used across all 4 NexusAgent modules.
-> Current provider chain: `OPENROUTER_API_KEY` → `GEMINI_API_KEY` → `OPENAI_API_KEY` → `GITHUB_TOKEN`
+> **Keep long** — reference for harness schemas and prompts. Architecture overview: [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md)
 
 ---
 

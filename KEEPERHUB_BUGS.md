@@ -6,7 +6,7 @@
 
 ---
 
-> This document captures every concrete bug, API inconsistency, and friction point encountered while building NexusAgent. **Still accurate for demos** — especially BUG-02 (OAuth ≠ API key). See [submission_runbook.md](submission_runbook.md) for workarounds.
+> **UX bounty material** — 5 bugs + 7 frictions. Upstream PR drafts: [PRs.md](PRs.md). **Live demo:** https://spirited-heart-production-b5c5.up.railway.app
 
 ---
 

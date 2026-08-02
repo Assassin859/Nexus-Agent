@@ -1,122 +1,40 @@
-# NexusAgent — Master Submission Execution Roadmap (August 2026)
+# Submission Roadmap — August 2026
 
-> **Submission Strategy:** Divided into 4 sequential execution batches. Complete each batch gate before proceeding to the next to ensure zero wasted effort.
-
----
-
-## 🟢 Batch 1 — Production Gate (~30 min)
-*Objective: Verify Railway production backend parity and MCP warm-up.*
-
-- [ ] **Secret Sanity Check**: Confirm `JWT_SECRET` in root `.env` matches Railway (`nexus-agent-hackathon-super-secret-jwt-key-2026`). *(Do NOT commit secret strings to GitHub).*
-- [ ] **Railway Execution Test**:
-  ```powershell
-  $env:AGENT_URL="https://nexus-agent-production-7783.up.railway.app"
-  pnpm --prefix nexus-agent run phase2
-  ```
-- [ ] **Audit DB Logs**:
-  ```bash
-  pnpm --prefix nexus-agent run logs
-  ```
-  *Verify newly created execution rows appear with live timestamps.*
-- [ ] **MCP Session Warm-up**:
-  ```bash
-  pnpm --prefix nexus-agent run surfaces
-  ```
-- **Gate 1 Exit Criteria:** `phase2` script returns `exit 0` against Railway and new execution rows appear in `check-logs.ts`.
+> **Live:** [Dashboard](https://spirited-heart-production-b5c5.up.railway.app) · [Agent](https://nexus-agent-production-7783.up.railway.app)
 
 ---
 
-## 🟢 Batch 2 — Browser End-to-End (~20 min)
-*Objective: Confirm the exact frontend experience judges will encounter on production.*
+## ✅ Done
 
-- [ ] **Dashboard Production Environment**: Set `nexus-dashboard/.env.local`:
-  ```bash
-  NEXT_PUBLIC_AGENT_URL=https://nexus-agent-production-7783.up.railway.app
-  NEXT_PUBLIC_WALLET_ADDRESS=0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b
-  ```
-- [ ] **Browser Flow Verification (http://localhost:3000)**:
-  1. SIWE Sign In with MetaMask (`0x89f97...`) on Base Sepolia.
-  2. Portfolio tab -> displays live Health Factor (~1.32 post-repay; ~3.26 historical hold demo).
-  3. KeeperHub Sync Modal -> paste `kh_...` -> Sidebar shows **Green Badge: KeeperHub MCP Connected**.
-  4. AI Chat -> ask *"What is my health factor?"* -> returns live HF from chain.
-  5. Feed & Resilience tabs -> render Decision Matrix & simulation cards cleanly.
-- **Gate 2 Exit Criteria:** Browser flow works 100% cleanly on Railway backend without `401 Unauthorized` or network errors.
+| Batch | Status |
+|-------|--------|
+| **1 — Production gate** | phase2 + logs against Railway ✅ |
+| **2 — Dashboard E2E** | Railway deploy + SIWE + portfolio ✅ |
+| **5 — Bugfix sprint** | 22 items, verify 41/42 ✅ |
+| **Docs & deploy** | Next 14.2.35, pnpm lock, API proxies ✅ |
 
 ---
 
-## 🟢 Batch 3 — Narrative Rehearsal & Housekeeping (~45 min)
-*Objective: Lock in Path A pitch narrative and clean demo feed.*
+## 🔲 Remaining (before Aug 13)
 
-- [ ] **Narrative Selection**: **Path A — Simulation-First & Resilience** (Highlighting real-time Aave V3.2 reading, Guardian quantitative rules, Reasoning Harness, and 0 gas pre-flight simulation intercepts).
-- [ ] **Feed Housekeeping (Optional)**:
-  ```bash
-  pnpm --prefix nexus-agent exec tsx src/scripts/clear-db.ts
-  pnpm --prefix nexus-agent run phase2
-  ```
-- [ ] **Runbook Rehearsal**: Rehearse 4-scene script from `submission_runbook.md` once with a timer without recording.
-- **Gate 3 Exit Criteria:** Able to narrate all 4 scenes smoothly within 3 minutes without improvising.
+| Batch | Task |
+|-------|------|
+| **3 — Rehearsal** | Timed runthrough of [submission_runbook.md](submission_runbook.md) video script |
+| **4 — Submit** | Record 3-min video · DoraHacks form · final git push |
 
 ---
 
-## 🟢 Batch 4 — Recording & Hackathon Submission (~1 hour)
-*Objective: Produce video asset and submit DoraHacks form.*
-
-- [ ] **Video Recording**: Record 3-minute screen capture following `submission_runbook.md` (take 1 + backup take).
-- [ ] **DoraHacks Form Submission**: Fill form fields (project title, tagline, repo URL, Railway URL, known limitations) from `submission_runbook.md`.
-- [ ] **Git Push**: Re-verify zero `.env` files are tracked, build TypeScript packages, and push final code:
-  ```bash
-  pnpm --prefix nexus-agent run build
-  pnpm --prefix nexus-dashboard run build
-  git add .
-  git commit -m "docs: finalize master submission plan and verification runbook"
-  git push origin main
-  ```
-- **Gate 4 Exit Criteria:** DoraHacks form submitted & video uploaded before Aug 13 deadline.
-
----
-
-## 📋 Deferred Post-Submission Work (P2 — After Submission)
-
-| Task | Effort | Priority |
-|:---|:---:|:---:|
-| **Forced Simulation Error Script** | Low | P2 |
-| **Tier C Integration Harness Assertions** | Medium | P2 |
-| **Pino Logger Migration in PayChain/Compound** | Low | P2 |
-| **Compound Sepolia APY Decoding Fix** | Low | P2 |
-
----
-
-## Verification Quick Reference
+## Verify quick ref
 
 ```bash
-pnpm --prefix nexus-agent run verify          → 41 passed, 2 skipped, 0 failed
-pnpm --prefix nexus-agent run e2e             → full system (markets, chat, templates, feed)
-pnpm --prefix nexus-agent run verify:integration → 42 passed, 2 skipped, 0 failed
-pnpm --prefix nexus-agent run phase2          → 4/4 modules verified
-pnpm --prefix nexus-agent run surfaces        → 17/17 MCP surfaces verified
+pnpm --prefix nexus-agent run verify              # 41 passed
+pnpm --prefix nexus-agent run verify:integration    # 42 passed
+pnpm --prefix nexus-agent run phase2
+pnpm --prefix nexus-agent run e2e
 ```
 
 ---
 
-## 🔴 Batch 5 — Bugfix Sprint (post-audit, one-by-one)
+## Post-submission (P2)
 
-> **Cursor plan:** `.cursor/plans/nexusagent_bugfix_sprint.plan.md`  
-> **Rule:** One fix per session → `pnpm verify` → commit → next todo.
-
-| Priority | Todo ID | Status | Issue |
-|----------|---------|--------|-------|
-| P0 | `fix-guardian-critical-hold` | done | LLM `hold` at HF &lt; 1.15 when USDC exists |
-| P0 | `fix-cycle-budget-timeout` | done | Budget released on poll timeout |
-| P0 | `fix-mcp-apikey` | done | Per-wallet `kh_...` ignored by MCP |
-| P0 | `fix-dca-double-exec` | done | KeeperHub cron + local cron both fire |
-| P1 | `fix-pending-lock-atomic` | done | Duplicate execution race |
-| P1 | `fix-simulate-full-sequence` | done | Main tx skipped after approve sim |
-| P1 | `fix-yield-sim-order` | done | Allowance before Compound supply sim |
-| P1 | `fix-dca-cancel-remote` | done | DCA cancel hits KeeperHub |
-| P1 | `fix-dca-schedule-stale-remote` | done | Recreate remote workflow on register |
-| P2 | Dashboard wave (10–13) | done | Portfolio/feed auth, OAuth UI, workflow filter |
-| P3 | Hardening (14–22) | done | Schema unique, RPC fail-closed, SIWE nonce, scoped locks |
-
-**Sprint complete.** Verify: **41 passed** (unit) · **42 passed** (integration).
-
-**Gate 5 exit criteria:** Wave 1–2 complete; Guardian cannot hold at critical HF with funds; DCA single-fire verified; dashboard shows real auth errors.
+Tier C harness tests · forced simulation script · Compound APY decode fix
