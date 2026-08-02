@@ -64,6 +64,15 @@ export async function simulateErc20Action(
     if (approveSim.wouldRevert) {
       return { ...approveSim, allowanceCalldata };
     }
+    // Approve runs first in the workflow; isolated main-tx sim still sees zero allowance.
+    const mainSim = await simulate(mainTx, monitoredWallet);
+    if (
+      mainSim.wouldRevert &&
+      /allowance|insufficient/i.test(mainSim.revertReason ?? "")
+    ) {
+      return { wouldRevert: false, gasEstimate: mainSim.gasEstimate, allowanceCalldata };
+    }
+    return { ...mainSim, allowanceCalldata };
   }
 
   const mainSim = await simulate(mainTx, monitoredWallet);
