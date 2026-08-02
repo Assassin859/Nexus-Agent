@@ -99,3 +99,121 @@ export async function getPriceTrend(): Promise<"stable" | "volatile" | "crash"> 
     return "stable";
   }
 }
+
+export type PriceHistoryPoint = {
+  timestamp: number;
+  price: number;
+};
+
+export type MarketSnapshot = {
+  ethUsd: number;
+  trend: "stable" | "volatile" | "crash";
+  pctChange: number;
+  updatedAt: number;
+  history: PriceHistoryPoint[];
+  source: "chainlink";
+  network: "base-sepolia";
+};
+
+const MAX_HISTORY_ROUNDS = 48;
+
+/**
+ * Fetches the last N Chainlink round prices (newest round included).
+ * Returns ascending by timestamp for charting.
+ */
+export async function getEthPriceHistory(limit = 24): Promise<PriceHistoryPoint[]> {
+  const capped = Math.min(Math.max(1, limit), MAX_HISTORY_ROUNDS);
+
+  try {
+    const provider = await getProvider();
+    const feed = new Contract(CHAINLINK_ETH_USD, AGG_ABI, provider);
+    const { roundId: latestRoundId } = await feed.latestRoundData();
+
+    if (latestRoundId <= 0n) return [];
+
+    const roundIds: bigint[] = [];
+    for (let i = 0n; i < BigInt(capped); i++) {
+      const id = latestRoundId - i;
+      if (id <= 0n) break;
+      roundIds.push(id);
+    }
+
+    const rounds = await Promise.all(
+      roundIds.map((id) => feed.getRoundData(id)),
+    );
+
+    const points: PriceHistoryPoint[] = [];
+    for (const round of rounds) {
+      if (Number(round.answer) === 0) continue;
+      points.push({
+        timestamp: Number(round.updatedAt) * 1000,
+        price: Number(formatUnits(round.answer, 8)),
+      });
+    }
+
+    points.sort((a, b) => a.timestamp - b.timestamp);
+    return points;
+  } catch (err) {
+    log.warn(
+      { err: err instanceof Error ? err.message : String(err) },
+      "getEthPriceHistory RPC error — returning empty history",
+    );
+    return [];
+  }
+}
+
+function trendFromPctChange(pctChange: number): "stable" | "volatile" | "crash" {
+  if (pctChange <= -7) return "crash";
+  if (Math.abs(pctChange) >= 3) return "volatile";
+  return "stable";
+}
+
+/**
+ * Combined market snapshot for dashboard / API consumers.
+ */
+export async function getMarketSnapshot(): Promise<MarketSnapshot> {
+  const [ethUsd, trend, history] = await Promise.all([
+    getEthPriceUSD(),
+    getPriceTrend(),
+    getEthPriceHistory(24),
+  ]);
+
+  let pctChange = 0;
+  let updatedAt = Math.floor(Date.now() / 1000);
+
+  if (history.length >= 2) {
+    const prev = history[history.length - 2];
+    const latest = history[history.length - 1];
+    if (prev.price > 0) {
+      pctChange = ((latest.price - prev.price) / prev.price) * 100;
+    }
+    updatedAt = Math.floor(latest.timestamp / 1000);
+  } else {
+    try {
+      const provider = await getProvider();
+      const feed = new Contract(CHAINLINK_ETH_USD, AGG_ABI, provider);
+      const { roundId, answer: latestAnswer, updatedAt: chainUpdatedAt } =
+        await feed.latestRoundData();
+      updatedAt = Number(chainUpdatedAt);
+      if (roundId > 1n) {
+        const { answer: prevAnswer } = await feed.getRoundData(roundId - 1n);
+        if (Number(prevAnswer) > 0) {
+          pctChange =
+            ((Number(latestAnswer) - Number(prevAnswer)) / Number(prevAnswer)) * 100;
+        }
+      }
+    } catch {
+      // keep defaults
+    }
+  }
+
+  return {
+    ethUsd,
+    trend: history.length >= 2 ? trendFromPctChange(pctChange) : trend,
+    pctChange: parseFloat(pctChange.toFixed(3)),
+    updatedAt,
+    history,
+    source: "chainlink",
+    network: "base-sepolia",
+  };
+}

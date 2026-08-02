@@ -31,6 +31,7 @@ import { handle as handlePaychain } from "./modules/paychain.js";
 import { syncKeeperHubState } from "./lib/keeperhub-sync.js";
 import { getAavePosition } from "./lib/aave.js";
 import { getCompoundUsdcSupplyAPY } from "./lib/compound.js";
+import { getMarketSnapshot } from "./lib/price-feed.js";
 import { shouldRunCronNow } from "./lib/cron-evaluator.js";
 import { db } from "./db/client.js";
 import { activeWorkflows, executionsLog, userSettings, payees, repaymentCycles } from "./db/schema.js";
@@ -393,6 +394,21 @@ app.post("/api/keeperhub/sync", requireAuth, async (req: express.Request, res: e
     res.json({ success: true, ...result });
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Sync failed" });
+  }
+});
+
+// ── Public market oracle (Chainlink — no wallet scope) ─────────────────────
+app.get("/api/markets", async (_req: express.Request, res: express.Response) => {
+  try {
+    const snapshot = await getMarketSnapshot();
+    if (snapshot.ethUsd <= 0 && snapshot.history.length === 0) {
+      return res.status(503).json({ error: "Market oracle unavailable" });
+    }
+    res.json(snapshot);
+  } catch (err) {
+    res.status(503).json({
+      error: err instanceof Error ? err.message : "Market oracle unavailable",
+    });
   }
 });
 

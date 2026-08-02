@@ -7,6 +7,7 @@ import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
+import EthPriceChart from "@/components/EthPriceChart";
 
 type PortfolioData = {
   walletAddress: string;
@@ -225,6 +226,8 @@ export default function PortfolioPage() {
           })}
         </div>
       </div>
+
+      <EthPriceChart />
 
       {/* APY Table */}
       <div className="card">
