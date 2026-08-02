@@ -21,7 +21,7 @@ import {
 } from "lucide-react";
 import KeeperHubSyncModal from "./KeeperHubSyncModal";
 import { useWallet } from "@/context/WalletContext";
-import { agentFetch } from "@/lib/agent-fetch";
+import { proxyFetch } from "@/lib/agent-fetch";
 
 const NAV_ITEMS = [
   { href: "/",            label: "Portfolio",   icon: LayoutDashboard },
@@ -54,7 +54,7 @@ export default function Sidebar() {
     async function checkKeeperHubStatus() {
       if (!walletAddress || !authToken) return;
       try {
-        const res = await agentFetch(`/api/user/settings/${walletAddress}`, {}, authToken);
+        const res = await proxyFetch(`/api/user/settings/${walletAddress}`, {}, authToken);
         if (res.ok) {
           const data = await res.json();
           if (data.hasKey) setKhServerKey(true);

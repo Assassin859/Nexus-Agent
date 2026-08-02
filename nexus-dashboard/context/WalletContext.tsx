@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
-import { agentFetch } from "@/lib/agent-fetch";
+import { proxyFetch } from "@/lib/agent-fetch";
 
 type WalletContextType = {
   walletAddress: string;
@@ -159,7 +159,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       setWalletAddress(address);
 
       // Step B: Get Challenge
-      const challengeRes = await agentFetch(`/api/auth/challenge?wallet=${address}`);
+      const challengeRes = await proxyFetch(`/api/auth/challenge?wallet=${address}`);
       if (!challengeRes.ok) throw new Error("Failed to fetch auth challenge from agent.");
       const { challenge } = await challengeRes.json();
 
@@ -170,7 +170,7 @@ export function WalletProvider({ children }: { children: ReactNode }) {
       });
 
       // Step D: Verify with Backend & Receive JWT
-      const verifyRes = await agentFetch("/api/auth/verify", {
+      const verifyRes = await proxyFetch("/api/auth/verify", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ walletAddress: address, signature, challenge }),

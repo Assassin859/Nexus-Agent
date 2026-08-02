@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { Users, Plus, Trash2, Shield, Vault, User, ExternalLink, Cpu } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
-import { proxyFetch, agentFetch } from "@/lib/agent-fetch";
+import { proxyFetch } from "@/lib/agent-fetch";
 
 type PayeeMember = {
   name: string;
@@ -78,7 +78,7 @@ export default function PayeesPage() {
     try {
       const validMembers = members.filter(m => m.name.trim() || m.address.trim());
 
-      const res = await agentFetch(
+      const res = await proxyFetch(
         "/api/payees",
         {
           method: "POST",
@@ -113,7 +113,7 @@ export default function PayeesPage() {
 
   async function handleDeletePayee(id: string) {
     try {
-      await agentFetch(`/api/payees/${id}`, { method: "DELETE" }, authToken);
+      await proxyFetch(`/api/payees/item/${id}`, { method: "DELETE" }, authToken);
       await loadPayees();
     } catch (err) {
       console.error("Failed to delete payee:", err);
@@ -123,7 +123,7 @@ export default function PayeesPage() {
   async function handleClearAllPayees() {
     if (!confirm("Are you sure you want to delete all payees for this wallet?")) return;
     try {
-      await agentFetch(`/api/payees/all/${wallet}`, { method: "DELETE" }, authToken);
+      await proxyFetch(`/api/payees/all/${wallet}`, { method: "DELETE" }, authToken);
       await loadPayees();
     } catch (err) {
       console.error("Failed to clear payees:", err);

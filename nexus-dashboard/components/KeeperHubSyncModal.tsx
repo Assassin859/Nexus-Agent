@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Cpu, ExternalLink, X, Shield, CheckCircle2, Key } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
-import { agentFetch } from "@/lib/agent-fetch";
+import { proxyFetch } from "@/lib/agent-fetch";
 
 type Props = {
   isOpen: boolean;
@@ -84,7 +84,7 @@ export default function KeeperHubSyncModal({ isOpen, onClose, walletAddress, onK
     setSavingWfb(true);
     setError("");
     try {
-      const res = await agentFetch("/api/user/settings", {
+      const res = await proxyFetch("/api/user/settings", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ walletAddress, keeperhubApiKey: wfbKeyInput.trim() }),
