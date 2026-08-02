@@ -40,11 +40,7 @@ export const TEMPO_PROOF_EXECUTION_ID = latestProof.executionId;
 export const TEMPO_CHAIN_ID = 42431;
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
 
-export const MARKETPLACE_URL = "https://app.keeperhub.com/hub?tab=marketplace";
-
-export function keeperHubWorkflowUrl(id: string): string {
-  return `https://app.keeperhub.com/workflows/${id}`;
-}
+export { KEEPERHUB_MARKETPLACE_URL as MARKETPLACE_URL, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
 
 export function keeperHubExecutionUrl(id: string): string {
   /** Not shareable — returns 404 for viewers outside the Nexus Agent KeeperHub org. Prefer tempoTxUrl + workflow links. */

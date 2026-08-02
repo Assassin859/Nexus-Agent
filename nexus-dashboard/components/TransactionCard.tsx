@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { ExternalLink, CheckCircle2, AlertTriangle, XCircle, Clock, ChevronDown, ChevronUp, Cpu, Copy, Check } from "lucide-react";
-import { isKeeperHubWorkflowId, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
+import KeeperHubWorkflowLink from "@/components/KeeperHubWorkflowLink";
 import ExecutionPipeline from "@/components/ExecutionPipeline";
 import { getExecutionDisplay, hasMinedTx } from "@/lib/execution-pipeline";
 import { getTxExplorerUrl } from "@/lib/tx-explorer";
+import { isKeeperHubWorkflowId } from "@/lib/keeperhub-links";
 
 export type TransactionStatus = "success" | "reverted_simulation" | "reverted_chain" | "pending" | "simulated_stub" | "delayed";
 
@@ -101,7 +102,7 @@ export default function TransactionCard({
   );
 
   return (
-    <div className="card card-interactive" style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+    <div className="card card-interactive" style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0, overflow: "hidden" }}>
       {/* Top row */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
@@ -206,14 +207,46 @@ export default function TransactionCard({
             <div className="animate-in" style={{
               marginTop: 10, padding: 12, borderRadius: 8,
               background: "rgba(99,102,241,0.05)", border: "1px solid rgba(99,102,241,0.15)",
-              fontSize: 12, fontFamily: "monospace", display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(180px, 1fr))", gap: 8
+              fontSize: 12, fontFamily: "monospace",
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fit, minmax(min(100%, 200px), 1fr))",
+              gap: 8,
+              minWidth: 0,
+              width: "100%",
+              overflow: "hidden",
             }}>
               {Object.entries(aiAnalysis).map(([key, val]) => (
-                <div key={key} style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                <div key={key} style={{ display: "flex", flexDirection: "column", gap: 2, minWidth: 0, overflow: "hidden" }}>
                   <span style={{ color: "var(--text-muted)", fontSize: 10, textTransform: "uppercase" }}>{key.replace(/([A-Z])/g, " $1")}</span>
-                  <span style={{ color: typeof val === "boolean" ? (val ? "#34d399" : "#f87171") : "var(--text)", fontWeight: 700 }}>
-                    {typeof val === "object" ? JSON.stringify(val) : String(val)}
-                  </span>
+                  {typeof val === "object" && val !== null ? (
+                    <pre style={{
+                      margin: 0,
+                      color: "var(--text)",
+                      fontWeight: 400,
+                      fontSize: 10,
+                      lineHeight: 1.45,
+                      maxHeight: 140,
+                      overflow: "auto",
+                      whiteSpace: "pre-wrap",
+                      wordBreak: "break-word",
+                      overflowWrap: "anywhere",
+                      padding: "6px 8px",
+                      borderRadius: 6,
+                      background: "rgba(0,0,0,0.25)",
+                      border: "1px solid var(--border)",
+                    }}>
+                      {JSON.stringify(val, null, 2)}
+                    </pre>
+                  ) : (
+                    <span style={{
+                      color: typeof val === "boolean" ? (val ? "#34d399" : "#f87171") : "var(--text)",
+                      fontWeight: 700,
+                      wordBreak: "break-word",
+                      overflowWrap: "anywhere",
+                    }}>
+                      {String(val)}
+                    </span>
+                  )}
                 </div>
               ))}
             </div>
@@ -226,14 +259,7 @@ export default function TransactionCard({
         <span>{timestamp ? new Date(timestamp).toLocaleString() : "Just now"}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           {khWorkflowId ? (
-            <a
-              href={keeperHubWorkflowUrl(khWorkflowId) ?? "#"}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{ display: "flex", alignItems: "center", gap: 4, color: "#818cf8", fontWeight: 600, textDecoration: "none" }}
-            >
-              View on KeeperHub <ExternalLink size={12} />
-            </a>
+            <KeeperHubWorkflowLink workflowId={khWorkflowId} variant="footer" />
           ) : (
             <span style={{ color: "#64748b", fontWeight: 600, fontSize: 12 }}>
               🛡️ KeeperHub Managed

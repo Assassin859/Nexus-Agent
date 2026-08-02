@@ -166,9 +166,9 @@ export default function PayeesPage() {
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 340px", gap: 24, alignItems: "start" }}>
+      <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(280px, 340px)", gap: 24, alignItems: "start" }}>
         {/* Directory List */}
-        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 14, minWidth: 0 }}>
           {loading ? (
             <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
               Loading payees directory...
@@ -253,7 +253,17 @@ export default function PayeesPage() {
         </div>
 
         {/* Add Payee / Team Form */}
-        <div className="card" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+        <div
+          className="card"
+          style={{
+            display: "flex",
+            flexDirection: "column",
+            gap: 16,
+            maxHeight: "calc(100dvh - 120px)",
+            overflowY: "auto",
+            minWidth: 0,
+          }}
+        >
           <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 14, fontWeight: 700, color: "var(--text)" }}>
             <Plus size={16} color="#818cf8" /> Add Payee or Team
           </div>

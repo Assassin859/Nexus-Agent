@@ -7,7 +7,8 @@ import { proxyFetch } from "@/lib/agent-fetch";
 import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 import KeeperHubSyncModal from "@/components/KeeperHubSyncModal";
-import { isKeeperHubWorkflowId, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
+import { isKeeperHubWorkflowId } from "@/lib/keeperhub-links";
+import KeeperHubWorkflowLink from "@/components/KeeperHubWorkflowLink";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 
@@ -262,39 +263,24 @@ export default function WorkflowsPage() {
                       <Code size={12} /> {isExpanded ? "Hide Calldata" : "Inspect Payload"} {isExpanded ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
                     </button>
 
-                    <a
-                      href={keeperHubWorkflowUrl(wf.keeperhubWorkflowId) ?? "#"}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="btn"
-                      onClick={(e) => {
-                        if (!isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "")) e.preventDefault();
-                      }}
-                      style={{
-                        fontSize: 12,
-                        padding: "8px 12px",
-                        background: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "")
-                          ? "rgba(99,102,241,0.1)"
-                          : "rgba(255,255,255,0.03)",
-                        border: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "")
-                          ? "1px solid rgba(99,102,241,0.3)"
-                          : "1px solid var(--border)",
-                        color: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "") ? "#818cf8" : "var(--text-muted)",
-                        textDecoration: "none",
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 6,
-                        pointerEvents: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "") ? "auto" : "none",
-                        opacity: isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "") ? 1 : 0.5,
-                      }}
-                      title={
-                        isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "")
-                          ? "Open on KeeperHub"
-                          : "Not synced to KeeperHub yet"
-                      }
-                    >
-                      View on KeeperHub <ExternalLink size={12} />
-                    </a>
+                    {isKeeperHubWorkflowId(wf.keeperhubWorkflowId ?? "") ? (
+                      <KeeperHubWorkflowLink workflowId={wf.keeperhubWorkflowId!} />
+                    ) : (
+                      <span
+                        className="btn"
+                        style={{
+                          fontSize: 12,
+                          padding: "8px 12px",
+                          background: "rgba(255,255,255,0.03)",
+                          border: "1px solid var(--border)",
+                          color: "var(--text-muted)",
+                          opacity: 0.5,
+                        }}
+                        title="Not synced to KeeperHub yet"
+                      >
+                        KeeperHub pending
+                      </span>
+                    )}
 
                     <a
                       href={verifyUrl}

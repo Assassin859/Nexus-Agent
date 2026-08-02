@@ -5,9 +5,9 @@ import { useState } from "react";
 import {
   TEMPO_CHAIN_ID,
   TEMPO_PROOF_TXS,
-  keeperHubWorkflowUrl,
   tempoTxUrl,
 } from "@/lib/tier2-proofs";
+import KeeperHubWorkflowLink from "@/components/KeeperHubWorkflowLink";
 
 export default function TempoProofTable() {
   const [copied, setCopied] = useState<string | null>(null);
@@ -74,15 +74,7 @@ export default function TempoProofTable() {
                     >
                       Tempo Explorer <ExternalLink size={11} />
                     </a>
-                    <a
-                      href={keeperHubWorkflowUrl(proof.workflowId)}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      style={{ fontSize: 12, color: "#818cf8", textDecoration: "none", display: "inline-flex", alignItems: "center", gap: 4 }}
-                      title="Requires Nexus Agent org on KeeperHub"
-                    >
-                      Workflow <ExternalLink size={11} />
-                    </a>
+                    <KeeperHubWorkflowLink workflowId={proof.workflowId} compact />
                   </div>
                 </td>
               </tr>

@@ -1,22 +1,26 @@
 "use client";
 
-import { ExternalLink, Link2, Store } from "lucide-react";
+import { ExternalLink, Link2, Store, Copy, Check } from "lucide-react";
 import Link from "next/link";
-import { HF_READ_SLUG, HF_READ_WORKFLOW_ID, MARKETPLACE_URL, keeperHubWorkflowUrl } from "@/lib/tier2-proofs";
+import { useState } from "react";
+import { HF_READ_SLUG, HF_READ_WORKFLOW_ID, MARKETPLACE_URL } from "@/lib/tier2-proofs";
+import KeeperHubWorkflowLink from "@/components/KeeperHubWorkflowLink";
 
 export default function IntegrationsProofCard() {
+  const [copiedSlug, setCopiedSlug] = useState(false);
+
+  function copySlug() {
+    navigator.clipboard.writeText(HF_READ_SLUG);
+    setCopiedSlug(true);
+    setTimeout(() => setCopiedSlug(false), 2000);
+  }
+
   const links = [
     {
       icon: Store,
-      label: "Marketplace listing",
+      label: "Marketplace listing (public)",
       sub: `slug: ${HF_READ_SLUG}`,
       href: MARKETPLACE_URL,
-    },
-    {
-      icon: Link2,
-      label: "HF-read workflow",
-      sub: HF_READ_WORKFLOW_ID,
-      href: keeperHubWorkflowUrl(HF_READ_WORKFLOW_ID),
     },
   ];
 
@@ -77,6 +81,53 @@ export default function IntegrationsProofCard() {
             </div>
           );
         })}
+
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "space-between",
+            padding: "10px 12px",
+            borderRadius: 8,
+            background: "rgba(255,255,255,0.03)",
+            border: "1px solid var(--border)",
+            gap: 12,
+            flexWrap: "wrap",
+          }}
+        >
+          <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+            <Link2 size={16} color="#818cf8" />
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>HF-read workflow ID</div>
+              <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
+                Deep editor links require KeeperHub org login — copy ID or use marketplace above.
+              </div>
+              <div style={{ marginTop: 6 }}>
+                <KeeperHubWorkflowLink workflowId={HF_READ_WORKFLOW_ID} compact />
+              </div>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={copySlug}
+            style={{
+              fontSize: 12,
+              color: "#94a3b8",
+              background: "rgba(255,255,255,0.04)",
+              border: "1px solid var(--border)",
+              borderRadius: 6,
+              padding: "6px 10px",
+              cursor: "pointer",
+              display: "flex",
+              alignItems: "center",
+              gap: 4,
+              fontWeight: 600,
+            }}
+          >
+            {copiedSlug ? <Check size={12} color="#34d399" /> : <Copy size={12} />}
+            Copy slug
+          </button>
+        </div>
       </div>
     </div>
   );
