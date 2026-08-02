@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { Cpu, RefreshCw, Clock, ExternalLink, ShieldCheck, Key, Code, ChevronDown, ChevronUp, CheckCircle2 } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import DemoModeBanner from "@/components/DemoModeBanner";
+import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 import KeeperHubSyncModal from "@/components/KeeperHubSyncModal";
 import { isKeeperHubWorkflowId, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
 import Pagination from "@/components/Pagination";
@@ -145,6 +147,9 @@ export default function WorkflowsPage() {
           </button>
         </div>
       </div>
+
+      <DemoModeBanner />
+      <PersonalWalletBanner />
 
       {/* Metrics Row */}
       <div className="grid-metrics">

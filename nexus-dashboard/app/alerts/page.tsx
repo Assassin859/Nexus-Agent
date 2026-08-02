@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { AlertCircle, AlertTriangle, Info } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import { parseFeedResponse } from "@/lib/demo-wallet";
+import DemoModeBanner from "@/components/DemoModeBanner";
+import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 
@@ -35,6 +38,7 @@ export default function AlertsPage() {
   const { walletAddress: wallet, authToken } = useWallet();
   const [alerts, setAlerts] = useState<AlertCardData[]>([]);
   const [loading, setLoading] = useState(true);
+  const [authError, setAuthError] = useState<string | null>(null);
 
   const { page, setPage, totalPages, pagedItems, total, showPagination } = usePagination(
     alerts,
@@ -46,30 +50,46 @@ export default function AlertsPage() {
     async function loadAlerts() {
       try {
         const res = await proxyFetch(`/api/feed/${wallet}`, {}, authToken);
-        const data: LogItem[] = await res.json();
-        if (Array.isArray(data)) {
-          const parsed: AlertCardData[] = data.map((item) => {
-            const isDanger = item.status === "reverted_chain" || item.status === "failed";
-            const isWarning = item.status === "reverted_simulation" || item.status === "delayed" || item.action === "block_transaction";
-            const isSuccess = item.status === "success" && (item.action === "repay" || item.action === "supply_collateral" || item.action === "rotate" || item.action === "swap");
-
-            let type: "danger" | "warning" | "success" | "info";
-            if (isDanger) type = "danger";
-            else if (isWarning) type = "warning";
-            else if (isSuccess) type = "success";
-            else type = "info";
-
-            return {
-              type,
-              title: `${item.action.toUpperCase()} Execution Logged (${item.status})`,
-              message: item.reason || `Action ${item.action} with amount ${item.amount} USDC processed.`,
-              time: item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : "Recent",
-            };
-          });
-          setAlerts(parsed);
+        const raw = await res.json();
+        if (res.status === 401) {
+          setAuthError("Sign in with Ethereum to view alert notifications.");
+          setAlerts([]);
+          return;
         }
+        if (res.status === 403) {
+          setAuthError("Forbidden — signed-in wallet does not match this feed.");
+          setAlerts([]);
+          return;
+        }
+        if (!res.ok) {
+          setAuthError(raw.error || `Alerts unavailable (${res.status})`);
+          setAlerts([]);
+          return;
+        }
+        setAuthError(null);
+        const data = parseFeedResponse<LogItem>(raw);
+        const parsed: AlertCardData[] = data.map((item) => {
+          const isDanger = item.status === "reverted_chain" || item.status === "failed";
+          const isWarning = item.status === "reverted_simulation" || item.status === "delayed" || item.action === "block_transaction";
+          const isSuccess = item.status === "success" && (item.action === "repay" || item.action === "supply_collateral" || item.action === "rotate" || item.action === "swap");
+
+          let type: "danger" | "warning" | "success" | "info";
+          if (isDanger) type = "danger";
+          else if (isWarning) type = "warning";
+          else if (isSuccess) type = "success";
+          else type = "info";
+
+          return {
+            type,
+            title: `${item.action.toUpperCase()} Execution Logged (${item.status})`,
+            message: item.reason || `Action ${item.action} with amount ${item.amount} USDC processed.`,
+            time: item.timestamp ? new Date(item.timestamp).toLocaleTimeString() : "Recent",
+          };
+        });
+        setAlerts(parsed);
       } catch (err) {
         console.error("Failed to load alerts:", err);
+        setAuthError("Agent unreachable — could not load alerts.");
       } finally {
         setLoading(false);
       }
@@ -83,6 +103,15 @@ export default function AlertsPage() {
         <h1 className="page-title">Alerts &amp; Notifications</h1>
         <p className="page-subtitle">Automated logging of risk events, limit hits, and execution status</p>
       </div>
+
+      <DemoModeBanner />
+      <PersonalWalletBanner />
+
+      {authError && (
+        <div className="card" style={{ color: "#f59e0b", fontSize: 13, padding: 14 }}>
+          {authError}
+        </div>
+      )}
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {loading ? (

@@ -5,6 +5,9 @@ import Link from "next/link";
 import { ExternalLink, Zap, Wallet, Terminal, Activity } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import { parseFeedResponse } from "@/lib/demo-wallet";
+import DemoModeBanner from "@/components/DemoModeBanner";
+import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 import TempoProofTable from "@/components/TempoProofTable";
 import TransactionCard from "@/components/TransactionCard";
 import { TEMPO_CHAIN_ID } from "@/lib/tier2-proofs";
@@ -44,9 +47,8 @@ export default function TempoPage() {
         if (pf.tempo) setTempo(pf.tempo);
 
         const feed = await feedRes.json();
-        if (Array.isArray(feed)) {
-          setTempoFeed(feed.filter((r) => r.action === "tempo_transfer").slice(0, 8));
-        }
+        const rows = parseFeedResponse<FeedItem>(feed);
+        setTempoFeed(rows.filter((r) => r.action === "tempo_transfer").slice(0, 8));
       } catch (err) {
         console.error("Tempo page load failed:", err);
       } finally {
@@ -91,6 +93,9 @@ export default function TempoPage() {
         </div>
         <span className="pill pill-cyan">Tempo Moderato testnet</span>
       </div>
+
+      <DemoModeBanner />
+      <PersonalWalletBanner />
 
       <div className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 20 }}>
         <div>

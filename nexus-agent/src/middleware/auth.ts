@@ -1,6 +1,13 @@
 import { Request, Response, NextFunction } from "express";
 import jwt, { type SignOptions } from "jsonwebtoken";
+import { isDemoWallet, normalizeWallet } from "../lib/demo-wallet.js";
 
+/** Request after optionalAuth — JWT may be absent or ignored. */
+export interface OptionalAuthedRequest extends Request {
+  userWallet?: string;
+}
+
+/** Request after requireAuth — JWT wallet is always set. */
 export interface AuthedRequest extends Request {
   userWallet: string;
 }
@@ -72,10 +79,60 @@ export function requireAuth(req: Request, res: Response, next: NextFunction): vo
  * Prevents IDOR vulnerabilities.
  */
 export function assertWalletScope(req: AuthedRequest, targetWallet: string): void {
-  const expected = (req.userWallet || "").toLowerCase();
-  const actual = (targetWallet || "").toLowerCase();
+  const expected = req.userWallet.toLowerCase();
+  const actual = normalizeWallet(targetWallet);
 
   if (!expected || !actual || expected !== actual) {
     throw new AuthError(403, `Forbidden: Wallet scope mismatch. Authenticated as ${expected}, requested ${actual}`);
   }
+}
+
+/**
+ * If Bearer token is present and valid, attach req.userWallet; otherwise continue without it.
+ * Invalid/expired tokens are ignored (fail-open) so demo read paths still work with stale JWTs.
+ */
+export function optionalAuth(req: Request, _res: Response, next: NextFunction): void {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith("Bearer ")) {
+    next();
+    return;
+  }
+
+  const token = authHeader.split(" ")[1];
+  try {
+    const decoded = verifyAuthToken(token);
+    if (decoded?.walletAddress) {
+      (req as OptionalAuthedRequest).userWallet = decoded.walletAddress.toLowerCase();
+    }
+  } catch {
+    // Stale or invalid JWT — treat as unauthenticated for read routes
+  }
+  next();
+}
+
+/**
+ * Read access truth table:
+ * - No JWT + demo wallet → allow
+ * - No JWT + other wallet → 401
+ * - Valid JWT + same wallet → allow
+ * - Valid JWT + different wallet → 403
+ */
+export function enforceReadAccess(req: OptionalAuthedRequest, targetWallet: string): void {
+  const wallet = normalizeWallet(targetWallet);
+  if (!wallet.startsWith("0x") || wallet.length !== 42) {
+    throw new AuthError(401, "Unauthorized: Invalid wallet address");
+  }
+
+  if (req.userWallet) {
+    assertWalletScope(req as AuthedRequest, wallet);
+    return;
+  }
+
+  if (!isDemoWallet(wallet)) {
+    throw new AuthError(401, "Unauthorized: Sign in with Ethereum to view this wallet");
+  }
+}
+
+export function isUnauthenticatedDemoRead(req: OptionalAuthedRequest, targetWallet: string): boolean {
+  return !req.userWallet && isDemoWallet(targetWallet);
 }

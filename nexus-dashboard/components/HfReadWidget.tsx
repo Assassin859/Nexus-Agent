@@ -4,6 +4,7 @@ import { useState } from "react";
 import { ExternalLink, RefreshCw } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import { getDemoWallet, isDemoReadMode } from "@/lib/demo-wallet";
 import { HF_READ_SLUG, MARKETPLACE_URL } from "@/lib/tier2-proofs";
 
 type HfReadResult = {
@@ -35,13 +36,16 @@ export default function HfReadWidget() {
   const query = async () => {
     setLoading(true);
     setError(null);
+    const queryWallet = isDemoReadMode(authToken, walletAddress)
+      ? getDemoWallet()
+      : walletAddress;
     try {
       const res = await proxyFetch(
         "/api/marketplace/hf-read",
         {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ walletAddress }),
+          body: JSON.stringify({ walletAddress: queryWallet }),
         },
         authToken,
       );

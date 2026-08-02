@@ -34,6 +34,46 @@ console.log(`Wallet:    ${wallet}\n`);
 const health = await fetch(`${agent}/health`).then((r) => r.json());
 ok("Agent health", health.status === "ok");
 
+const pfAnon = await fetch(`${agent}/api/portfolio/${wallet}`);
+const pfAnonJson = await pfAnon.json();
+ok(
+  "Anonymous demo portfolio",
+  pfAnon.ok && pfAnonJson.demoRead === true && typeof pfAnonJson.healthFactor === "number",
+  `HF=${pfAnonJson.healthFactor}`,
+);
+
+const feedAnon = await fetch(`${agent}/api/feed/${wallet}`);
+const feedAnonJson = await feedAnon.json();
+ok(
+  "Anonymous demo feed",
+  feedAnon.ok && feedAnonJson.demoRead === true && Array.isArray(feedAnonJson.items),
+  `items=${feedAnonJson.items?.length ?? 0}`,
+);
+
+const hfAnon = await fetch(`${agent}/api/marketplace/hf-read`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({ walletAddress: wallet }),
+});
+const hfAnonJson = await hfAnon.json();
+ok("Anonymous hf-read demo", hfAnon.ok && hfAnonJson.demoRead === true, `HF=${hfAnonJson.healthFactor}`);
+
+const dashPfAnon = await fetch(`${dash}/api/portfolio/${wallet}`);
+const dashPfAnonJson = await dashPfAnon.json();
+ok(
+  "Dashboard anonymous portfolio proxy",
+  dashPfAnon.ok && dashPfAnonJson.demoRead === true,
+  `status=${dashPfAnon.status}`,
+);
+
+const dashFeedAnon = await fetch(`${dash}/api/feed/${wallet}`);
+const dashFeedAnonJson = await dashFeedAnon.json();
+ok(
+  "Dashboard anonymous feed proxy",
+  dashFeedAnon.ok && dashFeedAnonJson.demoRead === true,
+  `status=${dashFeedAnon.status}`,
+);
+
 const pf = await fetch(`${agent}/api/portfolio/${wallet}`, { headers }).then((r) => r.json());
 ok("Portfolio HF", typeof pf.healthFactor === "number" && pf.healthFactor > 0, `HF=${pf.healthFactor}`);
 ok("Portfolio tempo block", pf.tempo?.chainId === 42431, `balance=${pf.tempo?.pathUsdBalance}`);
@@ -58,7 +98,8 @@ const dashHf = await dashHfRes.json();
 ok("Dashboard HF-read proxy", dashHfRes.ok && dashHf.healthFactor != null, `status=${dashHfRes.status}`);
 
 const feed = await fetch(`${agent}/api/feed/${wallet}`, { headers }).then((r) => r.json());
-const tempoRows = (Array.isArray(feed) ? feed : []).filter((r) => r.action === "tempo_transfer");
+const feedItems = Array.isArray(feed) ? feed : (Array.isArray(feed.items) ? feed.items : []);
+const tempoRows = feedItems.filter((r: { action?: string }) => r.action === "tempo_transfer");
 ok("Feed tempo_transfer rows", tempoRows.length >= 1, `count=${tempoRows.length}`);
 
 console.log(`\n${failed === 0 ? "All checks passed." : `${failed} check(s) failed.`}\n`);

@@ -23,6 +23,7 @@ import {
 import KeeperHubSyncModal from "./KeeperHubSyncModal";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import { isDemoReadMode } from "@/lib/demo-wallet";
 
 const NAV_ITEMS = [
   { href: "/",            label: "Portfolio",   icon: LayoutDashboard },
@@ -127,6 +128,12 @@ export default function Sidebar() {
           <div style={{ fontSize: 12, fontWeight: 700, color: "var(--text)", fontFamily: "monospace" }}>
             {shortAddr}
           </div>
+
+          {isDemoReadMode(authToken, walletAddress) && (
+            <span className="pill pill-cyan" style={{ fontSize: 9, alignSelf: "flex-start", padding: "2px 8px" }}>
+              Demo
+            </span>
+          )}
 
           {!authToken && (
             <button

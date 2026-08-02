@@ -10,6 +10,8 @@ import { usePagination } from "@/hooks/usePagination";
 import EthPriceChart from "@/components/EthPriceChart";
 import IntegrationsProofCard from "@/components/IntegrationsProofCard";
 import HfReadWidget from "@/components/HfReadWidget";
+import DemoModeBanner from "@/components/DemoModeBanner";
+import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 import { HF_CRITICAL, HF_WARNING, NETWORK_LABEL } from "@/lib/guardian-thresholds";
 
 type PortfolioData = {
@@ -123,6 +125,9 @@ export default function PortfolioPage() {
 
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
+      <DemoModeBanner />
+      <PersonalWalletBanner />
+
       {/* Auth & Offline Hint Banners */}
       {data?._unauthorized && (
         <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#f59e0b", fontSize: 13 }}>

@@ -13,6 +13,8 @@
 | **Repo** | https://github.com/Assassin859/Nexus-Agent |
 | **Monitored wallet** | `0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b` |
 
+**Judge path:** Open the dashboard with **no sign-in** — Portfolio, Feed, and Resilience show live demo data (read-only). If you connect MetaMask by curiosity, click **Return to demo** in the banner to restore the submission view.
+
 ---
 
 ## Execution status

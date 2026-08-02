@@ -4,6 +4,9 @@ import { useEffect, useState } from "react";
 import { CheckCircle2, Clock, ShieldX, Activity } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import { parseFeedResponse } from "@/lib/demo-wallet";
+import DemoModeBanner from "@/components/DemoModeBanner";
+import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 
 import DecisionMatrixCard, { ExecutionLogItem } from "@/components/DecisionMatrixCard";
 import Pagination from "@/components/Pagination";
@@ -103,14 +106,15 @@ export default function ResiliencePage() {
           return;
         }
         setAuthError(null);
-        if (Array.isArray(data) && data.length > 0) {
-          const logs = data as LogItem[];
-          setFeed(logs);
+        const rows = parseFeedResponse<LogItem>(data);
+        setFeed(rows);
+        if (rows.length > 0) {
+          const logs = rows;
           const happy = logs.find(d => d.status === "success");
-          const delayed = data.find(d => d.status === "delayed");
-          const pending = data.find(d => d.status === "pending");
-          const simRevert = data.find(d => d.status === "reverted_simulation");
-          const chainRevert = data.find(d => d.status === "reverted_chain");
+          const delayed = rows.find(d => d.status === "delayed");
+          const pending = rows.find(d => d.status === "pending");
+          const simRevert = rows.find(d => d.status === "reverted_simulation");
+          const chainRevert = rows.find(d => d.status === "reverted_chain");
 
           const updated = [...INITIAL_SCENARIOS];
           if (happy) {
@@ -151,6 +155,9 @@ export default function ResiliencePage() {
         <h1 className="page-title">Resilience &amp; Simulation Log</h1>
         <p className="page-subtitle">Every action is simulated prior to broadcast. Zero gas wasted on reverts.</p>
       </div>
+
+      <DemoModeBanner />
+      <PersonalWalletBanner />
 
       {authError && (
         <div className="card" style={{ color: "#f59e0b", fontSize: 13, padding: 14 }}>

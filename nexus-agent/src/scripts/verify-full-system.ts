@@ -26,6 +26,8 @@ import { getTxExplorerUrl, chainLabel } from "../lib/tx-explorer.js";
 import { parsePathUsdBalance } from "../lib/tempo-balance.js";
 import { parseHfMarketplaceResult } from "../lib/parse-hf-marketplace.js";
 import { TEMPO_CHAIN_ID, TEMPO_PROOF_TX } from "../lib/tier2-proofs.js";
+import { getDemoWallet, isDemoWallet, normalizeWallet } from "../lib/demo-wallet.js";
+import { enforceReadAccess, AuthError, AuthedRequest, OptionalAuthedRequest, generateAuthToken } from "../middleware/auth.js";
 
 async function main() {
   const isIntegration = process.argv.includes("--integration");
@@ -261,6 +263,106 @@ async function main() {
   assert(hfParsed.healthFactor === 1.5, "HF Marketplace Parser — 1e18 health factor");
   assert(hfParsed.totalCollateralUSD === 500, "HF Marketplace Parser — 1e8 collateral USD");
   assert(hfParsed.totalDebtUSD === 100, "HF Marketplace Parser — 1e8 debt USD");
+
+  // Demo wallet + read access (offline)
+  console.log("\n── Tier A: Demo Read Access (Offline) ──");
+  const demoWallet = getDemoWallet();
+  assert(demoWallet === demoUserWallet, "Demo Wallet — matches monitored wallet constant");
+  assert(isDemoWallet("0x89F97Cb35236a1d0190FB25B31C5C0fF4107Ec1b"), "Demo Wallet — mixed-case match");
+  assert(!isDemoWallet("0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266"), "Demo Wallet — rejects non-demo");
+
+  try {
+    enforceReadAccess({} as OptionalAuthedRequest, demoWallet);
+    assert(true, "enforceReadAccess — no JWT + demo wallet allows");
+  } catch {
+    assert(false, "enforceReadAccess — no JWT + demo wallet allows");
+  }
+
+  // Simulates optionalAuth fail-open: stale JWT ignored, demo read still allowed
+  try {
+    enforceReadAccess({ userWallet: undefined } as OptionalAuthedRequest, demoWallet);
+    assert(true, "enforceReadAccess — stale JWT ignored + demo wallet allows");
+  } catch {
+    assert(false, "enforceReadAccess — stale JWT ignored + demo wallet allows");
+  }
+
+  try {
+    enforceReadAccess({} as OptionalAuthedRequest, "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266");
+    assert(false, "enforceReadAccess — no JWT + other wallet should 401");
+  } catch (err) {
+    assert(err instanceof AuthError && err.statusCode === 401, "enforceReadAccess — no JWT + other wallet 401");
+  }
+
+  try {
+    enforceReadAccess({ userWallet: demoWallet } as AuthedRequest, demoWallet);
+    assert(true, "enforceReadAccess — JWT + same wallet allows");
+  } catch {
+    assert(false, "enforceReadAccess — JWT + same wallet allows");
+  }
+
+  try {
+    enforceReadAccess({ userWallet: "0xf39fd6e51aad88f6f4ce6ab8827279cfffb92266" } as AuthedRequest, demoWallet);
+    assert(false, "enforceReadAccess — JWT + different wallet should 403");
+  } catch (err) {
+    assert(err instanceof AuthError && err.statusCode === 403, "enforceReadAccess — JWT + different wallet 403");
+  }
+
+  const agentUrl = process.env.AGENT_URL;
+  if (agentUrl) {
+    console.log("\n── Tier D: Demo Read HTTP (AGENT_URL set) ──");
+    const randomWallet = "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266".toLowerCase();
+    const mixedDemo = "0x89F97Cb35236a1d0190FB25B31C5C0fF4107Ec1b";
+
+    const pfProbe = await fetch(`${agentUrl}/api/portfolio/${demoWallet}`);
+    if (pfProbe.status === 401) {
+      logSkip(
+        "Demo Read HTTP integration",
+        "Agent at AGENT_URL does not expose demo read yet — deploy nexus-agent first, then re-run with AGENT_URL",
+      );
+    } else {
+      const pfJson = await pfProbe.json();
+      assert(pfProbe.ok && pfJson.demoRead === true && typeof pfJson.healthFactor === "number", "HTTP — anonymous demo portfolio");
+
+      const pfMixed = await fetch(`${agentUrl}/api/portfolio/${mixedDemo}`);
+      assert(pfMixed.ok, "HTTP — mixed-case demo portfolio URL");
+
+      const feedAnon = await fetch(`${agentUrl}/api/feed/${demoWallet}`);
+      const feedJson = await feedAnon.json();
+      assert(feedAnon.ok && feedJson.demoRead === true && Array.isArray(feedJson.items), "HTTP — anonymous demo feed wrapper");
+
+      const pfOther = await fetch(`${agentUrl}/api/portfolio/${randomWallet}`);
+      assert(pfOther.status === 401, "HTTP — anonymous non-demo portfolio 401");
+
+      const hfDemo = await fetch(`${agentUrl}/api/marketplace/hf-read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: demoWallet }),
+      });
+      assert(hfDemo.ok, "HTTP — anonymous hf-read demo wallet");
+
+      const hfRandom = await fetch(`${agentUrl}/api/marketplace/hf-read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ walletAddress: randomWallet }),
+      });
+      assert(hfRandom.status === 401, "HTTP — anonymous hf-read non-demo 401");
+
+      const hfEmpty = await fetch(`${agentUrl}/api/marketplace/hf-read`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      assert(hfEmpty.status === 401, "HTTP — anonymous hf-read empty body 401");
+
+      const otherJwt = generateAuthToken(randomWallet);
+      const pfCross = await fetch(`${agentUrl}/api/portfolio/${demoWallet}`, {
+        headers: { Authorization: `Bearer ${otherJwt}` },
+      });
+      assert(pfCross.status === 403, "HTTP — JWT other wallet cannot read demo portfolio");
+    }
+  } else {
+    logSkip("Demo Read HTTP integration", "Set AGENT_URL to run live API auth tests");
+  }
 
   // ── Tier B: On-Chain RPC Integrations (Optional) ──────────────────────────
   console.log("\n── Tier B: On-Chain RPC Queries (Optional) ──");

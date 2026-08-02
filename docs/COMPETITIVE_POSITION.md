@@ -56,7 +56,9 @@
 
 ## What judges should click (in order)
 
-1. [Dashboard Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF ~1.86  
+**No MetaMask required** — Portfolio, Feed, and Resilience load in read-only demo mode automatically.
+
+1. [Dashboard Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF ~1.86 (demo mode banner)
 2. [Tempo page](https://spirited-heart-production-b5c5.up.railway.app/tempo) — **Tempo Explorer** links (not KeeperHub `/executions/…` — 404 outside org)  
 3. [Live Feed](https://spirited-heart-production-b5c5.up.railway.app/feed) — mined repays + `tempo_transfer` rows  
 4. [Resilience](https://spirited-heart-production-b5c5.up.railway.app/resilience) — simulation → success arc  

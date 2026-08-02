@@ -14,7 +14,9 @@
 | **Agent API** | https://nexus-agent-production-7783.up.railway.app |
 | **Chains** | Base Sepolia (84532) · Tempo Moderato (42431) |
 
-Sign in with MetaMask (Base Sepolia) → paste `kh_...` in KeeperHub Sync → Portfolio / **Tempo** / Feed / Resilience.
+**No wallet required for judging** — the dashboard opens in **read-only demo mode** (live portfolio, feed, resilience for the monitored wallet). Sign in with MetaMask to connect your own wallet; use **Return to demo** if you connected by accident.
+
+Sign in with MetaMask (Base Sepolia) → paste `kh_...` in KeeperHub Sync → full write access (chat, templates, triggers).
 
 ---
 

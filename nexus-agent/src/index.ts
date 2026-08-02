@@ -42,7 +42,13 @@ import {
   generateAuthToken,
   AuthedRequest,
   AuthError,
+  optionalAuth,
+  enforceReadAccess,
+  isUnauthenticatedDemoRead,
+  OptionalAuthedRequest,
 } from "./middleware/auth.js";
+import { demoReadLimiter } from "./middleware/demo-read-limiter.js";
+import { getDemoWallet, normalizeWallet, isDemoWallet } from "./lib/demo-wallet.js";
 import { resolveKeeperHubApiKey } from "./lib/user-context.js";
 import { sendKeeperNotification, callListedWorkflow } from "./lib/mcp-client.js";
 import { shouldAlert } from "./lib/alert-throttle.js";
@@ -114,10 +120,9 @@ const authLimiter = rateLimit({
 
 app.use("/api/", apiLimiter);
 app.use("/api/auth/", authLimiter);
+app.use(demoReadLimiter);
 
-const DEMO_WALLET = (
-  process.env.NEXT_PUBLIC_WALLET_ADDRESS || "0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b"
-).toLowerCase();
+const DEMO_WALLET = getDemoWallet();
 
 app.get("/health", (_req, res) => {
   res.json({ status: "ok", service: "nexus-agent", ts: new Date().toISOString() });
@@ -416,12 +421,13 @@ app.get("/api/markets", async (_req: express.Request, res: express.Response) => 
   }
 });
 
-// ── Portfolio & Feed Endpoints (Protected) ───────────────────────────────────
-app.get("/api/portfolio/:walletAddress", requireAuth, async (req: express.Request, res: express.Response) => {
+// ── Portfolio & Feed Endpoints (demo read or authenticated) ─────────────────
+app.get("/api/portfolio/:walletAddress", optionalAuth, async (req: express.Request, res: express.Response) => {
   try {
-    const authedReq = req as AuthedRequest;
-    const walletAddress = req.params.walletAddress.toLowerCase();
-    assertWalletScope(authedReq, walletAddress);
+    const authedReq = req as OptionalAuthedRequest;
+    const walletAddress = normalizeWallet(req.params.walletAddress);
+    enforceReadAccess(authedReq, walletAddress);
+    const demoRead = isUnauthenticatedDemoRead(authedReq, walletAddress);
 
     const [position, workflows, compoundAPY] = await Promise.all([
       getAavePosition(walletAddress),
@@ -479,6 +485,7 @@ app.get("/api/portfolio/:walletAddress", requireAuth, async (req: express.Reques
       errorReason: position.errorReason,
       workflows,
       tempo,
+      ...(demoRead ? { demoRead: true } : {}),
     });
   } catch (err) {
     if (err instanceof AuthError) {
@@ -488,16 +495,26 @@ app.get("/api/portfolio/:walletAddress", requireAuth, async (req: express.Reques
   }
 });
 
-app.post("/api/marketplace/hf-read", requireAuth, async (req: express.Request, res: express.Response) => {
+app.post("/api/marketplace/hf-read", optionalAuth, async (req: express.Request, res: express.Response) => {
   try {
-    const authedReq = req as AuthedRequest;
-    const walletAddress = authedReq.userWallet.toLowerCase();
-    const bodyWallet = typeof req.body?.walletAddress === "string"
-      ? req.body.walletAddress.toLowerCase()
-      : walletAddress;
-    assertWalletScope(authedReq, bodyWallet);
+    const authedReq = req as OptionalAuthedRequest;
+    let bodyWallet: string;
 
-    const apiKey = await resolveKeeperHubApiKey(walletAddress);
+    if (authedReq.userWallet) {
+      bodyWallet = typeof req.body?.walletAddress === "string"
+        ? normalizeWallet(req.body.walletAddress)
+        : authedReq.userWallet;
+      enforceReadAccess(authedReq, bodyWallet);
+    } else {
+      bodyWallet = normalizeWallet(req.body?.walletAddress ?? "");
+      if (!bodyWallet || !isDemoWallet(bodyWallet)) {
+        return res.status(401).json({ error: "Unauthorized: Sign in or provide demo walletAddress" });
+      }
+      enforceReadAccess(authedReq, bodyWallet);
+    }
+
+    const demoRead = isUnauthenticatedDemoRead(authedReq, bodyWallet);
+    const apiKey = await resolveKeeperHubApiKey(authedReq.userWallet ?? bodyWallet);
     let source: "keeperhub_marketplace" | "local_aave_read" = "keeperhub_marketplace";
     let listing402 = false;
     let raw: unknown;
@@ -547,24 +564,26 @@ app.post("/api/marketplace/hf-read", requireAuth, async (req: express.Request, r
       }
     }
 
-    await logExternalExecution({
-      userWallet: bodyWallet,
-      action: "marketplace_hf_read",
-      amount: 0,
-      status: "success",
-      reason: listing402
-        ? "HF read via local Aave fallback (marketplace x402)"
-        : "HF read via KeeperHub marketplace listing",
-      aiAnalysis: {
-        chainId: 84532,
-        source,
-        listing402,
-        healthFactor,
-        totalCollateralUSD,
-        totalDebtUSD,
-        listingSlug: HF_READ_SLUG,
-      },
-    });
+    if (authedReq.userWallet) {
+      await logExternalExecution({
+        userWallet: bodyWallet,
+        action: "marketplace_hf_read",
+        amount: 0,
+        status: "success",
+        reason: listing402
+          ? "HF read via local Aave fallback (marketplace x402)"
+          : "HF read via KeeperHub marketplace listing",
+        aiAnalysis: {
+          chainId: 84532,
+          source,
+          listing402,
+          healthFactor,
+          totalCollateralUSD,
+          totalDebtUSD,
+          listingSlug: HF_READ_SLUG,
+        },
+      });
+    }
 
     res.json({
       healthFactor,
@@ -573,6 +592,7 @@ app.post("/api/marketplace/hf-read", requireAuth, async (req: express.Request, r
       source,
       listing402: listing402 || undefined,
       raw: source === "keeperhub_marketplace" ? raw : undefined,
+      ...(demoRead ? { demoRead: true } : {}),
     });
   } catch (err) {
     if (err instanceof AuthError) {
@@ -582,17 +602,23 @@ app.post("/api/marketplace/hf-read", requireAuth, async (req: express.Request, r
   }
 });
 
-app.get("/api/feed/:walletAddress", requireAuth, async (req: express.Request, res: express.Response) => {
+app.get("/api/feed/:walletAddress", optionalAuth, async (req: express.Request, res: express.Response) => {
   try {
-    const authedReq = req as AuthedRequest;
-    const walletAddress = req.params.walletAddress.toLowerCase();
-    assertWalletScope(authedReq, walletAddress);
+    const authedReq = req as OptionalAuthedRequest;
+    const walletAddress = normalizeWallet(req.params.walletAddress);
+    enforceReadAccess(authedReq, walletAddress);
+    const demoRead = isUnauthenticatedDemoRead(authedReq, walletAddress);
 
     const logs = await db.query.executionsLog.findMany({
       where: eq(executionsLog.userWallet, walletAddress),
       orderBy: [desc(executionsLog.timestamp)],
       limit: 200,
     });
+
+    if (demoRead) {
+      res.json({ demoRead: true, items: logs });
+      return;
+    }
     res.json(logs);
   } catch (err) {
     if (err instanceof AuthError) {

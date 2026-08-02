@@ -3,8 +3,11 @@
 import { useEffect, useState } from "react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
+import { parseFeedResponse } from "@/lib/demo-wallet";
 import TransactionCard from "@/components/TransactionCard";
 import DecisionMatrixCard from "@/components/DecisionMatrixCard";
+import DemoModeBanner from "@/components/DemoModeBanner";
+import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 
@@ -55,9 +58,7 @@ export default function FeedPage() {
           return;
         }
         setAuthError(null);
-        if (Array.isArray(data)) {
-          setFeed(data);
-        }
+        setFeed(parseFeedResponse<FeedItem>(data));
       } catch (err) {
         console.error("Failed to load feed:", err);
         setAuthError("Agent unreachable — could not load execution feed.");
@@ -76,6 +77,9 @@ export default function FeedPage() {
         <h1 className="page-title">Live Execution Feed</h1>
         <p className="page-subtitle">Real-time audit log of autonomous transactions managed by KeeperHub MCP</p>
       </div>
+
+      <DemoModeBanner />
+      <PersonalWalletBanner />
 
       {authError && (
         <div className="card" style={{ color: "#f59e0b", fontSize: 13, padding: 14 }}>
