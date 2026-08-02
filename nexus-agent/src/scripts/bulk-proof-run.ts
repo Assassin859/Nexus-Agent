@@ -20,7 +20,6 @@ import { run as runGuardian } from "../modules/guardian.js";
 import { run as runYield } from "../modules/yield-rotator.js";
 import { run as runDca } from "../modules/dca.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
-import { DEMO_MONITORED_WALLET, DEMO_PAYROLL_RECIPIENTS } from "../lib/demo-addresses.js";
 
 const WALLET = (
   process.env.NEXT_PUBLIC_WALLET_ADDRESS || DEMO_MONITORED_WALLET
