@@ -60,7 +60,7 @@ Browser: SIWE sign-in → KeeperHub Sync (`kh_...`) → Chat: *"What is my healt
 ## Verification (2026-08-02)
 
 ```bash
-pnpm --prefix nexus-agent run verify              # 41 passed, 2 skipped
+pnpm --prefix nexus-agent run verify              # 52 passed, 2 skipped
 pnpm --prefix nexus-agent run purge-fake-payrolls  # remove synthetic payrolls if needed
 pnpm --prefix nexus-agent run bulk-proof -- --target 50  # guardian + yield + DCA only
 pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts  # 350+ log rows (see runbook)
@@ -76,7 +76,15 @@ pnpm --prefix nexus-agent run phase2
 | `0x23f6424…770df3` | [repay $1000](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) |
 | `0xd2d8ce6…a4f127` | [repay $1000](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) |
 
-Full resilience arc + video script: [submission_runbook.md](submission_runbook.md)
+**Tempo Moderato proof:**
+
+| Tx | Explorer |
+|----|----------|
+| `0xc60706…ce4ec74` | [transfer-with-memo](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) |
+
+KeeperHub execution: [`80bk5zy4fwdfedy3w1rdi`](https://app.keeperhub.com/executions/80bk5zy4fwdfedy3w1rdi) · Workflow: [`b6acvzz32j2e1xlnrl7vy`](https://app.keeperhub.com/workflows/b6acvzz32j2e1xlnrl7vy)
+
+**Marketplace:** [`nexus-guardian-hf-read`](https://app.keeperhub.com/hub?tab=marketplace) — read-only HF snapshot ($0.01/call). Publish: `pnpm --prefix nexus-agent run marketplace:publish-hf`
 
 ---
 
@@ -106,6 +114,7 @@ See [railway_setup.md](railway_setup.md). Dashboard uses **Next.js API proxies**
 | [railway_setup.md](railway_setup.md) | Production env vars & troubleshooting |
 | [BUGS.md](BUGS.md) | UX bounty — reproducible KeeperHub friction (verified Aug 2026) |
 | [PRs.md](PRs.md) | Upstream PR drafts |
+| [docs/MCP-SURFACES.md](docs/MCP-SURFACES.md) | KeeperHub MCP tools + 17 surface checks (Tier 2) |
 | [PLAN.md](PLAN.md) | Full submission roadmap + competitor win plan |
 | [model.md](model.md) | Zod schemas reference |
 

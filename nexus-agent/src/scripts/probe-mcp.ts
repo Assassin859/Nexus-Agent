@@ -35,6 +35,19 @@ try {
     console.log(`   - ${t.name}: ${t.description?.slice(0, 60) || "(no desc)"}`);
   }
 
+  // Sign & Hold spike (FRICTION-03)
+  const toolNames = tools.tools.map((t) => t.name);
+  const holdTools = ["tempo_sign_and_hold", "tempo_release_hold", "tempo_cancel_hold"];
+  console.log("\nStep 2b: Sign & Hold MCP tools (FRICTION-03)...");
+  for (const name of holdTools) {
+    const present = toolNames.includes(name);
+    console.log(`   ${present ? "✅" : "❌"} ${name}${present ? "" : " — not exposed (expected blocked)"}`);
+  }
+  if (!holdTools.some((n) => toolNames.includes(n))) {
+    console.log("   → Guardian pre-sign rescue blocked until upstream ships hold/release MCP tools");
+    console.log("   → See BUGS.md FRICTION-03 and docs/MCP-SURFACES.md");
+  }
+
   // Step 3: Try create_workflow with a unique name
   const uniqueName = `probe-test-${Date.now()}`;
   console.log(`\nStep 3: Calling create_workflow (name: "${uniqueName}")...`);

@@ -20,7 +20,9 @@
     "chat-workflows": "tsx src/scripts/sign-and-chat.ts",
     "e2e": "tsx src/scripts/full-system-e2e.ts",
     "bulk-proof": "tsx src/scripts/bulk-proof-run.ts",
-    "purge-fake-payrolls": "tsx src/scripts/purge-bulk-fake-payroll.ts"
+    "purge-fake-payrolls": "tsx src/scripts/purge-bulk-fake-payroll.ts",
+    "marketplace:publish-hf": "tsx src/scripts/publish-marketplace-hf-read.ts",
+    "tempo:proof": "tsx src/scripts/tempo-proof.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.0.12",

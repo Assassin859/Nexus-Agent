@@ -293,7 +293,7 @@ pnpm --prefix nexus-agent run verify
 ```
 
 ```
-Summary: ✓ 41 passed | ⚠ 2 skipped | ✗ 0 failed
+Summary: ✓ 52 passed | ⚠ 2 skipped | ✗ 0 failed
 ```
 
 ```bash

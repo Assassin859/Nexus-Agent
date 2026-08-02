@@ -480,6 +480,230 @@ export async function getFailoverRPC(): Promise<string> {
   }
 }
 
+export type RawWorkflowArgs = {
+  name: string;
+  description?: string;
+  nodes: Array<Record<string, unknown>>;
+  edges: Array<Record<string, unknown>>;
+  enabled?: boolean;
+};
+
+export type WorkflowListingMetadata = {
+  slug?: string;
+  category?: string;
+  chain?: string;
+  inputSchema?: Record<string, unknown>;
+  outputMapping?: Record<string, unknown>;
+  workflowType?: "read" | "write";
+  priceUsdcPerCall?: string;
+};
+
+// Create workflow from pre-built nodes/edges (marketplace / Tempo graphs)
+export async function createWorkflowRaw(
+  args: RawWorkflowArgs,
+  apiKey?: string,
+): Promise<{ workflowId: string; isStub: boolean }> {
+  const effectiveKey = resolveEffectiveMcpApiKey(apiKey);
+
+  const result = await executeWithRetry(
+    async (client) => {
+      const raw = await client.callTool({
+        name: "create_workflow",
+        arguments: {
+          name: args.name,
+          description: args.description,
+          nodes: args.nodes,
+          edges: args.edges,
+          enabled: args.enabled ?? false,
+          ...(effectiveKey ? { apiKey: effectiveKey } : {}),
+        },
+      });
+      if ((raw as any)?.isError) {
+        throw new Error((raw as any).content?.[0]?.text || "create_workflow failed");
+      }
+      const parsed = parseMcpToolContent<{ workflowId?: string; id?: string }>(raw, "workflowId");
+      const workflowId = parsed?.workflowId || parsed?.id || `wf-stub-${Date.now()}`;
+      return { data: workflowId, isStub: workflowId.startsWith("wf-stub-") };
+    },
+    `wf-stub-${Date.now()}`,
+    apiKey,
+  );
+
+  return { workflowId: result.data, isStub: result.isStub };
+}
+
+export async function validateWorkflowGraph(
+  nodes: Array<Record<string, unknown>>,
+  edges: Array<Record<string, unknown>>,
+  apiKey?: string,
+): Promise<{ valid: boolean; errors?: string[]; isStub: boolean }> {
+  const client = await tryGetMcpClient(apiKey);
+  if (!client) return { valid: false, errors: ["MCP unavailable"], isStub: true };
+
+  try {
+    const raw = await client.callTool({
+      name: "validate_workflow",
+      arguments: { nodes, edges },
+    });
+    const parsed = parseMcpToolContent<{ valid?: boolean; errors?: string[] }>(raw);
+    return {
+      valid: parsed?.valid === true,
+      errors: parsed?.errors,
+      isStub: false,
+    };
+  } catch (err) {
+    return {
+      valid: false,
+      errors: [err instanceof Error ? err.message : String(err)],
+      isStub: false,
+    };
+  }
+}
+
+export async function listOrgWorkflows(
+  apiKey?: string,
+): Promise<{ workflows: Array<{ id: string; name: string; listedSlug?: string | null }>; isStub: boolean }> {
+  const client = await tryGetMcpClient(apiKey);
+  if (!client) return { workflows: [], isStub: true };
+
+  try {
+    const raw = await client.callTool({ name: "list_workflows", arguments: {} });
+    const parsed = parseMcpToolContent<any>(raw);
+    const list = Array.isArray(parsed) ? parsed : parsed?.workflows ?? parsed?.data ?? [];
+    if (!Array.isArray(list)) return { workflows: [], isStub: false };
+    const workflows = list.map((w: any) => ({
+      id: w.id ?? w.workflowId,
+      name: w.name,
+      listedSlug: w.listedSlug ?? null,
+    }));
+    return { workflows, isStub: false };
+  } catch {
+    return { workflows: [], isStub: true };
+  }
+}
+
+export async function updateWorkflowListing(
+  workflowId: string,
+  metadata: WorkflowListingMetadata,
+  apiKey?: string,
+): Promise<{ ok: boolean; isStub: boolean; listing?: unknown }> {
+  if (workflowId.startsWith("wf-stub-")) return { ok: false, isStub: true };
+
+  const client = await tryGetMcpClient(apiKey);
+  if (!client) return { ok: false, isStub: true };
+
+  try {
+    const raw = await client.callTool({
+      name: "update_workflow_listing",
+      arguments: { workflowId, ...metadata },
+    });
+    const listing = parseMcpToolContent(raw);
+    return { ok: true, isStub: false, listing };
+  } catch {
+    return { ok: false, isStub: false };
+  }
+}
+
+export async function publishWorkflowListing(
+  workflowId: string,
+  metadata: WorkflowListingMetadata,
+  apiKey?: string,
+): Promise<{ ok: boolean; isStub: boolean; listing?: unknown }> {
+  if (workflowId.startsWith("wf-stub-")) return { ok: false, isStub: true };
+
+  const client = await tryGetMcpClient(apiKey);
+  if (!client) return { ok: false, isStub: true };
+
+  try {
+    const raw = await client.callTool({
+      name: "list_workflow",
+      arguments: { workflowId, ...metadata },
+    });
+    const listing = parseMcpToolContent(raw);
+    return { ok: true, isStub: false, listing };
+  } catch (err) {
+    console.warn("[MCP] list_workflow failed:", err instanceof Error ? err.message : err);
+    return { ok: false, isStub: false };
+  }
+}
+
+export async function searchWorkflows(
+  query: string,
+  options?: { category?: string; chain?: string; workflowType?: "read" | "write" },
+  apiKey?: string,
+): Promise<{ results: unknown[]; isStub: boolean }> {
+  const client = await tryGetMcpClient(apiKey);
+  if (!client) return { results: [], isStub: true };
+
+  try {
+    const raw = await client.callTool({
+      name: "search_workflows",
+      arguments: { query, ...options },
+    });
+    const parsed = parseMcpToolContent<any>(raw);
+    const results = Array.isArray(parsed) ? parsed : parsed?.results ?? parsed?.workflows ?? [];
+    return { results: Array.isArray(results) ? results : [], isStub: false };
+  } catch {
+    return { results: [], isStub: true };
+  }
+}
+
+export async function callListedWorkflow(
+  slug: string,
+  inputs: Record<string, unknown>,
+  apiKey?: string,
+): Promise<{ data: unknown; isStub: boolean; is402?: boolean }> {
+  const client = await tryGetMcpClient(apiKey);
+  if (!client) return { data: null, isStub: true };
+
+  try {
+    const raw = await client.callTool({
+      name: "call_workflow",
+      arguments: { slug, inputs },
+    });
+    return { data: parseMcpToolContent(raw) ?? raw, isStub: false };
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("402") || msg.toLowerCase().includes("payment required")) {
+      return { data: { error: msg }, isStub: false, is402: true };
+    }
+    throw err;
+  }
+}
+
+export async function updateWorkflowEnabled(
+  workflowId: string,
+  enabled: boolean,
+  apiKey?: string,
+): Promise<{ ok: boolean; isStub: boolean }> {
+  if (workflowId.startsWith("wf-stub-")) return { ok: false, isStub: true };
+
+  const client = await tryGetMcpClient(apiKey);
+  if (!client) return { ok: false, isStub: true };
+
+  try {
+    await client.callTool({
+      name: "update_workflow",
+      arguments: { workflowId, enabled },
+    });
+    return { ok: true, isStub: false };
+  } catch {
+    return { ok: false, isStub: false };
+  }
+}
+
+export async function listMcpTools(apiKey?: string): Promise<{ tools: string[]; isStub: boolean }> {
+  const client = await tryGetMcpClient(apiKey);
+  if (!client) return { tools: [], isStub: true };
+
+  try {
+    const res = await client.listTools();
+    return { tools: res.tools.map((t) => t.name), isStub: false };
+  } catch {
+    return { tools: [], isStub: true };
+  }
+}
+
 // 11. Cancel / Delete Workflow on KeeperHub
 export async function cancelWorkflow(
   workflowId: string,

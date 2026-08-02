@@ -11,6 +11,17 @@ import { selectBestCandidate, enforceCriticalHfFloor } from "../lib/guardian-can
 import { getCycleRemaining, shouldReleaseCycleBudget, resolveExecutionLogStatus } from "../lib/repayment-cycle.js";
 import { buildWorkflowGraph } from "../lib/workflow-graph.js";
 import { isPendingLockConflict } from "../lib/pending-lock.js";
+import {
+  buildHfReadListingMetadata,
+  buildHfReadWorkflowGraph,
+  HF_READ_LISTING_SLUG,
+  isValidListingSlug,
+} from "../lib/hf-read-workflow.js";
+import {
+  buildTempoProofWorkflowGraph,
+  TEMPO_PROOF_MEMO,
+  TEMPO_TESTNET_CHAIN,
+} from "../lib/tempo-proof-workflow.js";
 
 async function main() {
   const isIntegration = process.argv.includes("--integration");
@@ -208,6 +219,26 @@ async function main() {
   assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: 2000 }) === 0, "Cycle Remaining — Clamps negative to 0 when over budget");
   assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: 600 }) === 400, "Cycle Remaining — Returns correct positive remainder");
   assert(getCycleRemaining({ cycleLimitUSD: 1000, totalRepaidThisCycleUSD: null }) === 1000, "Cycle Remaining — Treats null repaid as 0");
+
+  // 8. Tier 2 — HF-read marketplace graph
+  const hfGraph = buildHfReadWorkflowGraph();
+  assert(hfGraph.nodes.length === 2, "HF Read Graph — Manual trigger + read node");
+  const readNode = hfGraph.nodes.find((n) => n.id === "read-1") as any;
+  assert(readNode?.data?.config?.actionType === "web3/read-contract", "HF Read Graph — read-contract action");
+  assert(readNode?.data?.config?.abiFunction === "getUserAccountData", "HF Read Graph — getUserAccountData ABI");
+  assert(isValidListingSlug(HF_READ_LISTING_SLUG), "HF Read Listing — slug format valid");
+  assert(isValidListingSlug("Bad_Slug") === false, "HF Read Listing — rejects invalid slug");
+  const listingMeta = buildHfReadListingMetadata();
+  assert(listingMeta.workflowType === "read", "HF Read Listing — workflowType read");
+  assert(listingMeta.priceUsdcPerCall === "0.01", "HF Read Listing — x402 price set");
+  assert(Array.isArray((listingMeta.inputSchema as any).required) && (listingMeta.inputSchema as any).required.includes("walletAddress"), "HF Read Listing — inputSchema requires walletAddress");
+
+  // 9. Tier 2 — Tempo proof graph
+  const tempoGraph = buildTempoProofWorkflowGraph({ recipientAddress: demoUserWallet });
+  const tempoStep = tempoGraph.nodes.find((n) => n.id === "step-1") as any;
+  assert(tempoStep?.data?.config?.actionType === "tempo/transfer-with-memo", "Tempo Proof Graph — transfer-with-memo action");
+  assert(tempoStep?.data?.config?.network === TEMPO_TESTNET_CHAIN, "Tempo Proof Graph — Moderato chain 42431");
+  assert(tempoStep?.data?.config?.memo === TEMPO_PROOF_MEMO, "Tempo Proof Graph — default memo");
 
   // ── Tier B: On-Chain RPC Integrations (Optional) ──────────────────────────
   console.log("\n── Tier B: On-Chain RPC Queries (Optional) ──");

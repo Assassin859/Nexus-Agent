@@ -7,7 +7,9 @@
 ## Verify (2026-08-02)
 
 ```bash
-pnpm --prefix nexus-agent run verify              # 41 passed, 2 skipped
+pnpm --prefix nexus-agent run verify              # 52 passed, 2 skipped
+pnpm --prefix nexus-agent run marketplace:publish-hf
+pnpm --prefix nexus-agent run tempo:proof
 pnpm --prefix nexus-agent run verify:integration  # 42 passed, 2 skipped
 pnpm --prefix nexus-agent run phase2              # Guardian → Yield → DCA → PayChain
 pnpm --prefix nexus-dashboard run build

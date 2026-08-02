@@ -1,6 +1,6 @@
 # NexusAgent — Submission Runbook
 
-> **Last verified:** 2026-08-02 · **Chain:** Base Sepolia (84532) · **Harness:** 41/42 passed
+> **Last verified:** 2026-08-02 · **Chain:** Base Sepolia (84532) · **Harness:** 52/54 passed
 
 ---
 
@@ -57,6 +57,7 @@ At safe HF, Guardian **holds** — use Feed history for repay proof.
 |--------|-------|-------|
 | **Guardian** | Flagship | 2 mined txs + simulation arc |
 | **PayChain** | KeeperHub cron | Workflow `iu0toy0rena606e07ikxu` |
+| **Marketplace** | HF-read listing | Slug `nexus-guardian-hf-read` · WF `15a4yssu4dkcim8fq3o70` |
 | **DCA** | Scaffolding | KeeperHub registered; local executor |
 | **Yield** | Constraint | Dual-wallet guard skip |
 
@@ -85,15 +86,48 @@ pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts
 
 ```bash
 pnpm --prefix nexus-agent run verify
-# Summary: ✓ 41 passed | ⚠ 2 skipped | ✗ 0 failed
-
-pnpm --prefix nexus-agent run verify:integration
+# Summary: ✓ 52 passed | ⚠ 2 skipped | ✗ 0 failed
 # Summary: ✓ 42 passed | ⚠ 2 skipped | ✗ 0 failed
 
 pnpm --prefix nexus-agent run phase2 && pnpm --prefix nexus-agent run logs
 pnpm --prefix nexus-agent run e2e
 pnpm --prefix nexus-agent run surfaces
+pnpm --prefix nexus-agent run marketplace:publish-hf   # Tier 2 — HF-read listing
+pnpm --prefix nexus-agent run tempo:proof              # Tier 2 — after Moderato funding
 ```
+
+---
+
+## Tier 2 — Marketplace + Tempo
+
+| Capability | Status | Command / link |
+|------------|--------|----------------|
+| Marketplace HF-read listing | Publish via script | `pnpm --prefix nexus-agent run marketplace:publish-hf` |
+| Slug | `nexus-guardian-hf-read` | [Marketplace](https://app.keeperhub.com/hub?tab=marketplace) |
+| Tempo Moderato proof | Done | [tx `0xc60706…`](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) |
+| MCP surfaces doc | [docs/MCP-SURFACES.md](docs/MCP-SURFACES.md) | 17 checks + tool inventory |
+
+### Tempo Moderato funding (one-time setup)
+
+Your **KeeperHub agentic wallet** (`AGENTIC_WALLET_ADDRESS`) signs on Tempo — no separate wallet app required.
+
+| Step | Action |
+|------|--------|
+| 1 | Open [app.keeperhub.com](https://app.keeperhub.com) → copy agentic wallet address (same as `AGENTIC_WALLET_ADDRESS` in `.env`) |
+| 2 | Fund on **Moderato testnet (chain 42431)** with PathUSD or AlphaUSD. Options: `npx @keeperhub/wallet fund` (prints deposit address + onramp hints), [tempo.xyz](https://tempo.xyz) testnet docs, or transfer from another Tempo wallet |
+| 3 | Verify balance: [explore.testnet.tempo.xyz](https://explore.testnet.tempo.xyz) — fees are paid in stablecoin (no ETH gas token) |
+| 4 | Run `pnpm --prefix nexus-agent run tempo:proof` — captures tx hash + explorer link |
+| 5 | Paste tx link into README § On-chain proof (Tempo row) |
+
+**Token addresses (Moderato):** PathUSD `0x20c0000000000000000000000000000000000000` · AlphaUSD `0x20c0000000000000000000000000000000000001`
+
+**Tempo proof table:**
+
+| Tx | Link |
+|----|------|
+| `0xc60706…ce4ec74` | [transfer-with-memo on Moderato](https://explore.testnet.tempo.xyz/tx/0xc60706a09597c96ac47f5082dc2d7cfb137cf61f7abaf3f3ab003997ace4ec74) |
+
+KeeperHub: [execution `80bk5zy4fwdfedy3w1rdi`](https://app.keeperhub.com/executions/80bk5zy4fwdfedy3w1rdi) · memo: `nexus-agent-proof` · signer: `0xc63a364F…b9Fac`
 
 ---
 
