@@ -21,7 +21,8 @@ import cron from "node-cron";
 import { verifyMessage } from "ethers";
 import { generateText } from "ai";
 import { getBrainModel, getActiveBrainProvider } from "./brain/provider.js";
-import { createAgentTools } from "./brain/agent-tools.js";
+import { createAgentTools, createReadOnlyAgentTools } from "./brain/agent-tools.js";
+import { buildChatSystemPrompt } from "./brain/chat-prompt.js";
 import { issueSiweChallenge, consumeSiweChallenge } from "./lib/siwe-challenge.js";
 import { run as runGuardian } from "./modules/guardian.js";
 import { run as runYieldRotator } from "./modules/yield-rotator.js";
@@ -182,7 +183,7 @@ app.post("/api/auth/verify", async (req, res) => {
     if (!existingSettings) {
       await db.insert(userSettings).values({
         userWallet: expectedAddress,
-        keeperhubApiKey: process.env.KEEPERHUB_API_KEY || null,
+        keeperhubApiKey: null,
         updatedAt: new Date(),
       });
     }
@@ -628,15 +629,21 @@ app.get("/api/feed/:walletAddress", optionalAuth, async (req: express.Request, r
   }
 });
 
-// ── AI Chat Agent Endpoint (Protected) ───────────────────────────────────────
-app.post("/api/chat", requireAuth, async (req: express.Request, res: express.Response) => {
+// ── AI Chat Agent Endpoint (demo read or authenticated) ─────────────────────
+app.post("/api/chat", optionalAuth, demoReadLimiter, async (req: express.Request, res: express.Response) => {
   try {
-    const authedReq = req as AuthedRequest;
-    const wallet = authedReq.userWallet;
+    const authedReq = req as OptionalAuthedRequest;
+    const bodyWallet = req.body.walletAddress
+      ? normalizeWallet(String(req.body.walletAddress))
+      : null;
+    const wallet = bodyWallet ?? authedReq.userWallet ?? getDemoWallet();
+    enforceReadAccess(authedReq, wallet);
+    const demoRead = isUnauthenticatedDemoRead(authedReq, wallet);
+
     const userMessage = req.body.userMessage ?? req.body.message ?? "";
     const conversationHistory = req.body.conversationHistory ?? [];
 
-    const apiKey = await resolveKeeperHubApiKey(wallet);
+    const apiKey = demoRead ? undefined : await resolveKeeperHubApiKey(wallet);
     const messages = [
       ...conversationHistory.map((m: any) => ({
         role: m.sender === "user" ? ("user" as const) : ("assistant" as const),
@@ -645,26 +652,13 @@ app.post("/api/chat", requireAuth, async (req: express.Request, res: express.Res
       { role: "user" as const, content: userMessage },
     ];
 
-    const tools = createAgentTools(wallet, conversationHistory, apiKey);
+    const tools = demoRead
+      ? createReadOnlyAgentTools(wallet)
+      : createAgentTools(wallet, conversationHistory, apiKey);
 
     const result = await generateText({
       model: getBrainModel(),
-      system: `You are NexusAgent, an intelligent, autonomous DeFi and automated payroll manager powered by KeeperHub MPC.
-You talk naturally like ChatGPT or Claude. You are smart, conversational, helpful, and understand informal language, typos, slang, and complex instructions.
-
-Your Capabilities & Tools:
-1. 'schedulePayroll': Use when the user wants to set up a recurring payment, salary, or transfer to an address, team, or payee name.
-2. 'scheduleDCA': Use when the user wants to set up a recurring Dollar-Cost Averaging (DCA) swap of USDC into ETH (e.g. 'dca 50 usdc into eth weekly').
-3. 'cancelWorkflows': Use when the user wants to cancel, stop, or pause active workflows (payroll, dca, or all).
-4. 'listWorkflows': Use when the user asks about their active workflows, registered payrolls, or DCA triggers.
-5. 'listPayees': Use when the user asks about saved payees, team members, or vault pools.
-6. 'queryPortfolio': Use when the user asks about their Aave position, loan, health factor, or debt.
-7. 'triggerStrategy': Use when the user wants to trigger DCA, Guardian position check, or Yield Rotator immediately.
-8. 'getLiveTransactions': Use when the user asks for live transactions, recent execution logs, or Sepolia Etherscan links.
-
-Formatting Rules:
-- DO NOT use markdown tables. Format lists with markdown bullet points and emojis.
-- Never mention internal technical tool names to the user.`,
+      system: buildChatSystemPrompt(demoRead),
       messages,
       tools,
       maxSteps: 5,
@@ -678,8 +672,12 @@ Formatting Rules:
       toolCalls,
       toolResults,
       executionResults: toolResults,
+      demoRead,
     });
   } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
     console.error("[CHAT AGENT ERROR]", err);
     res.status(500).json({ error: err instanceof Error ? err.message : "Chat processing failed" });
   }

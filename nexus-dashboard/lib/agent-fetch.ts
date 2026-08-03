@@ -34,6 +34,17 @@ function isDemoReadRequest(path: string, init: RequestInit): boolean {
     }
   }
 
+  if (normalizedPath === "/api/chat" && init.method === "POST") {
+    try {
+      const body = typeof init.body === "string" ? JSON.parse(init.body) : null;
+      if (body?.walletAddress && isDemoWallet(String(body.walletAddress))) {
+        return true;
+      }
+    } catch {
+      return false;
+    }
+  }
+
   return false;
 }
 

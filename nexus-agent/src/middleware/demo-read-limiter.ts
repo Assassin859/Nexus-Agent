@@ -27,6 +27,13 @@ export function isDemoReadRequest(req: Request): boolean {
     }
   }
 
+  if (req.method === "POST" && path === "/api/chat") {
+    const body = req.body as { walletAddress?: string } | undefined;
+    if (typeof body?.walletAddress === "string" && isDemoWallet(body.walletAddress)) {
+      return true;
+    }
+  }
+
   return false;
 }
 

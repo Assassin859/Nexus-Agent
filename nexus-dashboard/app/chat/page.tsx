@@ -7,6 +7,7 @@ import { proxyFetch } from "@/lib/agent-fetch";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { HF_WARNING } from "@/lib/guardian-thresholds";
+import { isDemoReadMode } from "@/lib/demo-wallet";
 
 type PortfolioData = {
   healthFactor: number | null;
@@ -20,8 +21,14 @@ type ToolResult = { toolName: string; result?: unknown };
 
 const DEFAULT_WELCOME = {
   sender: "agent",
-  text: "Hello! I am your NexusAgent AI assistant powered by OpenRouter. How can I assist with your automated wealth strategy today?",
+  text: "Hello! I'm NexusAgent — ask about your Aave health factor, Tempo Moderato proofs (/tempo page), or recent on-chain activity. Sign in with Ethereum to schedule payroll or trigger strategies.",
 };
+
+const SUGGESTED_PROMPTS = [
+  "Show Tempo transactions",
+  "What is my health factor?",
+  "Show recent on-chain activity",
+];
 
 function chatKey(wallet: string) {
   return `nexus_chat_history_${wallet.toLowerCase()}`;
@@ -97,10 +104,11 @@ export default function ChatPage() {
       .catch(() => {});
   }, [walletAddress, authToken]);
 
-  async function sendMessage() {
-    if (!input.trim() || loading) return;
+  const demoReadOnly = isDemoReadMode(authToken, walletAddress);
 
-    const userText = input.trim();
+  async function sendMessage(textOverride?: string) {
+    const userText = (textOverride ?? input).trim();
+    if (!userText || loading) return;
     const userMsg = { sender: "user", text: userText };
     setMessages((prev) => [...prev, userMsg]);
     setInput("");
@@ -205,11 +213,49 @@ export default function ChatPage() {
       </div>
 
       {!authToken && (
-        <div style={{ background: "rgba(245,158,11,0.1)", border: "1px solid rgba(245,158,11,0.3)", borderRadius: 10, padding: "12px 16px", display: "flex", alignItems: "center", justifyContent: "space-between", color: "#f59e0b", fontSize: 13 }}>
-          <span>Sign In with Ethereum to chat with NexusAgent and execute strategy commands.</span>
+        <div style={{
+          background: demoReadOnly ? "rgba(6,182,212,0.08)" : "rgba(245,158,11,0.1)",
+          border: demoReadOnly ? "1px solid rgba(6,182,212,0.28)" : "1px solid rgba(245,158,11,0.3)",
+          borderRadius: 10,
+          padding: "12px 16px",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          flexWrap: "wrap",
+          color: demoReadOnly ? "#06b6d4" : "#f59e0b",
+          fontSize: 13,
+        }}>
+          <span>
+            {demoReadOnly
+              ? "Demo chat — read-only queries (HF, Tempo proofs, recent txs). Sign in to schedule payroll or trigger strategies."
+              : "Sign In with Ethereum to chat with NexusAgent and execute strategy commands."}
+          </span>
           <button onClick={signInWithEthereum} className="btn btn-primary" style={{ padding: "6px 12px", fontSize: 12 }}>
             Sign In via MetaMask
           </button>
+        </div>
+      )}
+
+      {demoReadOnly && (
+        <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+          {SUGGESTED_PROMPTS.map((prompt) => (
+            <button
+              key={prompt}
+              type="button"
+              onClick={() => sendMessage(prompt)}
+              className="btn"
+              style={{
+                fontSize: 12,
+                padding: "6px 12px",
+                background: "rgba(6,182,212,0.08)",
+                border: "1px solid rgba(6,182,212,0.25)",
+                color: "#06b6d4",
+              }}
+            >
+              {prompt}
+            </button>
+          ))}
         </div>
       )}
 
@@ -316,10 +362,10 @@ export default function ChatPage() {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={(e) => e.key === "Enter" && sendMessage()}
-              placeholder="e.g. Pay 0x89f9... 50 USDC every Friday or Rotate yield to Compound"
+              placeholder={demoReadOnly ? "Ask about Tempo proofs, health factor, or recent transactions…" : "e.g. Pay 0x89f9... 50 USDC every Friday or Rotate yield to Compound"}
               style={{ flex: 1 }}
             />
-            <button onClick={sendMessage} disabled={loading} className="btn btn-primary" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <button onClick={() => sendMessage()} disabled={loading} className="btn btn-primary" style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <Send size={16} /> Send
             </button>
           </div>

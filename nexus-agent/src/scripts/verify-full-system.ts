@@ -25,7 +25,8 @@ import {
 import { getTxExplorerUrl, chainLabel } from "../lib/tx-explorer.js";
 import { parsePathUsdBalance } from "../lib/tempo-balance.js";
 import { parseHfMarketplaceResult } from "../lib/parse-hf-marketplace.js";
-import { TEMPO_CHAIN_ID, TEMPO_PROOF_TX } from "../lib/tier2-proofs.js";
+import { TEMPO_CHAIN_ID, TEMPO_PROOF_TX, TEMPO_PROOF_TXS } from "../lib/tier2-proofs.js";
+import { mapExecutionLogToExplorer } from "../brain/agent-tools.js";
 import { getDemoWallet, isDemoWallet, normalizeWallet } from "../lib/demo-wallet.js";
 import { enforceReadAccess, AuthError, AuthedRequest, OptionalAuthedRequest, generateAuthToken } from "../middleware/auth.js";
 
@@ -254,6 +255,15 @@ async function main() {
   assert(baseExplorer.url.includes("sepolia.basescan.org"), "Tx Explorer — Base Sepolia URL");
   assert(chainLabel(TEMPO_CHAIN_ID) === "Tempo Moderato", "Tx Explorer — chainLabel Tempo");
   assert(parsePathUsdBalance(1_000_000n) === 1, "Tempo Balance — 6-decimal PathUSD parse");
+
+  assert(TEMPO_PROOF_TXS.length === 4, "Tempo proofs — 4 canonical txs for chat getTempoProofs");
+  const tempoLogExplorer = mapExecutionLogToExplorer({
+    txHash: TEMPO_PROOF_TX,
+    status: "success",
+    aiAnalysis: { chainId: TEMPO_CHAIN_ID },
+  });
+  assert(tempoLogExplorer.explorerUrl?.includes("explore.testnet.tempo.xyz"), "Chat tool — mapExecutionLogToExplorer Tempo URL");
+  assert(tempoLogExplorer.chain === "Tempo Moderato", "Chat tool — mapExecutionLogToExplorer chain label");
 
   const hfParsed = parseHfMarketplaceResult({
     healthFactor: "1500000000000000000",

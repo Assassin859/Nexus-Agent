@@ -11,10 +11,213 @@ import { run as runGuardian } from "../modules/guardian.js";
 import { run as runYieldRotator } from "../modules/yield-rotator.js";
 import { run as runDCA } from "../modules/dca.js";
 import { eq, desc, and, ilike, gte } from "drizzle-orm";
+import {
+  TEMPO_CHAIN_ID,
+  TEMPO_PROOF_MEMO,
+  TEMPO_PROOF_TXS,
+  tempoTxUrl,
+} from "../lib/tier2-proofs.js";
+import { chainLabel, getTxExplorerUrl } from "../lib/tx-explorer.js";
+
+type ExecutionLogRow = {
+  txHash?: string | null;
+  status: string;
+  aiAnalysis?: unknown;
+};
+
+/** Map an execution log row to a chain-aware explorer link (for tests and chat tools). */
+export function mapExecutionLogToExplorer(log: ExecutionLogRow): {
+  explorerUrl?: string;
+  explorerLabel?: string;
+  chain?: string;
+} {
+  if (!log.txHash || log.status === "simulated_stub") {
+    return {};
+  }
+  const analysis =
+    log.aiAnalysis && typeof log.aiAnalysis === "object"
+      ? (log.aiAnalysis as Record<string, unknown>)
+      : null;
+  const { url, label } = getTxExplorerUrl(log.txHash, analysis);
+  const chainId = analysis?.chainId;
+  return {
+    explorerUrl: url,
+    explorerLabel: label,
+    chain: chainLabel(chainId),
+  };
+}
+
+function buildReadOnlyTools(wallet: string) {
+  return {
+    listWorkflows: tool({
+      description: "List all active workflows, recurring payrolls, DCA schedules, or triggers registered for this wallet (e.g., 'what are my workflows', 'my workflow', 'show active payments')",
+      parameters: z.object({}),
+      execute: async () => {
+        const activeWfs = await db.query.activeWorkflows.findMany({
+          where: and(
+            eq(activeWorkflows.userWallet, wallet),
+            eq(activeWorkflows.status, "active"),
+          ),
+        });
+
+        return {
+          count: activeWfs.length,
+          workflows: activeWfs.map((w) => ({
+            id: w.id,
+            type: w.type,
+            recipient: w.recipientAddress,
+            amount: w.amount,
+            schedule: w.cronSchedule,
+            status: w.status,
+          })),
+        };
+      },
+    }),
+
+    listPayees: tool({
+      description: "List all registered payees, team members, single recipients, or vault pools saved in the payees directory (e.g., 'show payees', 'who can I pay', 'team members')",
+      parameters: z.object({}),
+      execute: async () => {
+        const list = await db.query.payees.findMany({
+          where: eq(payees.userWallet, wallet),
+          orderBy: [desc(payees.createdAt)],
+        });
+
+        return {
+          count: list.length,
+          payees: list.map((p) => ({
+            name: p.name,
+            type: p.type,
+            payoutMode: p.payoutMode,
+            vaultPoolAddress: p.vaultPoolAddress,
+            memberCount: p.memberCount,
+          })),
+        };
+      },
+    }),
+
+    queryPortfolio: tool({
+      description: "Query current Aave loan position, health factor, collateral USD, debt USD, and USDC supply balance (e.g., 'what is my health factor', 'check loan', 'am I safe')",
+      parameters: z.object({}),
+      execute: async () => {
+        const pos = await getAavePosition(wallet);
+        const ctx = getWalletContext(wallet);
+
+        const alignmentFields = {
+          usdcSuppliedUSD: pos.usdcSuppliedUSD,
+          usdcSuppliedAmount: pos.usdcSuppliedAmount,
+          signerWallet: ctx?.signerWallet ?? null,
+          sameWallet: ctx?.sameWallet ?? false,
+          yieldRotationAvailable: ctx?.canWithdrawAaveSupply ?? false,
+        };
+
+        if (pos.isError) {
+          return {
+            healthFactor: null,
+            collateralUSD: 0,
+            debtUSD: 0,
+            isSafe: false,
+            status: "Degraded / RPC Error",
+            errorReason: pos.errorReason,
+            ...alignmentFields,
+          };
+        }
+
+        if (pos.healthFactor === null) {
+          return {
+            healthFactor: null,
+            collateralUSD: pos.collateralUSD,
+            debtUSD: pos.debtUSD,
+            isSafe: null,
+            status: "No Active Loan",
+            ...alignmentFields,
+          };
+        }
+
+        return {
+          healthFactor: pos.healthFactor,
+          collateralUSD: pos.collateralUSD,
+          debtUSD: pos.debtUSD,
+          isSafe: pos.healthFactor >= 1.2,
+          status: pos.healthFactor >= 1.5 ? "Safe Zone" : pos.healthFactor >= 1.15 ? "Warning Zone" : "Liquidation Risk",
+          ...alignmentFields,
+        };
+      },
+    }),
+
+    getLiveTransactions: tool({
+      description:
+        "Query recent on-chain transactions and execution logs with chain-aware explorer links — Base Sepolia (Guardian repays) or Tempo Moderato (tempo_transfer). Use for 'recent transactions', 'live tx', 'basescan', or mixed activity.",
+      parameters: z.object({}),
+      execute: async () => {
+        const logs = await db.query.executionsLog.findMany({
+          where: eq(executionsLog.userWallet, wallet),
+          orderBy: [desc(executionsLog.timestamp)],
+          limit: 10,
+        });
+
+        return {
+          count: logs.length,
+          transactions: logs.map((l) => ({
+            action: l.action,
+            amount: l.amount,
+            status: l.status,
+            reason: l.reason,
+            txHash: l.txHash ?? null,
+            timestamp: l.timestamp ? new Date(l.timestamp).toISOString() : new Date().toISOString(),
+            ...mapExecutionLogToExplorer(l),
+          })),
+        };
+      },
+    }),
+
+    getTempoProofs: tool({
+      description:
+        "List Tempo Moderato on-chain proofs (transfer-with-memo, chain 42431). Use when user asks about Tempo, temo (typo), tempo page, tempo transactions, Moderato, or PathUSD proofs.",
+      parameters: z.object({}),
+      execute: async () => {
+        const dynamicLogs = await db.query.executionsLog.findMany({
+          where: and(
+            eq(executionsLog.userWallet, wallet),
+            eq(executionsLog.action, "tempo_transfer"),
+          ),
+          orderBy: [desc(executionsLog.timestamp)],
+          limit: 10,
+        });
+
+        return {
+          chainId: TEMPO_CHAIN_ID,
+          chainName: "Tempo Moderato",
+          memo: TEMPO_PROOF_MEMO,
+          dashboardPath: "/tempo",
+          publicProofNote: "Verify on Tempo Explorer. KeeperHub workflow editor requires org login.",
+          canonicalProofs: TEMPO_PROOF_TXS.map((p, i) => ({
+            index: i + 1,
+            txHash: p.txHash,
+            explorerUrl: tempoTxUrl(p.txHash),
+            workflowId: p.workflowId,
+          })),
+          feedLogs: dynamicLogs.map((l) => ({
+            action: l.action,
+            status: l.status,
+            txHash: l.txHash,
+            timestamp: l.timestamp ? new Date(l.timestamp).toISOString() : null,
+            ...mapExecutionLogToExplorer(l),
+          })),
+        };
+      },
+    }),
+  };
+}
+
+/** Read-only tools for demo / judge chat (no writes). */
+export function createReadOnlyAgentTools(walletAddress: string) {
+  return buildReadOnlyTools(walletAddress.toLowerCase());
+}
 
 /**
- * Creates the set of native AI SDK tools for the LLM agent.
- * The model (GPT-4o / Claude) autonomously decides which tool to call based on conversation context.
+ * Creates the full set of native AI SDK tools for the LLM agent.
+ * The model autonomously decides which tool to call based on conversation context.
  */
 export function createAgentTools(
   walletAddress: string,
@@ -22,6 +225,7 @@ export function createAgentTools(
   apiKey?: string
 ) {
   const wallet = walletAddress.toLowerCase();
+  const readOnly = buildReadOnlyTools(wallet);
 
   const cancelWorkflowsTool = tool({
     description: "Cancel, stop, or pause active workflows (payroll, dca, or all) for this wallet (e.g., 'stop all payrolls', 'cancel all dca', 'pause my payments')",
@@ -145,6 +349,8 @@ export function createAgentTools(
   });
 
   return {
+    ...readOnly,
+
     // ── Tool 1: Schedule Payroll ──────────────────────────────────────────────
     schedulePayroll: tool({
       description: "Schedule a recurring payroll or payout to a recipient address, payee name, or team (e.g., 'pay alice 50 USDC every friday', 'pay 0x123... 20 weekly')",
@@ -202,105 +408,6 @@ export function createAgentTools(
     cancelWorkflows: cancelWorkflowsTool,
     cancelPayrolls: cancelWorkflowsTool,
 
-    // ── Tool 3: List Active Workflows ─────────────────────────────────────────
-    listWorkflows: tool({
-      description: "List all active workflows, recurring payrolls, DCA schedules, or triggers registered for this wallet (e.g., 'what are my workflows', 'my workflow', 'show active payments')",
-      parameters: z.object({}),
-      execute: async () => {
-        const activeWfs = await db.query.activeWorkflows.findMany({
-          where: and(
-            eq(activeWorkflows.userWallet, wallet),
-            eq(activeWorkflows.status, "active"),
-          ),
-        });
-
-        return {
-          count: activeWfs.length,
-          workflows: activeWfs.map(w => ({
-            id: w.id,
-            type: w.type,
-            recipient: w.recipientAddress,
-            amount: w.amount,
-            schedule: w.cronSchedule,
-            status: w.status,
-          })),
-        };
-      },
-    }),
-
-    // ── Tool 4: List Payees Directory ─────────────────────────────────────────
-    listPayees: tool({
-      description: "List all registered payees, team members, single recipients, or vault pools saved in the payees directory (e.g., 'show payees', 'who can I pay', 'team members')",
-      parameters: z.object({}),
-      execute: async () => {
-        const list = await db.query.payees.findMany({
-          where: eq(payees.userWallet, wallet),
-          orderBy: [desc(payees.createdAt)],
-        });
-
-        return {
-          count: list.length,
-          payees: list.map(p => ({
-            name: p.name,
-            type: p.type,
-            payoutMode: p.payoutMode,
-            vaultPoolAddress: p.vaultPoolAddress,
-            memberCount: p.memberCount,
-          })),
-        };
-      },
-    }),
-
-    // ── Tool 5: Query Portfolio (Aave) ────────────────────────────────────────
-    queryPortfolio: tool({
-      description: "Query current Aave loan position, health factor, collateral USD, debt USD, and USDC supply balance (e.g., 'what is my health factor', 'check loan', 'am I safe')",
-      parameters: z.object({}),
-      execute: async () => {
-        const pos = await getAavePosition(wallet);
-        const ctx = getWalletContext(wallet);
-
-        const alignmentFields = {
-          usdcSuppliedUSD: pos.usdcSuppliedUSD,
-          usdcSuppliedAmount: pos.usdcSuppliedAmount,
-          signerWallet: ctx?.signerWallet ?? null,
-          sameWallet: ctx?.sameWallet ?? false,
-          yieldRotationAvailable: ctx?.canWithdrawAaveSupply ?? false,
-        };
-
-        if (pos.isError) {
-          return {
-            healthFactor: null,
-            collateralUSD: 0,
-            debtUSD: 0,
-            isSafe: false,
-            status: "Degraded / RPC Error",
-            errorReason: pos.errorReason,
-            ...alignmentFields,
-          };
-        }
-
-        if (pos.healthFactor === null) {
-          return {
-            healthFactor: null,
-            collateralUSD: pos.collateralUSD,
-            debtUSD: pos.debtUSD,
-            isSafe: null,
-            status: "No Active Loan",
-            ...alignmentFields,
-          };
-        }
-
-        return {
-          healthFactor: pos.healthFactor,
-          collateralUSD: pos.collateralUSD,
-          debtUSD: pos.debtUSD,
-          isSafe: pos.healthFactor >= 1.2,
-          status: pos.healthFactor >= 1.5 ? "Safe Zone" : pos.healthFactor >= 1.15 ? "Warning Zone" : "Liquidation Risk",
-          ...alignmentFields,
-        };
-      },
-    }),
-
     // ── Tool 6: Trigger Automated DeFi Strategies ─────────────────────────────
     triggerStrategy: tool({
       description: "Trigger an automated strategy immediately: 'dca' (swap ETH/USDC), 'guardian' (repayment check), or 'yield' (yield rotator optimization)",
@@ -333,34 +440,6 @@ export function createAgentTools(
 
         return {
           message: `✅ ${strategy} ran: ${recent.status} — ${(recent.reason || recent.action).slice(0, 120)}`,
-        };
-      },
-    }),
-
-    // ── Tool 7: Get Live Transactions & BaseScan Links ────────────────────────
-    getLiveTransactions: tool({
-      description: "Query recent on-chain transactions, execution logs, and live BaseScan verification links (e.g. 'show live tx', 'recent transactions', 'basescan links')",
-      parameters: z.object({}),
-      execute: async () => {
-        const logs = await db.query.executionsLog.findMany({
-          where: eq(executionsLog.userWallet, wallet),
-          orderBy: [desc(executionsLog.timestamp)],
-          limit: 5,
-        });
-
-        return {
-          count: logs.length,
-          transactions: logs.map(l => ({
-            action: l.action,
-            amount: l.amount,
-            status: l.status,
-            reason: l.reason,
-            txHash: l.txHash ?? null,
-            ...(l.txHash && l.status !== "simulated_stub" && {
-              basescanUrl: `https://sepolia.basescan.org/tx/${l.txHash}`,
-            }),
-            timestamp: l.timestamp ? new Date(l.timestamp).toISOString() : new Date().toISOString(),
-          })),
         };
       },
     }),
