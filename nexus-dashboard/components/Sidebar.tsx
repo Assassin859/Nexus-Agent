@@ -131,7 +131,7 @@ export default function Sidebar() {
 
           {isDemoReadMode(authToken, walletAddress) && (
             <span className="pill pill-cyan" style={{ fontSize: 9, alignSelf: "flex-start", padding: "2px 8px" }}>
-              Demo
+              Preview
             </span>
           )}
 

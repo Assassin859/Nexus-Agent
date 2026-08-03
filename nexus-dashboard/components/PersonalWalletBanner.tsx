@@ -51,7 +51,7 @@ export default function PersonalWalletBanner() {
           color: "#818cf8",
         }}
       >
-        <RotateCcw size={12} /> Return to demo
+        <RotateCcw size={12} /> Return to public preview
       </button>
     </div>
   );

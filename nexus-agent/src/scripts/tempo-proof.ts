@@ -1,6 +1,6 @@
 /**
  * Run one Tempo Moderato transfer-with-memo proof via KeeperHub MCP.
- * Prerequisites: AGENTIC_WALLET funded on chain 42431 — see submission_runbook.md § Tempo funding.
+ * Prerequisites: AGENTIC_WALLET funded with PathUSD on chain 42431 (Moderato testnet).
  *
  * Usage: pnpm --prefix nexus-agent run tempo:proof
  */
@@ -90,13 +90,13 @@ async function main() {
 
   if (settled.status === "failed" && settled.txHash) {
     console.warn("\n⚠️  BUG-07 candidate: execution failed but tx hash present — nonce may have advanced");
-    console.warn("   Document in BUGS.md with execution ID and explorer link");
+    console.warn("   Note execution ID and explorer link if reporting upstream");
   }
 
   if (settled.status !== "mined" && !settled.txHash) {
     console.error("\n❌ No mined Tempo tx — fund agentic wallet on Moderato first:");
     console.error("   1. Copy AGENTIC_WALLET_ADDRESS from .env");
-    console.error("   2. Fund with PathUSD on chain 42431 (see submission_runbook.md)");
+    console.error("   2. Fund with PathUSD on chain 42431 (Moderato testnet)");
     console.error("   3. Verify: https://explore.testnet.tempo.xyz/address/" + agentic);
     process.exit(1);
   }
@@ -121,7 +121,7 @@ async function main() {
   }
 
   console.log("\n=================================================");
-  console.log("Tempo proof complete — add tx link to README + submission_runbook.md");
+  console.log("Tempo proof complete — add tx link to README if not already listed");
   console.log("=================================================\n");
 }
 

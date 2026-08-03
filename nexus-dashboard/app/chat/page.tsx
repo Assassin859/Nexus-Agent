@@ -230,7 +230,7 @@ export default function ChatPage() {
         }}>
           <span>
             {demoReadOnly
-              ? "Demo chat — read-only queries (HF, Tempo proofs, recent txs). Sign in to schedule payroll or trigger strategies."
+              ? "Public preview — read-only queries (HF, Tempo proofs, workflows, recent txs). Sign in to create custom workflows or schedule payroll."
               : "Sign In with Ethereum to chat with NexusAgent and execute strategy commands."}
           </span>
           <button onClick={signInWithEthereum} className="btn btn-primary" style={{ padding: "6px 12px", fontSize: 12 }}>

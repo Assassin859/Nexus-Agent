@@ -101,7 +101,7 @@ async function main() {
 
   console.log(`\n--- Demo risk summary ---`);
   console.log(`  Guardian at HF ${pos.healthFactor?.toFixed(2)} → will HOLD (no repay attempt unless HF < ~1.15)`);
-  console.log(`  Resilience $533 sim failures → historical (bulk-proof window Aug 2 ~11:13–11:25 UTC)`);
+  console.log(`  Resilience $533 sim failures → historical (Aug 2 ~11:13–11:25 UTC window)`);
   console.log(`  Followed by mined repay $533 at 11:40 UTC — sim story still valid`);
   console.log(`  Current low allowance ($53) → next repay prepends approve in workflow; sim passes today`);
 }

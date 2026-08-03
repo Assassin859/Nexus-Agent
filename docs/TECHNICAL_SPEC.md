@@ -1,10 +1,10 @@
 # NexusAgent — Technical Architecture & Implementation Specification
 
 > **Document status:** **Authoritative** for Agents Onchain 2026 submission · **Last verified:** 2026-08-02 (harness **60/62**, production Tier 2 smoke **7/7**, db-audit **0 actionable mismatches**)  
-> **Brain provider:** OpenRouter `google/gemini-2.5-flash` via [`getBrainModel()`](../nexus-agent/src/brain/provider.ts). Do **not** use legacy GitHub Models references in [goal.md](../goal.md) (archived) or [implementation_plan.md](../implementation_plan.md) (historical).
+> **Brain provider:** OpenRouter `google/gemini-2.5-flash` via [`getBrainModel()`](../nexus-agent/src/brain/provider.ts).
 
 > **Live demo:** [Dashboard](https://spirited-heart-production-b5c5.up.railway.app) · [Tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo) · [Agent API](https://nexus-agent-production-7783.up.railway.app)  
-> **Runbook (proofs + demo):** [submission_runbook.md](../submission_runbook.md) · **Competitive map:** [COMPETITIVE_POSITION.md](COMPETITIVE_POSITION.md)
+> **Competitive map:** [COMPETITIVE_POSITION.md](COMPETITIVE_POSITION.md) · **Judge path:** [README.md](../README.md)
 
 ---
 
@@ -20,7 +20,7 @@ The end user never manually builds calldata, calculates gas limits, or construct
 
 ### 1.1 Submission narrative (Agents Onchain 2026)
 
-**Flagship — Guardian:** Autonomous Aave V3 liquidation protection with a multi-candidate Reasoning Harness, allowance-aware pre-flight simulation, and **mined repay transactions** on Base Sepolia (HF recovery arc — see runbook).
+**Flagship — Guardian:** Autonomous Aave V3 liquidation protection with a multi-candidate Reasoning Harness, allowance-aware pre-flight simulation, and **mined repay transactions** on Base Sepolia (HF recovery arc — see [README](../README.md) on-chain proof table).
 
 **Scheduling proof — PayChain:** Natural-language payroll registration with KeeperHub cron workflows (`iu0toy0rena606e07ikxu`).
 
@@ -34,9 +34,9 @@ The end user never manually builds calldata, calculates gas limits, or construct
 
 ### 1.2 Verified execution proofs
 
-Full resilience arc table, BaseScan links, and demo script: **[submission_runbook.md](../submission_runbook.md)**.
+Full resilience arc, BaseScan links, and judge path: **[README.md](../README.md)**.
 
-Re-run audit: `pnpm --prefix nexus-agent run logs`
+Re-run audit: `pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts`
 
 ---
 

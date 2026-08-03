@@ -1,7 +1,7 @@
 # NexusAgent — Competitive Position (Agents Onchain 2026)
 
 > **Purpose:** Judge-facing contrast vs. typical hackathon submissions. Not a takedown of other teams — a map of where NexusAgent invests proof depth.  
-> **Last updated:** 2026-08-02 · **Production smoke:** `pnpm --prefix nexus-agent run smoke:tier2` (7/7 passed)
+> **Last updated:** 2026-08-03 · **Production smoke:** `pnpm --prefix nexus-agent run smoke:tier2` (7/7 passed)
 
 ---
 
@@ -19,12 +19,12 @@
 | **On-chain proof** | Simulated or one tx | **4× Guardian repays** + **4× Tempo** transfer-with-memo ([/tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo)) |
 | **Decision logic** | Single LLM reply | **Multi-candidate Reasoning Harness** + safety floor override ([TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) §3) |
 | **Pre-flight** | Optional / hidden | **Simulation intercept** visible on Resilience feed |
-| **KeeperHub depth** | 1–2 MCP tools | Guardian, PayChain cron, marketplace publish, Tempo workflow, 17 surface checks ([MCP-SURFACES.md](MCP-SURFACES.md)) |
+| **KeeperHub depth** | Guardian, PayChain cron, marketplace publish, Tempo workflow, MCP surface tests |
 | **Marketplace** | Consume only | **Published** `nexus-guardian-hf-read` ($0.01/call x402) |
 | **Multi-chain story** | Single L2 | **Base Sepolia** (Aave) + **Tempo Moderato** (42431) |
-| **Audit trail** | Ad hoc logs | Postgres `executions_log` (500+ rows), chain-aware Feed |
-| **Ecosystem contribution** | None | [BUGS.md](../BUGS.md) UX bounty (12+ friction items, reproducible) |
-| **Test harness** | Sparse | **60** offline tests + Tier 2 production smoke |
+| **Audit trail** | Ad hoc logs | Postgres `executions_log`, chain-aware Feed |
+| **Integration constraints** | Undocumented | KeeperHub OAuth vs API key, dual-wallet yield guard documented in README |
+| **Test harness** | Sparse | **60+** offline tests + Tier 2 production smoke |
 
 ---
 
@@ -37,7 +37,7 @@
 | **Problem** | Wallet incident response (approvals, drains) | DeFi lending liquidation protection + payroll/DCA |
 | **Decision engine** | Deterministic policy compiler (**no LLM**) | LLM + **formal harness** (judge feedback: ontology over interface) |
 | **Proof style** | Hash-chained audit log + Sepolia revoke txs | Postgres feed + BaseScan + Tempo Explorer |
-| **Tests** | 297 offline | 60 harness + production smoke |
+| **Tests** | 297 offline | 60+ harness + production smoke |
 | **Our edge** | — | **Aave HF recovery arc**, marketplace **publisher**, **Tempo** tier, live **Reasoning Harness** narrative |
 | **Their edge** | Tamper-evident audit chain, zero-credential dashboard demo, deterministic policy | — |
 
@@ -56,23 +56,24 @@
 
 ## What judges should click (in order)
 
-**No MetaMask required** — Portfolio, Feed, and Resilience load in read-only demo mode automatically.
+**No MetaMask required** — Portfolio, Feed, and Resilience load in **public preview** automatically.
 
-1. [Dashboard Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF ~1.86 (demo mode banner)
+1. [Dashboard Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF for monitored wallet  
 2. [Tempo page](https://spirited-heart-production-b5c5.up.railway.app/tempo) — **Tempo Explorer** links (not KeeperHub `/executions/…` — 404 outside org)  
 3. [Live Feed](https://spirited-heart-production-b5c5.up.railway.app/feed) — mined repays + `tempo_transfer` rows  
 4. [Resilience](https://spirited-heart-production-b5c5.up.railway.app/resilience) — simulation → success arc  
-5. [Marketplace listing](https://app.keeperhub.com/hub?tab=marketplace) — slug `nexus-guardian-hf-read`  
-6. BaseScan repay: [`0x23f6424…`](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3)
+5. [Workflows](https://spirited-heart-production-b5c5.up.railway.app/workflows) — PayChain, DCA, Guardian, Yield  
+6. [Marketplace listing](https://app.keeperhub.com/hub?tab=marketplace) — slug `nexus-guardian-hf-read`  
+7. BaseScan repay: [`0x23f6424…`](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3)
 
 ---
 
 ## Honest gaps (say these proactively)
 
 1. **Dual-wallet** — Yield rotator skips on-chain when monitored ≠ agentic MPC wallet  
-2. **KeeperHub OAuth ≠ API key** — paste `kh_…` ([BUG-02](../BUGS.md))  
+2. **KeeperHub OAuth ≠ API key** — paste org `kh_…` in KeeperHub Sync after SIWE for full MCP write access  
 3. **HF marketplace widget** — falls back to local Aave on x402 (listing is live; paid call optional)  
-4. **Sign & Hold** — blocked upstream ([FRICTION-03](../BUGS.md))  
+4. **Sign & Hold** — blocked upstream on KeeperHub MCP (roadmap item)  
 5. **Deplex / ApprovalSentinel** — stronger on approval-security narrow scope; we lead on **DeFi harness + multi-chain proof stack**
 
 ---
@@ -80,11 +81,12 @@
 ## Production verification (re-run before judging)
 
 ```bash
-pnpm --prefix nexus-agent run verify                    # 60 passed
+pnpm --prefix nexus-agent run verify                    # 60+ passed
 AGENT_URL=https://nexus-agent-production-7783.up.railway.app pnpm --prefix nexus-agent run smoke:tier2
 pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts
+pnpm --prefix nexus-agent run e2e
 ```
 
 ---
 
-*See also: [submission_runbook.md](../submission_runbook.md) · [README.md](../README.md)*
+*See also: [README.md](../README.md) · [TECHNICAL_SPEC.md](TECHNICAL_SPEC.md)*

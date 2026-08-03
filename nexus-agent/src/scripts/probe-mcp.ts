@@ -45,7 +45,7 @@ try {
   }
   if (!holdTools.some((n) => toolNames.includes(n))) {
     console.log("   → Guardian pre-sign rescue blocked until upstream ships hold/release MCP tools");
-    console.log("   → See BUGS.md FRICTION-03 and docs/MCP-SURFACES.md");
+    console.log("   → Sign & Hold MCP tools not yet exposed upstream (FRICTION-03)");
   }
 
   // Step 3: Try create_workflow with a unique name

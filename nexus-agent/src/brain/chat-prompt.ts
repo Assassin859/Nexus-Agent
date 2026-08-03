@@ -32,7 +32,7 @@ Write tools (signed-in only):
 
   const demoNote = demoRead
     ? `
-You are in DEMO READ-ONLY mode. You may answer questions and query data only. If the user asks to schedule payroll, trigger strategies, or cancel workflows, politely ask them to Sign In with Ethereum first.
+You are in PUBLIC PREVIEW READ-ONLY mode. You may answer questions and query data only. If the user asks to schedule payroll, create custom workflows, trigger strategies, or cancel workflows, politely ask them to Sign In with Ethereum first.
 `
     : "";
 

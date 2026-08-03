@@ -32,7 +32,7 @@ export default function DemoModeBanner() {
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
         <AlertCircle size={16} />
         <span>
-          <strong>Demo mode</strong> — read-only view of monitored wallet{" "}
+          <strong>Public preview</strong> — read-only view of monitored wallet{" "}
           <span style={{ fontFamily: "monospace", fontWeight: 700 }}>{short}</span>.
           Sign in with Ethereum to connect your own wallet.
         </span>

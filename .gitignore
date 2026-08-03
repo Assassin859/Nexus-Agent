@@ -7,3 +7,34 @@ dist/
 nexus-dashboard/.next/
 env
 
+# ── Local-only docs (team reference — not published to GitHub) ───────────────
+goal.md
+context.md
+plan.md
+walkthrough.md
+implementation_plan.md
+model.md
+database.md
+PRs.md
+KeeperHub_Guardian_Project_Plan.md
+BUGS.md
+KEEPERHUB_BUGS.md
+submission_runbook.md
+railway_setup.md
+docs/MCP-SURFACES.md
+docs/GITHUB_REPO_SETUP.md
+LOCAL_DEV.md
+
+# ── Local-only scripts (dev / synthetic data — not published) ────────────────
+nexus-agent/src/db/seed.ts
+nexus-agent/src/scripts/purge-bulk-fake-payroll.ts
+nexus-agent/src/scripts/bulk-proof-run.ts
+nexus-agent/src/scripts/clear-db.ts
+nexus-agent/src/scripts/trigger-many-workflows.ts
+nexus-agent/src/scripts/sign-and-chat.ts
+nexus-agent/src/scripts/test-workflow-diversity.ts
+nexus-agent/src/scripts/stress-hf-borrow.ts
+nexus-agent/src/scripts/phase2-run.ts
+nexus-agent/src/scripts/post-fix-verify.ts
+nexus-agent/src/scripts/guardian-debug.ts
+nexus-agent/ai-workflow-gen.json
