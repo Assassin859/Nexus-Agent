@@ -76,6 +76,12 @@ export default function ResiliencePage() {
   const { walletAddress: wallet, authToken } = useWallet();
   const [scenarios, setScenarios] = useState(INITIAL_SCENARIOS);
   const [feed, setFeed] = useState<LogItem[]>([]);
+  const [feedStats, setFeedStats] = useState<{
+    totalRows: number;
+    feedLimit: number;
+    matrixBucketsAllTime: Record<string, number>;
+    successfulExecutionsAllTime: number;
+  } | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -88,26 +94,45 @@ export default function ResiliencePage() {
   useEffect(() => {
     async function loadResilience() {
       try {
-        const res = await proxyFetch(`/api/feed/${wallet}`, {}, authToken);
-        const data = await res.json();
-        if (res.status === 401) {
+        const [feedRes, statsRes] = await Promise.all([
+          proxyFetch(`/api/feed/${wallet}`, {}, authToken),
+          proxyFetch(`/api/feed/${wallet}/stats`, {}, authToken),
+        ]);
+        const data = await feedRes.json();
+        if (feedRes.status === 401) {
           setAuthError("Sign in with Ethereum to view resilience logs.");
           setFeed([]);
+          setFeedStats(null);
           return;
         }
-        if (res.status === 403) {
+        if (feedRes.status === 403) {
           setAuthError("Forbidden — signed-in wallet does not match this feed.");
           setFeed([]);
+          setFeedStats(null);
           return;
         }
-        if (!res.ok) {
-          setAuthError(data.error || `Resilience feed unavailable (${res.status})`);
+        if (!feedRes.ok) {
+          setAuthError(data.error || `Resilience feed unavailable (${feedRes.status})`);
           setFeed([]);
+          setFeedStats(null);
           return;
         }
         setAuthError(null);
         const rows = parseFeedResponse<LogItem>(data);
         setFeed(rows);
+
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          setFeedStats({
+            totalRows: statsData.totalRows ?? 0,
+            feedLimit: statsData.feedLimit ?? 200,
+            matrixBucketsAllTime: statsData.matrixBucketsAllTime ?? {},
+            successfulExecutionsAllTime: statsData.successfulExecutionsAllTime ?? 0,
+          });
+        } else {
+          setFeedStats(null);
+        }
+
         if (rows.length > 0) {
           const logs = rows;
           const happy = logs.find(d => d.status === "success");
@@ -166,7 +191,7 @@ export default function ResiliencePage() {
       )}
 
       {/* AI Decision Matrix Component */}
-      <DecisionMatrixCard items={feed as ExecutionLogItem[]} loading={loading} />
+      <DecisionMatrixCard items={feed as ExecutionLogItem[]} loading={loading} stats={feedStats} />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
         {scenarios.map((s) => {

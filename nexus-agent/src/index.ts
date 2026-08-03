@@ -57,6 +57,7 @@ import { getTempoPathUsdBalance } from "./lib/tempo-balance.js";
 import { logExternalExecution } from "./lib/log-external-execution.js";
 import { parseHfMarketplaceResult } from "./lib/parse-hf-marketplace.js";
 import { HF_READ_SLUG, TEMPO_CHAIN_ID, tempoAddressUrl } from "./lib/tier2-proofs.js";
+import { getFeedMatrixStats } from "./lib/feed-matrix-stats.js";
 import { pinoHttp } from "pino-http";
 import crypto from "node:crypto";
 
@@ -626,6 +627,23 @@ app.get("/api/feed/:walletAddress", optionalAuth, async (req: express.Request, r
       return res.status(err.statusCode).json({ error: err.message });
     }
     res.status(500).json({ error: err instanceof Error ? err.message : "Feed fetch failed" });
+  }
+});
+
+app.get("/api/feed/:walletAddress/stats", optionalAuth, demoReadLimiter, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as OptionalAuthedRequest;
+    const walletAddress = normalizeWallet(req.params.walletAddress);
+    enforceReadAccess(authedReq, walletAddress);
+    const demoRead = isUnauthenticatedDemoRead(authedReq, walletAddress);
+
+    const stats = await getFeedMatrixStats(walletAddress);
+    res.json(demoRead ? { demoRead: true, ...stats } : stats);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Feed stats failed" });
   }
 });
 

@@ -25,9 +25,17 @@ type FeedItem = {
 
 const PAGE_SIZE = 10;
 
+type FeedStats = {
+  totalRows: number;
+  feedLimit: number;
+  matrixBucketsAllTime: Record<string, number>;
+  successfulExecutionsAllTime: number;
+};
+
 export default function FeedPage() {
   const { walletAddress, authToken } = useWallet();
   const [feed, setFeed] = useState<FeedItem[]>([]);
+  const [feedStats, setFeedStats] = useState<FeedStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
 
@@ -40,25 +48,43 @@ export default function FeedPage() {
   useEffect(() => {
     async function loadFeed() {
       try {
-        const res = await proxyFetch(`/api/feed/${walletAddress}`, {}, authToken);
-        const data = await res.json();
-        if (res.status === 401) {
+        const [feedRes, statsRes] = await Promise.all([
+          proxyFetch(`/api/feed/${walletAddress}`, {}, authToken),
+          proxyFetch(`/api/feed/${walletAddress}/stats`, {}, authToken),
+        ]);
+        const data = await feedRes.json();
+        if (feedRes.status === 401) {
           setAuthError("Sign in with Ethereum to view the live execution feed.");
           setFeed([]);
+          setFeedStats(null);
           return;
         }
-        if (res.status === 403) {
+        if (feedRes.status === 403) {
           setAuthError("Forbidden — signed-in wallet does not match this feed.");
           setFeed([]);
+          setFeedStats(null);
           return;
         }
-        if (!res.ok) {
-          setAuthError(data.error || `Feed unavailable (${res.status})`);
+        if (!feedRes.ok) {
+          setAuthError(data.error || `Feed unavailable (${feedRes.status})`);
           setFeed([]);
+          setFeedStats(null);
           return;
         }
         setAuthError(null);
         setFeed(parseFeedResponse<FeedItem>(data));
+
+        if (statsRes.ok) {
+          const statsData = await statsRes.json();
+          setFeedStats({
+            totalRows: statsData.totalRows ?? 0,
+            feedLimit: statsData.feedLimit ?? 200,
+            matrixBucketsAllTime: statsData.matrixBucketsAllTime ?? {},
+            successfulExecutionsAllTime: statsData.successfulExecutionsAllTime ?? 0,
+          });
+        } else {
+          setFeedStats(null);
+        }
       } catch (err) {
         console.error("Failed to load feed:", err);
         setAuthError("Agent unreachable — could not load execution feed.");
@@ -87,7 +113,7 @@ export default function FeedPage() {
         </div>
       )}
 
-      <DecisionMatrixCard items={feed} loading={loading} />
+      <DecisionMatrixCard items={feed} loading={loading} stats={feedStats} />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
         {loading ? (

@@ -18,6 +18,13 @@ export type ExecutionLogItem = {
 type Props = {
   items: ExecutionLogItem[];
   loading?: boolean;
+  /** When set, matrix tiles use full-database aggregates (not just the 200-row feed window). */
+  stats?: {
+    totalRows: number;
+    feedLimit: number;
+    matrixBucketsAllTime: Record<string, number>;
+    successfulExecutionsAllTime: number;
+  } | null;
 };
 
 export function getDecisionBucket(item: ExecutionLogItem): "hold" | "partial" | "full" | "yield" | "blocked" | "other" {
@@ -41,22 +48,28 @@ export function getDecisionBucket(item: ExecutionLogItem): "hold" | "partial" | 
   return "other";
 }
 
-export default function DecisionMatrixCard({ items, loading }: Props) {
-  const successfulExecutions = items.filter((i) => i.status === "success").length;
+export default function DecisionMatrixCard({ items, loading, stats }: Props) {
+  const successfulExecutions = stats
+    ? stats.successfulExecutionsAllTime
+    : items.filter((i) => i.status === "success").length;
 
-  const counts = {
-    hold: 0,
-    partial: 0,
-    full: 0,
-    yield: 0,
-    blocked: 0,
-    other: 0,
-  };
+  const counts = stats
+    ? {
+        hold: stats.matrixBucketsAllTime.hold ?? 0,
+        partial: stats.matrixBucketsAllTime.partial ?? 0,
+        full: stats.matrixBucketsAllTime.full ?? 0,
+        yield: stats.matrixBucketsAllTime.yield ?? 0,
+        blocked: stats.matrixBucketsAllTime.blocked ?? 0,
+        other: stats.matrixBucketsAllTime.other ?? 0,
+      }
+    : { hold: 0, partial: 0, full: 0, yield: 0, blocked: 0, other: 0 };
 
-  items.forEach((item) => {
-    const bucket = getDecisionBucket(item);
-    counts[bucket]++;
-  });
+  if (!stats) {
+    items.forEach((item) => {
+      const bucket = getDecisionBucket(item);
+      counts[bucket]++;
+    });
+  }
 
   return (
     <div
@@ -95,7 +108,9 @@ export default function DecisionMatrixCard({ items, loading }: Props) {
             AI Decision Matrix &amp; Execution Proofs
           </h3>
           <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "4px 0 0 0" }}>
-            Real-time breakdown of autonomous decision paths &amp; verified execution metrics.
+            {stats
+              ? `All-time breakdown across ${stats.totalRows} logged executions (feed list shows latest ${stats.feedLimit}).`
+              : "Real-time breakdown of autonomous decision paths & verified execution metrics."}
           </p>
         </div>
 
@@ -113,7 +128,7 @@ export default function DecisionMatrixCard({ items, loading }: Props) {
           <CheckCircle2 size={16} color="#34d399" />
           <div>
             <div style={{ fontSize: "10px", textTransform: "uppercase", color: "#34d399", fontWeight: 700 }}>
-              Successful Executions (Recent)
+              Successful Executions {stats ? "(All-Time)" : "(Recent)"}
             </div>
             <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--text)" }}>
               {loading ? "..." : successfulExecutions}

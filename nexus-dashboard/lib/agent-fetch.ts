@@ -18,7 +18,7 @@ function isDemoReadRequest(path: string, init: RequestInit): boolean {
     return true;
   }
 
-  const feedMatch = normalizedPath.match(/^\/api\/feed\/(0x[a-fA-F0-9]{40})$/);
+  const feedMatch = normalizedPath.match(/^\/api\/feed\/(0x[a-fA-F0-9]{40})(?:\/stats)?$/);
   if (feedMatch && isDemoWallet(normalizeWallet(feedMatch[1]))) {
     return true;
   }
