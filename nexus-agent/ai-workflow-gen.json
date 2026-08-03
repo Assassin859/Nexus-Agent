@@ -1,9 +1,0 @@
-{
-  "content": [
-    {
-      "type": "text",
-      "text": "API call failed: 503 Service Unavailable - {\"error\":\"AI Prompt is disabled\"}"
-    }
-  ],
-  "isError": true
-}
