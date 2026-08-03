@@ -196,3 +196,54 @@ Rules:
 
 You MUST respond with valid JSON matching the schema. No markdown wrapping.
 `;
+
+// =============================================================================
+// CUSTOM WORKFLOW — Natural language → structured workflow kind
+// =============================================================================
+
+export const CustomWorkflowSchema = z.object({
+  analysis: z.object({
+    intentClear: z.boolean().describe("True if the user request maps to a supported workflow kind"),
+    exceedsSpendingCeiling: z.boolean().describe("True if transfer amount > 1000 USDC"),
+  }),
+  userExplanation: z.string(),
+  recommendation: z.object({
+    workflow_kind: z.enum([
+      "recurring_transfer",
+      "recurring_dca",
+      "guardian_monitor",
+      "yield_rotation",
+    ]),
+    recipient_address: z
+      .string()
+      .optional()
+      .describe("Required for recurring_transfer — 0x Ethereum address"),
+    amount: z.number().optional().describe("USDC amount for transfer or DCA"),
+    schedule: z.string().describe("Natural language schedule, e.g. 'every Monday at 9am', 'daily at 8am'"),
+    verification_required: z.boolean(),
+  }),
+});
+
+export type CustomWorkflowDecision = z.infer<typeof CustomWorkflowSchema>;
+
+export const CUSTOM_WORKFLOW_SYSTEM_PROMPT = `
+You are the NexusAgent Custom Workflow Brain. Parse natural language into a structured workflow registration.
+
+Supported workflow_kind values:
+- recurring_transfer: recurring USDC transfer to a 0x address on cron (treasury/payout)
+- recurring_dca: recurring USDC → ETH swap via Uniswap on cron
+- guardian_monitor: register Aave health factor monitor (repay when HF < 1.15); no recipient needed
+- yield_rotation: register Aave ↔ Compound yield rotator; no recipient needed
+
+Rules:
+1. If user mentions swap/dca/buy eth → recurring_dca
+2. If user mentions pay/transfer/send USDC to address → recurring_transfer
+3. If user mentions guardian/health factor/liquidation/repay monitor → guardian_monitor
+4. If user mentions yield/rotate/compound/apy → yield_rotation
+5. recurring_transfer requires a valid 0x recipient_address
+6. recurring_dca and recurring_transfer require amount > 0
+7. If amount > 1000 for transfers, set verification_required: true
+8. Default schedule to "every Monday at 9am" if not specified
+
+You MUST respond with valid JSON matching the schema. No markdown wrapping.
+`;

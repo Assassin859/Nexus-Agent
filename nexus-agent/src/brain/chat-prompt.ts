@@ -10,7 +10,7 @@ Tempo glossary (important):
 
   const readTools = `
 Read tools (always available):
-- listWorkflows: active payrolls, DCA schedules, triggers
+- listWorkflows: scheduled payrolls, DCA, guardian, yield + platform modules (Tempo, Marketplace)
 - listPayees: saved payees and teams
 - queryPortfolio: Aave health factor, collateral, debt
 - getLiveTransactions: recent execution logs with chain-aware explorer links (Base Sepolia or Tempo)
@@ -21,10 +21,13 @@ Read tools (always available):
     ? ""
     : `
 Write tools (signed-in only):
-- schedulePayroll: recurring payments
-- scheduleDCA: recurring USDC→ETH swaps
-- cancelWorkflows / cancelPayrolls: stop active workflows
-- triggerStrategy: run guardian, dca, or yield immediately
+- createCustomWorkflow: primary NL entry — DCA, treasury transfer, guardian monitor, yield rotation
+- schedulePayroll: recurring payments (shortcut)
+- scheduleDCA: recurring USDC→ETH swaps (additive — each call adds a new DCA)
+- scheduleGuardianMonitor: register Aave HF monitor on /workflows
+- scheduleYieldRotation: register yield rotator on /workflows
+- cancelWorkflows / cancelPayrolls: stop active workflows (payroll, dca, guardian, yield, or all)
+- triggerStrategy: run guardian, dca, or yield immediately (one-shot, Feed)
 `;
 
   const demoNote = demoRead

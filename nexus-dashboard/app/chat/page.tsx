@@ -21,13 +21,15 @@ type ToolResult = { toolName: string; result?: unknown };
 
 const DEFAULT_WELCOME = {
   sender: "agent",
-  text: "Hello! I'm NexusAgent — ask about your Aave health factor, Tempo Moderato proofs (/tempo page), or recent on-chain activity. Sign in with Ethereum to schedule payroll or trigger strategies.",
+  text: "Hello! I'm NexusAgent — ask about your Aave health factor, Tempo Moderato proofs (/tempo page), or recent on-chain activity. Sign in with Ethereum to create custom workflows (DCA, Guardian, Yield) or schedule payroll.",
 };
 
 const SUGGESTED_PROMPTS = [
-  "Show Tempo transactions",
+  "List all my workflows and autonomous modules",
+  "Create a custom workflow: DCA 25 USDC into ETH every Wednesday at 10am",
+  "Register guardian monitor for my Aave position",
   "What is my health factor?",
-  "Show recent on-chain activity",
+  "Show Tempo transactions",
 ];
 
 function chatKey(wallet: string) {

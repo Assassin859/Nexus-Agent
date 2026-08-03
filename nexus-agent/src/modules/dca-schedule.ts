@@ -1,7 +1,7 @@
 import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog } from "../db/schema.js";
 import { resolveCronSchedule } from "../lib/cron.js";
-import { createWorkflow, cancelWorkflow } from "../lib/mcp-client.js";
+import { createWorkflow } from "../lib/mcp-client.js";
 import { encodeUniswapSwap, UNISWAP_V3_ROUTER } from "../lib/calldata.js";
 import { getEthPriceUSD } from "../lib/price-feed.js";
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
@@ -18,30 +18,33 @@ export async function registerDcaWorkflow({
   amount: number;
   cronSchedule?: string;
   message?: string;
-}): Promise<{ success: boolean; workflowId: string; keeperhubWorkflowId?: string; message: string }> {
+}): Promise<{ success: boolean; workflowId: string; keeperhubWorkflowId?: string; message: string; duplicate?: boolean }> {
   const wallet = userWallet.toLowerCase();
   const schedule = resolveCronSchedule(cronSchedule, message);
   const effectiveKey = await resolveKeeperHubApiKey(wallet);
   const log = childLogger({ module: "dca-schedule", wallet: wallet.slice(0, 8) });
 
-  const existing = await db.query.activeWorkflows.findFirst({
+  const duplicate = await db.query.activeWorkflows.findFirst({
     where: and(
       eq(activeWorkflows.userWallet, wallet),
       eq(activeWorkflows.type, "dca"),
-      eq(activeWorkflows.status, "active")
+      eq(activeWorkflows.status, "active"),
+      eq(activeWorkflows.amount, amount),
+      eq(activeWorkflows.cronSchedule, schedule),
     ),
   });
 
-  let workflowId: string;
-  let keeperhubWorkflowId: string | undefined;
-
-  const priorKhId = existing?.keeperhubWorkflowId;
-  if (priorKhId && !priorKhId.startsWith("wf-stub-")) {
-    const cancel = await cancelWorkflow(priorKhId, effectiveKey);
-    if (!cancel.ok) {
-      log.warn({ keeperhubWorkflowId: priorKhId }, "Failed to cancel prior DCA KeeperHub workflow — remote cron may still fire until replaced");
-    }
+  if (duplicate) {
+    return {
+      success: true,
+      workflowId: duplicate.id,
+      keeperhubWorkflowId: duplicate.keeperhubWorkflowId ?? undefined,
+      duplicate: true,
+      message: `DCA workflow already active: ${amount} USDC into ETH (${schedule}).`,
+    };
   }
+
+  let keeperhubWorkflowId: string | undefined;
 
   const ethPriceUSD = await getEthPriceUSD();
   const calldata = encodeUniswapSwap(amount, wallet, 0.5, ethPriceUSD);
@@ -57,26 +60,16 @@ export async function registerDcaWorkflow({
   );
   if (!isStub) keeperhubWorkflowId = khId;
 
-  if (existing) {
-    await db.update(activeWorkflows)
-      .set({
-        amount,
-        cronSchedule: schedule,
-        ...(keeperhubWorkflowId ? { keeperhubWorkflowId } : {}),
-      })
-      .where(eq(activeWorkflows.id, existing.id));
-    workflowId = existing.id;
-  } else {
-    const [inserted] = await db.insert(activeWorkflows).values({
-      userWallet: wallet,
-      type: "dca",
-      amount,
-      cronSchedule: schedule,
-      status: "active",
-      keeperhubWorkflowId,
-    }).returning({ id: activeWorkflows.id });
-    workflowId = inserted.id;
-  }
+  const [inserted] = await db.insert(activeWorkflows).values({
+    userWallet: wallet,
+    type: "dca",
+    amount,
+    cronSchedule: schedule,
+    status: "active",
+    keeperhubWorkflowId,
+  }).returning({ id: activeWorkflows.id });
+
+  const workflowId = inserted.id;
 
   await db.insert(executionsLog).values({
     userWallet: wallet,
@@ -89,6 +82,8 @@ export async function registerDcaWorkflow({
       : `DCA registered locally only (KeeperHub unavailable): ${amount} USDC into ETH (${schedule})`,
     aiAnalysis: keeperhubWorkflowId ? { keeperhubWorkflowId, remoteCronEnabled: false } : undefined,
   });
+
+  log.info({ workflowId, keeperhubWorkflowId, amount, schedule }, "DCA workflow registered (additive)");
 
   return {
     success: true,

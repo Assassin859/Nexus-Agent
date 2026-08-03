@@ -4,6 +4,9 @@ import { db } from "../db/client.js";
 import { activeWorkflows, executionsLog, payees } from "../db/schema.js";
 import { handle as handlePaychain } from "../modules/paychain.js";
 import { registerDcaWorkflow } from "../modules/dca-schedule.js";
+import { registerGuardianWorkflow } from "../modules/guardian-register.js";
+import { registerYieldWorkflow } from "../modules/yield-register.js";
+import { handleCustomWorkflow } from "../modules/custom-workflow.js";
 import { getAavePosition } from "../lib/aave.js";
 import { getWalletContext } from "../lib/agentic-wallet.js";
 import { cancelWorkflow } from "../lib/mcp-client.js";
@@ -15,6 +18,8 @@ import {
   TEMPO_CHAIN_ID,
   TEMPO_PROOF_MEMO,
   TEMPO_PROOF_TXS,
+  HF_READ_SLUG,
+  HF_READ_WORKFLOW_ID,
   tempoTxUrl,
 } from "../lib/tier2-proofs.js";
 import { chainLabel, getTxExplorerUrl } from "../lib/tx-explorer.js";
@@ -47,10 +52,45 @@ export function mapExecutionLogToExplorer(log: ExecutionLogRow): {
   };
 }
 
+function buildPlatformModules() {
+  return {
+    alwaysOnModules: [
+      {
+        type: "guardian",
+        label: "Aave Guardian",
+        schedule: "every 5 min (agent cron)",
+        proofPath: "/resilience",
+      },
+      {
+        type: "yield",
+        label: "Yield Rotator",
+        schedule: "every 15 min (agent cron)",
+        proofPath: "/feed",
+      },
+    ],
+    platformWorkflows: [
+      {
+        type: "marketplace_hf_read",
+        label: "Marketplace HF-read",
+        slug: HF_READ_SLUG,
+        workflowId: HF_READ_WORKFLOW_ID,
+      },
+      {
+        type: "tempo_proof",
+        label: "Tempo Moderato proofs",
+        count: TEMPO_PROOF_TXS.length,
+        proofPath: "/tempo",
+      },
+    ],
+  };
+}
+
 function buildReadOnlyTools(wallet: string) {
+  const platform = buildPlatformModules();
+
   return {
     listWorkflows: tool({
-      description: "List all active workflows, recurring payrolls, DCA schedules, or triggers registered for this wallet (e.g., 'what are my workflows', 'my workflow', 'show active payments')",
+      description: "List all active workflows, recurring payrolls, DCA schedules, guardian monitors, yield rotators, and platform modules (e.g., 'what are my workflows', 'my workflow', 'show active payments')",
       parameters: z.object({}),
       execute: async () => {
         const activeWfs = await db.query.activeWorkflows.findMany({
@@ -60,16 +100,27 @@ function buildReadOnlyTools(wallet: string) {
           ),
         });
 
+        const summary = {
+          payroll: activeWfs.filter((w) => w.type === "payroll").length,
+          dca: activeWfs.filter((w) => w.type === "dca").length,
+          guardian: activeWfs.filter((w) => w.type === "guardian").length,
+          yield: activeWfs.filter((w) => w.type === "yield").length,
+          total: activeWfs.length,
+        };
+
         return {
           count: activeWfs.length,
-          workflows: activeWfs.map((w) => ({
+          summary,
+          scheduled: activeWfs.map((w) => ({
             id: w.id,
             type: w.type,
             recipient: w.recipientAddress,
             amount: w.amount,
             schedule: w.cronSchedule,
             status: w.status,
+            keeperhubWorkflowId: w.keeperhubWorkflowId,
           })),
+          ...platform,
         };
       },
     }),
@@ -228,10 +279,10 @@ export function createAgentTools(
   const readOnly = buildReadOnlyTools(wallet);
 
   const cancelWorkflowsTool = tool({
-    description: "Cancel, stop, or pause active workflows (payroll, dca, or all) for this wallet (e.g., 'stop all payrolls', 'cancel all dca', 'pause my payments')",
+    description: "Cancel, stop, or pause active workflows (payroll, dca, guardian, yield, or all) for this wallet (e.g., 'stop all payrolls', 'cancel all dca', 'pause my payments')",
     parameters: z.object({
       target: z.string().default("all").describe("Target to cancel: 'all' or specific recipient name/address"),
-      type: z.enum(["payroll", "dca", "all"]).default("all").describe("Workflow type filter: 'payroll', 'dca', or 'all'"),
+      type: z.enum(["payroll", "dca", "guardian", "yield", "all"]).default("all").describe("Workflow type filter"),
     }),
     execute: async ({ target, type = "all" }) => {
       const trimmedTarget = (target || "all").trim();
@@ -244,14 +295,14 @@ export function createAgentTools(
         ),
       });
 
-      // Early branch: Direct DCA cancellation ignores payee name/address lookups
-      if (targetType === "dca") {
-        const dcaRows = activeList.filter((wf) => wf.type === "dca");
-        if (dcaRows.length === 0) {
-          return { cancelledCount: 0, message: "No active DCA workflows found." };
+      // Early branch: cancel all rows of a module type (dca, guardian, yield)
+      if (targetType === "dca" || targetType === "guardian" || targetType === "yield") {
+        const rows = activeList.filter((wf) => wf.type === targetType);
+        if (rows.length === 0) {
+          return { cancelledCount: 0, message: `No active ${targetType} workflows found.` };
         }
         let remoteOk = 0;
-        for (const wf of dcaRows) {
+        for (const wf of rows) {
           if (wf.keeperhubWorkflowId && !wf.keeperhubWorkflowId.startsWith("wf-stub-")) {
             const result = await cancelWorkflow(wf.keeperhubWorkflowId, apiKey);
             if (result.ok && !result.isStub) remoteOk++;
@@ -265,11 +316,11 @@ export function createAgentTools(
           action: "workflow_cancel",
           amount: 0,
           status: "success",
-          reason: `Cancelled ${dcaRows.length} active DCA workflow(s).`,
+          reason: `Cancelled ${rows.length} active ${targetType} workflow(s).`,
         });
         return {
-          cancelledCount: dcaRows.length,
-          message: `🛑 Cancelled ${dcaRows.length} active DCA workflow(s) (${remoteOk} synced to KeeperHub).`,
+          cancelledCount: rows.length,
+          message: `🛑 Cancelled ${rows.length} active ${targetType} workflow(s) (${remoteOk} synced to KeeperHub).`,
         };
       }
 
@@ -299,8 +350,7 @@ export function createAgentTools(
 
       const filteredList = activeList.filter((wf) => {
         if (targetType !== "all" && wf.type !== targetType) return false;
-        if (wf.type === "dca") {
-          // Named/address targets apply to payroll only
+        if (wf.type === "dca" || wf.type === "guardian" || wf.type === "yield") {
           if (recipientAddressSet !== null) return false;
           return true;
         }
@@ -321,7 +371,7 @@ export function createAgentTools(
       let skipped = 0;
 
       for (const wf of filteredList) {
-        if (wf.type === "payroll" && wf.keeperhubWorkflowId) {
+        if (wf.keeperhubWorkflowId && !wf.keeperhubWorkflowId.startsWith("wf-stub-")) {
           const result = await cancelWorkflow(wf.keeperhubWorkflowId, apiKey);
           if (result.ok && !result.isStub) remoteOk++;
         } else {
@@ -351,7 +401,6 @@ export function createAgentTools(
   return {
     ...readOnly,
 
-    // ── Tool 1: Schedule Payroll ──────────────────────────────────────────────
     schedulePayroll: tool({
       description: "Schedule a recurring payroll or payout to a recipient address, payee name, or team (e.g., 'pay alice 50 USDC every friday', 'pay 0x123... 20 weekly')",
       parameters: z.object({
@@ -382,9 +431,8 @@ export function createAgentTools(
       },
     }),
 
-    // ── Tool 1b: Schedule DCA ────────────────────────────────────────────────
     scheduleDCA: tool({
-      description: "Schedule a recurring Dollar-Cost Averaging (DCA) swap of USDC into ETH (e.g., 'dca 50 usdc into eth weekly', 'set up weekly $100 dca')",
+      description: "Schedule a recurring Dollar-Cost Averaging (DCA) swap of USDC into ETH — adds a new DCA workflow (e.g., 'dca 50 usdc into eth weekly', 'set up weekly $100 dca')",
       parameters: z.object({
         amount: z.number().describe("USDC amount per swap"),
         schedule: z.string().optional().describe("Natural language schedule e.g. 'weekly', 'every monday at 9am'"),
@@ -400,15 +448,65 @@ export function createAgentTools(
           success: res.success,
           message: res.message,
           workflowId: res.workflowId,
+          duplicate: res.duplicate ?? false,
         };
       },
     }),
 
-    // ── Tool 2: Cancel Workflows (Payroll & DCA) ─────────────────────────────
+    scheduleGuardianMonitor: tool({
+      description: "Register the Aave Guardian health factor monitor workflow (repays when HF drops below 1.15). Runs every 5 minutes via agent cron.",
+      parameters: z.object({}),
+      execute: async () => {
+        const res = await registerGuardianWorkflow({ userWallet: wallet });
+        return {
+          success: res.success,
+          message: res.message,
+          workflowId: res.workflowId,
+          duplicate: res.duplicate ?? false,
+        };
+      },
+    }),
+
+    scheduleYieldRotation: tool({
+      description: "Register the stablecoin yield rotator workflow (Aave vs Compound APY). Runs every 15 minutes via agent cron.",
+      parameters: z.object({}),
+      execute: async () => {
+        const res = await registerYieldWorkflow({ userWallet: wallet });
+        return {
+          success: res.success,
+          message: res.message,
+          workflowId: res.workflowId,
+          duplicate: res.duplicate ?? false,
+        };
+      },
+    }),
+
+    createCustomWorkflow: tool({
+      description: "Create a custom workflow from natural language: recurring USDC transfer, DCA swap, guardian monitor, or yield rotation (e.g., 'create workflow: swap 30 USDC to ETH daily at 8am', 'monitor my health factor', 'treasury transfer 10 USDC every Monday to 0x...')",
+      parameters: z.object({
+        description: z.string().describe("Full natural language description of the workflow to create"),
+      }),
+      execute: async ({ description }) => {
+        const res = await handleCustomWorkflow({
+          userMessage: description,
+          walletAddress: wallet,
+          apiKey,
+          conversationHistory,
+        });
+
+        return {
+          success: res.success,
+          message: res.message,
+          workflowId: res.workflowId,
+          workflowKind: res.workflowKind,
+          verificationRequired: res.verificationRequired,
+        };
+      },
+    }),
+
     cancelWorkflows: cancelWorkflowsTool,
     cancelPayrolls: cancelWorkflowsTool,
 
-    // ── Tool 6: Trigger Automated DeFi Strategies ─────────────────────────────
     triggerStrategy: tool({
       description: "Trigger an automated strategy immediately: 'dca' (swap ETH/USDC), 'guardian' (repayment check), or 'yield' (yield rotator optimization)",
       parameters: z.object({

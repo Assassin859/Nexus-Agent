@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Shield, Calendar, Repeat, Banknote, Bell, Scale, ArrowRight, Store, Zap } from "lucide-react";
+import { Shield, Calendar, Repeat, Banknote, Bell, ArrowRight, Store, Zap, Activity } from "lucide-react";
 import { MARKETPLACE_URL } from "@/lib/tier2-proofs";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
@@ -27,76 +27,57 @@ const TEMPLATES: Array<{
   {
     icon: Shield,
     color: "#6366f1",
-    title: "Aave Guardian",
-    desc: "Auto-repay loan debt when Health Factor drops below 1.15 on Aave V3 Base Sepolia.",
+    title: "Guardian Monitor",
+    desc: "Register Aave HF monitor on KeeperHub — agent repays when HF drops below 1.15 (every 5 min).",
     tag: "Lending Protection",
-    prompt: "Protect my Aave V3 position. Repay USDC if Health Factor drops below 1.15.",
-    deploy: { mode: "api", apiPath: "/api/trigger/guardian", redirect: "/feed" },
+    prompt: "Register guardian monitor for my Aave position.",
+    deploy: { mode: "api", apiPath: "/api/workflows/register/guardian", redirect: "/workflows" },
   },
   {
     icon: Calendar,
     color: "#10b981",
-    title: "USDC → ETH Weekly DCA",
-    desc: "Automated weekly token purchase on Uniswap V3 with strict 0.5% MEV slippage cap.",
+    title: "Daily Micro DCA",
+    desc: "Small daily USDC→ETH swap on Uniswap V3 with 0.5% MEV slippage cap — adds alongside existing workflows.",
     tag: "Dollar-Cost Avg",
-    prompt: "Buy 100 USDC worth of ETH every Monday at 9am using Uniswap V3.",
+    prompt: "Create a custom workflow: DCA 10 USDC into ETH every day at 8am.",
     deploy: {
       mode: "api",
       apiPath: "/api/dca/schedule",
-      body: { amount: 100, schedule: "every Monday at 9am" },
+      body: { amount: 10, schedule: "every day at 8am" },
+      redirect: "/workflows",
+    },
+  },
+  {
+    icon: Calendar,
+    color: "#34d399",
+    title: "USDC → ETH Weekly DCA",
+    desc: "Automated weekly token purchase on Uniswap V3 — each deploy adds a new DCA schedule.",
+    tag: "Dollar-Cost Avg",
+    prompt: "Buy 50 USDC worth of ETH every Monday at 9am using Uniswap V3.",
+    deploy: {
+      mode: "api",
+      apiPath: "/api/dca/schedule",
+      body: { amount: 50, schedule: "every Monday at 9am" },
       redirect: "/workflows",
     },
   },
   {
     icon: Repeat,
     color: "#3b82f6",
-    title: "Stablecoin Yield Rotator",
-    desc: "Moves USDC allocations between Aave and Compound when profit covers gas.",
+    title: "Yield Rotator Register",
+    desc: "Register Aave ↔ Compound yield rotation — agent compares APY every 15 minutes.",
     tag: "Yield Optimization",
-    prompt: "Rotate USDC yield to Compound V3 when APY is 1% higher than Aave V3.",
-    deploy: {
-      mode: "blocked",
-      reason: "Requires monitored wallet = agentic MPC wallet (Aave withdraw has no onBehalfOf).",
-    },
+    prompt: "Register yield rotation between Aave and Compound.",
+    deploy: { mode: "api", apiPath: "/api/workflows/register/yield", redirect: "/workflows" },
   },
   {
-    icon: Banknote,
-    color: "#a855f7",
-    title: "Developer Payroll",
-    desc: "Recurring scheduled token transfer targeting recipient wallets with safety ceilings.",
-    tag: "DAO Payroll",
-    prompt: "Pay 200 USDC to 0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b every Friday.",
-    deploy: {
-      mode: "api",
-      apiPath: "/api/payroll",
-      body: {
-        amount: 200,
-        recipient: "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b",
-        schedule: "every Friday at 9am",
-      },
-      redirect: "/workflows",
-    },
-  },
-  {
-    icon: Bell,
-    color: "#f59e0b",
-    title: "Liquidation Notifier",
-    desc: "Dispatches instant alerts when lending positions cross warning threshold (HF 1.15–1.40).",
+    icon: Activity,
+    color: "#818cf8",
+    title: "Guardian Resilience",
+    desc: "View mined repay proofs, simulation intercepts, and HF recovery arc — autonomous, always on.",
     tag: "Monitoring",
-    prompt: "Send alert notification if Aave Health Factor drops below 1.40.",
-    deploy: { mode: "chat" },
-  },
-  {
-    icon: Scale,
-    color: "#ec4899",
-    title: "Multi-Protocol Rebalancer",
-    desc: "Maintains balanced distribution across Aave and Compound V3.",
-    tag: "Rebalancing",
-    prompt: "Rebalance stablecoin portfolio evenly across Aave V3 and Compound V3.",
-    deploy: {
-      mode: "blocked",
-      reason: "Requires monitored wallet = agentic MPC wallet for on-chain rotation.",
-    },
+    prompt: "Show my guardian resilience proofs and health factor history.",
+    deploy: { mode: "link", href: "/resilience", external: false },
   },
   {
     icon: Store,
@@ -115,6 +96,33 @@ const TEMPLATES: Array<{
     tag: "Tempo Moderato",
     prompt: "Show me the Tempo Moderato proof transactions.",
     deploy: { mode: "link", href: "/tempo", external: false },
+  },
+  {
+    icon: Bell,
+    color: "#f59e0b",
+    title: "Liquidation Notifier",
+    desc: "Dispatches instant alerts when lending positions cross warning threshold (HF 1.15–1.40).",
+    tag: "Monitoring",
+    prompt: "Send alert notification if Aave Health Factor drops below 1.40.",
+    deploy: { mode: "chat" },
+  },
+  {
+    icon: Banknote,
+    color: "#a855f7",
+    title: "Developer Payroll",
+    desc: "Recurring scheduled token transfer targeting recipient wallets with safety ceilings.",
+    tag: "DAO Payroll",
+    prompt: "Pay 200 USDC to 0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b every Friday.",
+    deploy: {
+      mode: "api",
+      apiPath: "/api/payroll",
+      body: {
+        amount: 200,
+        recipient: "0x89f97cb35236a1d0190fb25b31c5c0ff4107ec1b",
+        schedule: "every Friday at 9am",
+      },
+      redirect: "/workflows",
+    },
   },
 ];
 
@@ -183,7 +191,7 @@ export default function TemplatesPage() {
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <div className="page-header">
         <h1 className="page-title">Workflow Template Store</h1>
-        <p className="page-subtitle">Pre-configured KeeperHub automations — Fork and deploy in 60 seconds</p>
+        <p className="page-subtitle">Pre-configured KeeperHub automations — Fork and deploy in 60 seconds (additive — existing workflows stay active)</p>
       </div>
 
       {statusMsg && (

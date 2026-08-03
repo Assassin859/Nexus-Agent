@@ -28,6 +28,9 @@ import { run as runGuardian } from "./modules/guardian.js";
 import { run as runYieldRotator } from "./modules/yield-rotator.js";
 import { run as runDCA } from "./modules/dca.js";
 import { registerDcaWorkflow } from "./modules/dca-schedule.js";
+import { registerGuardianWorkflow } from "./modules/guardian-register.js";
+import { registerYieldWorkflow } from "./modules/yield-register.js";
+import { handleCustomWorkflow } from "./modules/custom-workflow.js";
 import { handle as handlePaychain } from "./modules/paychain.js";
 import { syncKeeperHubState } from "./lib/keeperhub-sync.js";
 import { getAavePosition } from "./lib/aave.js";
@@ -396,6 +399,53 @@ app.post("/api/dca/schedule", requireAuth, async (req: express.Request, res: exp
   }
 });
 
+// ── Workflow registration (additive — Guardian, Yield, Custom NL) ───────────
+app.post("/api/workflows/register/guardian", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const result = await registerGuardianWorkflow({ userWallet: authedReq.userWallet });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Guardian registration failed" });
+  }
+});
+
+app.post("/api/workflows/register/yield", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const result = await registerYieldWorkflow({ userWallet: authedReq.userWallet });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Yield registration failed" });
+  }
+});
+
+app.post("/api/workflows/custom", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const apiKey = await resolveKeeperHubApiKey(wallet);
+    const { message, userMessage } = req.body;
+    const result = await handleCustomWorkflow({
+      userMessage: message || userMessage || "",
+      walletAddress: wallet,
+      apiKey,
+    });
+    res.json(result);
+  } catch (err) {
+    if (err instanceof AuthError) {
+      return res.status(err.statusCode).json({ error: err.message });
+    }
+    res.status(500).json({ error: err instanceof Error ? err.message : "Custom workflow failed" });
+  }
+});
+
 // ── Sync Endpoint (Protected) ────────────────────────────────────────────────
 app.post("/api/keeperhub/sync", requireAuth, async (req: express.Request, res: express.Response) => {
   try {
@@ -467,6 +517,14 @@ app.get("/api/portfolio/:walletAddress", optionalAuth, async (req: express.Reque
       };
     }
 
+    const workflowSummary = {
+      payroll: workflows.filter((w) => w.type === "payroll").length,
+      dca: workflows.filter((w) => w.type === "dca").length,
+      guardian: workflows.filter((w) => w.type === "guardian").length,
+      yield: workflows.filter((w) => w.type === "yield").length,
+      total: workflows.length,
+    };
+
     res.json({
       walletAddress,
       healthFactor: position.healthFactor !== null ? parseFloat(position.healthFactor.toFixed(2)) : null,
@@ -486,6 +544,7 @@ app.get("/api/portfolio/:walletAddress", optionalAuth, async (req: express.Reque
       isError: position.isError ?? false,
       errorReason: position.errorReason,
       workflows,
+      workflowSummary,
       tempo,
       ...(demoRead ? { demoRead: true } : {}),
     });
