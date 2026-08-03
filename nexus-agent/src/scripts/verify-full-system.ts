@@ -262,7 +262,10 @@ async function main() {
     status: "success",
     aiAnalysis: { chainId: TEMPO_CHAIN_ID },
   });
-  assert(tempoLogExplorer.explorerUrl?.includes("explore.testnet.tempo.xyz"), "Chat tool — mapExecutionLogToExplorer Tempo URL");
+  assert(
+    (tempoLogExplorer.explorerUrl?.includes("explore.testnet.tempo.xyz")) ?? false,
+    "Chat tool — mapExecutionLogToExplorer Tempo URL",
+  );
   assert(tempoLogExplorer.chain === "Tempo Moderato", "Chat tool — mapExecutionLogToExplorer chain label");
 
   const hfParsed = parseHfMarketplaceResult({
