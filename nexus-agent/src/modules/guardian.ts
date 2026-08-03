@@ -26,6 +26,10 @@ import {
   resolveExecutionLogStatus,
 } from "../lib/repayment-cycle.js";
 import { acquirePendingLock } from "../lib/pending-lock.js";
+import {
+  verifyAaveAfterExecution,
+  type AaveSnapshot,
+} from "../lib/independent-aave-verify.js";
 import { eq, and, lt, desc, gte, inArray } from "drizzle-orm";
 
 const GUARDIAN_LOCK_ACTIONS = ["repay", "supply"] as const;
@@ -526,6 +530,12 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
   }
   const pendingRow = { id: pendingLock.id };
 
+  const aaveBefore: AaveSnapshot = {
+    healthFactor: position.healthFactor,
+    debtUSD: position.debtUSD,
+    collateralUSD: position.collateralUSD,
+  };
+
   try {
     // ── Step 11: KeeperHub execution with ERC20 approval prepended ──────
     const { allowanceCalldata } = sim;
@@ -564,6 +574,22 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
         await releaseCycleBudget(cycle.id, budgetReserved);
       }
 
+      let independentVerification = null;
+      if (action === "repay") {
+        independentVerification = await verifyAaveAfterExecution({
+          wallet: monitoredWallet,
+          action: "repay",
+          before: aaveBefore,
+          poll,
+        });
+        if (independentVerification?.verified === false) {
+          log.warn(
+            { independentVerification },
+            "KeeperHub success disagrees with independent Aave read",
+          );
+        }
+      }
+
       await db.update(executionsLog)
         .set({
           status: finalStatus,
@@ -575,6 +601,7 @@ export async function run(userWallet: string, options?: { apiKey?: string }): Pr
             executionId,
             pollStatus: poll.status,
             pollTimedOut: poll.timedOut ?? false,
+            ...(independentVerification ? { independentVerification } : {}),
           },
         })
         .where(eq(executionsLog.id, pendingRow.id));

@@ -1,7 +1,10 @@
 import { AAVE_V3_POOL } from "./calldata.js";
 
 export const HF_READ_LISTING_SLUG = "nexus-guardian-hf-read";
-export const HF_READ_CHAIN = "84532";
+/** Workflow node network — Aave V3 read on Base Sepolia. */
+export const HF_READ_EXECUTION_CHAIN = "84532";
+/** Marketplace listing chain — Base mainnet for x402 payment settlement. */
+export const HF_READ_LISTING_CHAIN = "8453";
 export const HF_READ_WORKFLOW_NAME = "NexusAgent HF Read";
 
 const READ_NODE_ID = "read-1";
@@ -66,7 +69,7 @@ export function buildHfReadWorkflowGraph(): WorkflowGraph {
           description: "Read Aave V3 getUserAccountData on Base Sepolia",
           config: {
             actionType: "web3/read-contract",
-            network: HF_READ_CHAIN,
+            network: HF_READ_EXECUTION_CHAIN,
             contractAddress: AAVE_V3_POOL,
             abi: GET_USER_ACCOUNT_DATA_ABI,
             abiFunction: "getUserAccountData",
@@ -96,7 +99,7 @@ export function buildHfReadListingMetadata(): ListingMetadata {
   return {
     slug: HF_READ_LISTING_SLUG,
     category: "defi",
-    chain: HF_READ_CHAIN,
+    chain: HF_READ_LISTING_CHAIN,
     workflowType: "read",
     inputSchema: HF_READ_INPUT_SCHEMA,
     outputMapping: {

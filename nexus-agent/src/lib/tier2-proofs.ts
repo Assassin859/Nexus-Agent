@@ -42,6 +42,12 @@ export const TEMPO_PROOF_MEMO = "nexus-agent-proof";
 
 export const TEMPO_CHAIN_ID = 42431;
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
+export const BASE_MAINNET_CHAIN_ID = 8453;
+
+/** Base mainnet x402 settlement tx — set X402_PROOF_TX_HASH to override. */
+export const X402_PROOF_TX =
+  process.env.X402_PROOF_TX_HASH ||
+  "0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68";
 export const TEMPO_PATH_USD = "0x20c0000000000000000000000000000000000000";
 export const TEMPO_RPC = process.env.TEMPO_RPC_URL || "https://rpc.moderato.tempo.xyz";
 
@@ -66,4 +72,8 @@ export function tempoAddressUrl(address: string): string {
 
 export function baseSepoliaTxUrl(txHash: string): string {
   return `https://sepolia.basescan.org/tx/${txHash}`;
+}
+
+export function baseMainnetTxUrl(txHash: string): string {
+  return `https://basescan.org/tx/${txHash}`;
 }

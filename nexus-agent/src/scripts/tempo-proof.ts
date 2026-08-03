@@ -89,7 +89,7 @@ async function main() {
   }
 
   if (settled.status === "failed" && settled.txHash) {
-    console.warn("\n⚠️  BUG-07 candidate: execution failed but tx hash present — nonce may have advanced");
+    console.warn("\n⚠️  Tempo execution reported failed but tx hash present — nonce may have advanced");
     console.warn("   Note execution ID and explorer link if reporting upstream");
   }
 

@@ -3,7 +3,13 @@
 import { ExternalLink, Link2, Store, Copy, Check } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
-import { HF_READ_SLUG, HF_READ_WORKFLOW_ID, MARKETPLACE_URL } from "@/lib/tier2-proofs";
+import {
+  HF_READ_SLUG,
+  HF_READ_WORKFLOW_ID,
+  MARKETPLACE_URL,
+  X402_PROOF_TX,
+  baseMainnetTxUrl,
+} from "@/lib/tier2-proofs";
 import KeeperHubWorkflowLink from "@/components/KeeperHubWorkflowLink";
 
 export default function IntegrationsProofCard() {
@@ -35,6 +41,9 @@ export default function IntegrationsProofCard() {
           <span className="pill" style={{ fontSize: 10.5, background: "rgba(251,191,36,0.12)", border: "1px solid rgba(251,191,36,0.35)", color: "#fbbf24" }}>
             x402 $0.01
           </span>
+          {X402_PROOF_TX ? (
+            <span className="pill pill-success" style={{ fontSize: 10.5 }}>Paid call verified</span>
+          ) : null}
         </div>
       </div>
 
@@ -46,6 +55,42 @@ export default function IntegrationsProofCard() {
       </p>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+        {X402_PROOF_TX ? (
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "space-between",
+              padding: "10px 12px",
+              borderRadius: 8,
+              background: "rgba(52,211,153,0.06)",
+              border: "1px solid rgba(52,211,153,0.25)",
+              gap: 12,
+              flexWrap: "wrap",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", gap: 10, minWidth: 0 }}>
+              <ExternalLink size={16} color="#34d399" />
+              <div>
+                <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>
+                  x402 payment (Base mainnet)
+                </div>
+                <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
+                  {X402_PROOF_TX.slice(0, 10)}…{X402_PROOF_TX.slice(-8)}
+                </div>
+              </div>
+            </div>
+            <a
+              href={baseMainnetTxUrl(X402_PROOF_TX)}
+              target="_blank"
+              rel="noopener noreferrer"
+              style={{ fontSize: 12, color: "#34d399", textDecoration: "none", display: "flex", alignItems: "center", gap: 4, fontWeight: 600 }}
+            >
+              BaseScan <ExternalLink size={12} />
+            </a>
+          </div>
+        ) : null}
+
         {links.map((row) => {
           const Icon = row.icon;
           return (

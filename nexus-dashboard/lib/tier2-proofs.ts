@@ -39,6 +39,12 @@ export const TEMPO_PROOF_EXECUTION_ID = latestProof.executionId;
 
 export const TEMPO_CHAIN_ID = 42431;
 export const BASE_SEPOLIA_CHAIN_ID = 84532;
+export const BASE_MAINNET_CHAIN_ID = 8453;
+
+/** Base mainnet x402 settlement tx — set NEXT_PUBLIC_X402_PROOF_TX on deploy to override. */
+export const X402_PROOF_TX =
+  process.env.NEXT_PUBLIC_X402_PROOF_TX ||
+  "0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68";
 
 export { KEEPERHUB_MARKETPLACE_URL as MARKETPLACE_URL, keeperHubWorkflowUrl } from "@/lib/keeperhub-links";
 
@@ -53,4 +59,8 @@ export function tempoTxUrl(txHash: string): string {
 
 export function tempoAddressUrl(address: string): string {
   return `https://explore.testnet.tempo.xyz/address/${address}`;
+}
+
+export function baseMainnetTxUrl(txHash: string): string {
+  return `https://basescan.org/tx/${txHash}`;
 }

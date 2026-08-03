@@ -17,6 +17,7 @@
     "db:studio": "drizzle-kit studio",
     "e2e": "tsx src/scripts/full-system-e2e.ts",
     "marketplace:publish-hf": "tsx src/scripts/publish-marketplace-hf-read.ts",
+    "marketplace:x402-proof": "tsx src/scripts/marketplace-x402-proof.ts",
     "tempo:proof": "tsx src/scripts/tempo-proof.ts",
     "tempo:backfill-log": "tsx src/scripts/backfill-tempo-proof-log.ts",
     "smoke:tier2": "tsx src/scripts/smoke-tier2-dashboard.ts"

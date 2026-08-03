@@ -72,7 +72,7 @@
 
 1. **Dual-wallet** — Yield rotator skips on-chain when monitored ≠ agentic MPC wallet  
 2. **KeeperHub OAuth ≠ API key** — paste org `kh_…` in KeeperHub Sync after SIWE for full MCP write access  
-3. **HF marketplace widget** — falls back to local Aave on x402 (listing is live; paid call optional)  
+3. **HF marketplace widget** — listing live; **paid mainnet x402 proof** ([BaseScan](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)); dashboard widget still uses org MCP + local Aave fallback without auto-pay  
 4. **Sign & Hold** — blocked upstream on KeeperHub MCP (roadmap item)  
 5. **Deplex / ApprovalSentinel** — stronger on approval-security narrow scope; we lead on **DeFi harness + multi-chain proof stack**
 

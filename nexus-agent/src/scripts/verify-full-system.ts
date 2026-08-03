@@ -9,11 +9,17 @@ import { getCompoundUsdcSupplyAPY } from "../lib/compound.js";
 import { ensureAllowance } from "../lib/allowance.js";
 import { selectBestCandidate, enforceCriticalHfFloor } from "../lib/guardian-candidate-select.js";
 import { getCycleRemaining, shouldReleaseCycleBudget, resolveExecutionLogStatus } from "../lib/repayment-cycle.js";
+import {
+  evaluateRepayVerification,
+  keeperhubClaimedExecutionSuccess,
+} from "../lib/independent-aave-verify.js";
 import { buildWorkflowGraph } from "../lib/workflow-graph.js";
 import { isPendingLockConflict } from "../lib/pending-lock.js";
 import {
   buildHfReadListingMetadata,
   buildHfReadWorkflowGraph,
+  HF_READ_EXECUTION_CHAIN,
+  HF_READ_LISTING_CHAIN,
   HF_READ_LISTING_SLUG,
   isValidListingSlug,
 } from "../lib/hf-read-workflow.js";
@@ -25,7 +31,13 @@ import {
 import { getTxExplorerUrl, chainLabel } from "../lib/tx-explorer.js";
 import { parsePathUsdBalance } from "../lib/tempo-balance.js";
 import { parseHfMarketplaceResult } from "../lib/parse-hf-marketplace.js";
-import { TEMPO_CHAIN_ID, TEMPO_PROOF_TX, TEMPO_PROOF_TXS } from "../lib/tier2-proofs.js";
+import {
+  BASE_MAINNET_CHAIN_ID,
+  baseMainnetTxUrl,
+  TEMPO_CHAIN_ID,
+  TEMPO_PROOF_TX,
+  TEMPO_PROOF_TXS,
+} from "../lib/tier2-proofs.js";
 import { mapExecutionLogToExplorer } from "../brain/agent-tools.js";
 import { getDemoWallet, isDemoWallet, normalizeWallet } from "../lib/demo-wallet.js";
 import { enforceReadAccess, AuthError, AuthedRequest, OptionalAuthedRequest, generateAuthToken } from "../middleware/auth.js";
@@ -178,6 +190,32 @@ async function main() {
   });
   assert(withHash.status === "success", "Cycle Budget — txHash present → success log status");
 
+  const snap = (debt: number, hf: number | null) => ({
+    healthFactor: hf,
+    debtUSD: debt,
+    collateralUSD: 1000,
+  });
+  const happyRepay = evaluateRepayVerification(snap(500, 1.2), snap(450, 1.35), true);
+  assert(happyRepay.verified === true, "Independent verify — debt drop confirms repay");
+
+  const hfOnly = evaluateRepayVerification(snap(500, 1.2), snap(500, 1.25), true);
+  assert(hfOnly.verified === true, "Independent verify — HF improvement confirms repay");
+
+  const mismatch = evaluateRepayVerification(snap(500, 1.2), snap(500, 1.2), true);
+  assert(
+    mismatch.verified === false && Boolean(mismatch.discrepancy),
+    "Independent verify — unchanged debt/HF flags discrepancy",
+  );
+
+  assert(
+    keeperhubClaimedExecutionSuccess({ status: "mined" }) === true,
+    "Independent verify — mined poll counts as KH success",
+  );
+  assert(
+    keeperhubClaimedExecutionSuccess({ status: "failed", txHash: null }) === false,
+    "Independent verify — failed poll skips verify path",
+  );
+
   // 6f. MCP per-wallet API key resolution
   assert(resolveEffectiveMcpApiKey("kh_user_test") === "kh_user_test", "MCP Key — explicit key wins");
   assert(
@@ -233,9 +271,11 @@ async function main() {
   const readNode = hfGraph.nodes.find((n) => n.id === "read-1") as any;
   assert(readNode?.data?.config?.actionType === "web3/read-contract", "HF Read Graph — read-contract action");
   assert(readNode?.data?.config?.abiFunction === "getUserAccountData", "HF Read Graph — getUserAccountData ABI");
+  assert(readNode?.data?.config?.network === HF_READ_EXECUTION_CHAIN, "HF Read Graph — execution chain Base Sepolia 84532");
   assert(isValidListingSlug(HF_READ_LISTING_SLUG), "HF Read Listing — slug format valid");
   assert(isValidListingSlug("Bad_Slug") === false, "HF Read Listing — rejects invalid slug");
   const listingMeta = buildHfReadListingMetadata();
+  assert(listingMeta.chain === HF_READ_LISTING_CHAIN, "HF Read Listing — listing chain Base mainnet 8453 for x402");
   assert(listingMeta.workflowType === "read", "HF Read Listing — workflowType read");
   assert(listingMeta.priceUsdcPerCall === "0.01", "HF Read Listing — x402 price set");
   assert(Array.isArray((listingMeta.inputSchema as any).required) && (listingMeta.inputSchema as any).required.includes("walletAddress"), "HF Read Listing — inputSchema requires walletAddress");
@@ -253,6 +293,11 @@ async function main() {
   assert(tempoExplorer.label === "Live Tempo Explorer", "Tx Explorer — Tempo label");
   const baseExplorer = getTxExplorerUrl("0x" + "a".repeat(64), { chainId: 84532 });
   assert(baseExplorer.url.includes("sepolia.basescan.org"), "Tx Explorer — Base Sepolia URL");
+  assert(BASE_MAINNET_CHAIN_ID === 8453, "Tier 2 — Base mainnet chain id 8453");
+  assert(
+    baseMainnetTxUrl("0x" + "a".repeat(64)).includes("basescan.org"),
+    "Tier 2 — baseMainnetTxUrl uses basescan.org",
+  );
   assert(chainLabel(TEMPO_CHAIN_ID) === "Tempo Moderato", "Tx Explorer — chainLabel Tempo");
   assert(parsePathUsdBalance(1_000_000n) === 1, "Tempo Balance — 6-decimal PathUSD parse");
 

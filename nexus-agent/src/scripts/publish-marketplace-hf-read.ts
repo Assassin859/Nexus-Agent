@@ -16,6 +16,8 @@ import {
 import {
   buildHfReadListingMetadata,
   buildHfReadWorkflowGraph,
+  HF_READ_EXECUTION_CHAIN,
+  HF_READ_LISTING_CHAIN,
   HF_READ_LISTING_SLUG,
   HF_READ_WORKFLOW_NAME,
 } from "../lib/hf-read-workflow.js";
@@ -72,6 +74,16 @@ async function main() {
     console.warn("  Validation warnings:", validation.errors?.join("; ") ?? "unknown");
   } else {
     console.log("  Graph valid");
+  }
+
+  console.log("\nUpdating listing chain for x402 wallet compatibility...");
+  console.log(`  Execution chain (workflow node): ${HF_READ_EXECUTION_CHAIN} (Base Sepolia)`);
+  console.log(`  Listing chain (payment/discovery): ${HF_READ_LISTING_CHAIN} (Base mainnet)`);
+  const chainUpdate = await updateWorkflowListing(workflowId, { chain: HF_READ_LISTING_CHAIN });
+  if (!chainUpdate.ok && !chainUpdate.isStub) {
+    console.warn("  update_workflow_listing chain failed — retry or check KeeperHub MCP");
+  } else {
+    console.log(`  Listing chain set to ${HF_READ_LISTING_CHAIN}`);
   }
 
   console.log("\nSetting listing price (0.01 USDC/call)...");

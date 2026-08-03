@@ -43,6 +43,43 @@ export default function TransactionCard({
   const khWorkflowId: string | null =
     typeof rawWfId === "string" && isKeeperHubWorkflowId(rawWfId) ? rawWfId : null;
 
+  const indepVerify = aiAnalysis?.independentVerification as
+    | { verified?: boolean; discrepancy?: string }
+    | undefined;
+  const rpcVerifiedBadge =
+    indepVerify?.verified === true ? (
+      <span
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          padding: "2px 8px",
+          borderRadius: 4,
+          background: "rgba(52,211,153,0.12)",
+          color: "#34d399",
+          border: "1px solid rgba(52,211,153,0.25)",
+          textTransform: "uppercase",
+        }}
+      >
+        RPC verified
+      </span>
+    ) : indepVerify?.verified === false ? (
+      <span
+        title={indepVerify.discrepancy ?? "Verification mismatch"}
+        style={{
+          fontSize: 10,
+          fontWeight: 700,
+          padding: "2px 8px",
+          borderRadius: 4,
+          background: "rgba(245,158,11,0.12)",
+          color: "#f59e0b",
+          border: "1px solid rgba(245,158,11,0.25)",
+          textTransform: "uppercase",
+        }}
+      >
+        Verification mismatch
+      </span>
+    ) : null;
+
   function copyTxHash() {
     if (!txHash) return;
     navigator.clipboard.writeText(txHash);
@@ -121,6 +158,7 @@ export default function TransactionCard({
                 {action.replace(/_/g, " ")}
               </span>
               {providerBadge}
+              {rpcVerifiedBadge}
             </div>
             <div style={{ fontSize: 12, color: "var(--text-2)", marginTop: 3, fontWeight: 500 }}>
               {amount > 0 ? `${amount} ${asset}` : "Simulation Run"}

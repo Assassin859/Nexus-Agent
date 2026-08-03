@@ -123,6 +123,14 @@ pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts
 
 **Marketplace:** [`nexus-guardian-hf-read`](https://app.keeperhub.com/hub?tab=marketplace) — read-only HF snapshot ($0.01/call). Publish: `pnpm --prefix nexus-agent run marketplace:publish-hf`
 
+**x402 paid HF-read (Base mainnet):**
+
+| Tx | BaseScan |
+|----|----------|
+| `0xd15442…591f68` | [x402 $0.01 USDC](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68) |
+
+Separate buyer wallet via `@keeperhub/wallet` (not org `kh_` key). Payment settles on Base mainnet (8453); HF read executes on Base Sepolia (84532).
+
 ---
 
 ## Dual-wallet model
