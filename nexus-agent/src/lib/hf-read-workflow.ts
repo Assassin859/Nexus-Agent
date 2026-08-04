@@ -9,6 +9,8 @@ export const HF_READ_WORKFLOW_NAME = "NexusAgent HF Read";
 
 const READ_NODE_ID = "read-1";
 const READ_NODE_LABEL = "Read Health Factor";
+/** KeeperHub stored template: Manual trigger input → read-contract arg. */
+export const HF_READ_WALLET_ARG_TEMPLATE = "{{@trigger-1:Manual.walletAddress}}";
 
 const GET_USER_ACCOUNT_DATA_ABI = JSON.stringify([
   {
@@ -73,7 +75,7 @@ export function buildHfReadWorkflowGraph(): WorkflowGraph {
             contractAddress: AAVE_V3_POOL,
             abi: GET_USER_ACCOUNT_DATA_ABI,
             abiFunction: "getUserAccountData",
-            functionArgs: JSON.stringify(["{{walletAddress}}"]),
+            functionArgs: JSON.stringify([HF_READ_WALLET_ARG_TEMPLATE]),
           },
           status: "idle",
         },

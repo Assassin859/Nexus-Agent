@@ -21,6 +21,7 @@ import {
   HF_READ_EXECUTION_CHAIN,
   HF_READ_LISTING_CHAIN,
   HF_READ_LISTING_SLUG,
+  HF_READ_WALLET_ARG_TEMPLATE,
   isValidListingSlug,
 } from "../lib/hf-read-workflow.js";
 import {
@@ -272,6 +273,10 @@ async function main() {
   assert(readNode?.data?.config?.actionType === "web3/read-contract", "HF Read Graph — read-contract action");
   assert(readNode?.data?.config?.abiFunction === "getUserAccountData", "HF Read Graph — getUserAccountData ABI");
   assert(readNode?.data?.config?.network === HF_READ_EXECUTION_CHAIN, "HF Read Graph — execution chain Base Sepolia 84532");
+  assert(
+    readNode?.data?.config?.functionArgs?.includes(HF_READ_WALLET_ARG_TEMPLATE),
+    "HF Read Graph — trigger walletAddress template ref",
+  );
   assert(isValidListingSlug(HF_READ_LISTING_SLUG), "HF Read Listing — slug format valid");
   assert(isValidListingSlug("Bad_Slug") === false, "HF Read Listing — rejects invalid slug");
   const listingMeta = buildHfReadListingMetadata();

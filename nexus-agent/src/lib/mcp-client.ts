@@ -692,6 +692,28 @@ export async function updateWorkflowEnabled(
   }
 }
 
+export async function updateWorkflowGraph(
+  workflowId: string,
+  nodes: Array<Record<string, unknown>>,
+  edges: Array<Record<string, unknown>>,
+  apiKey?: string,
+): Promise<{ ok: boolean; isStub: boolean }> {
+  if (workflowId.startsWith("wf-stub-")) return { ok: false, isStub: true };
+
+  const client = await tryGetMcpClient(apiKey);
+  if (!client) return { ok: false, isStub: true };
+
+  try {
+    await client.callTool({
+      name: "update_workflow",
+      arguments: { workflowId, nodes, edges },
+    });
+    return { ok: true, isStub: false };
+  } catch {
+    return { ok: false, isStub: false };
+  }
+}
+
 export async function listMcpTools(apiKey?: string): Promise<{ tools: string[]; isStub: boolean }> {
   const client = await tryGetMcpClient(apiKey);
   if (!client) return { tools: [], isStub: true };

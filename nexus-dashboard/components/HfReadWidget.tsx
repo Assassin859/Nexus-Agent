@@ -83,7 +83,7 @@ export default function HfReadWidget() {
         <div>
           <div style={{ fontSize: 13, fontWeight: 700, color: "var(--text)" }}>Marketplace HF-read</div>
           <div style={{ fontSize: 11, color: "var(--text-muted)", marginTop: 2 }}>
-            Calls <code style={{ fontSize: 10.5 }}>{HF_READ_SLUG}</code> — falls back to local Aave on 402
+            Calls <code style={{ fontSize: 10.5 }}>{HF_READ_SLUG}</code> — org MCP path; falls back to local Aave on 402 (no auto-pay in dashboard)
           </div>
         </div>
         {badge && <span className={badge.className} style={{ fontSize: 10.5 }}>{badge.label}</span>}

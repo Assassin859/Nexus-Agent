@@ -78,6 +78,9 @@ export default function IntegrationsProofCard() {
                 <div style={{ fontSize: 11, color: "var(--text-muted)", fontFamily: "monospace" }}>
                   {X402_PROOF_TX.slice(0, 10)}…{X402_PROOF_TX.slice(-8)}
                 </div>
+                <div style={{ fontSize: 10.5, color: "var(--text-muted)", marginTop: 4 }}>
+                  Payment: Base mainnet · Execution: Base Sepolia
+                </div>
               </div>
             </div>
             <a

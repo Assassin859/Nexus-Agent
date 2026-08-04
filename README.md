@@ -3,7 +3,9 @@
 > **Hackathon:** [Agents Onchain (DoraHacks)](https://dorahacks.io/) · July 27 – Aug 13, 2026  
 > **Repo:** [github.com/Assassin859/Nexus-Agent](https://github.com/Assassin859/Nexus-Agent)
 
-**Production agent** with a **multi-candidate Reasoning Harness** (not chat-only), **mined Base Sepolia Guardian repays**, a **published KeeperHub marketplace listing**, and **4× Tempo Moderato** transfer-with-memo proofs.
+**NexusAgent doesn't trust its execution layer's word — it independently re-checks Aave on-chain state after every Guardian action, and refuses to broadcast anything the pre-flight simulation can't prove is safe.**
+
+Live production stack: **multi-candidate Reasoning Harness**, **4× mined Base Sepolia Guardian repays** (RPC-verified on new feed rows), **mainnet x402** paid marketplace consumption ([BaseScan](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)), **4× Tempo Moderato** attestation txs, and a **published** KeeperHub listing (`nexus-guardian-hf-read`).
 
 ## Live URLs
 
@@ -12,7 +14,7 @@
 | **Dashboard** | https://spirited-heart-production-b5c5.up.railway.app |
 | **Tempo proofs** | https://spirited-heart-production-b5c5.up.railway.app/tempo |
 | **Agent API** | https://nexus-agent-production-7783.up.railway.app |
-| **Chains** | Base Sepolia (84532) · Tempo Moderato (42431) |
+| **Chains** | Base Sepolia (84532) · Base mainnet x402 (8453) · Tempo Moderato (42431) |
 | **Monitored wallet** | `0x89f97Cb35236a1d0190FB25B31C5C0fF4107Ec1b` |
 
 ---
@@ -26,11 +28,12 @@ Open the dashboard **without signing in** — Portfolio, Feed, Resilience, Workf
 3. [Feed](https://spirited-heart-production-b5c5.up.railway.app/feed) — Guardian repays, holds, Tempo rows  
 4. [Workflows](https://spirited-heart-production-b5c5.up.railway.app/workflows) — PayChain, DCA, Guardian, Yield + platform modules  
 5. [/tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo) — 4 attestation txs with Tempo Explorer links  
-6. [Marketplace listing](https://app.keeperhub.com/hub?tab=marketplace) — slug `nexus-guardian-hf-read`
+6. [Marketplace listing](https://app.keeperhub.com/hub?tab=marketplace) — slug `nexus-guardian-hf-read`  
+7. [Workflows → Integrations card](https://spirited-heart-production-b5c5.up.railway.app/workflows) — **Paid call verified** + [Base mainnet x402 tx](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)
 
 **Optional sign-in:** MetaMask (Base Sepolia) → KeeperHub Sync (`kh_...`) → full write access (chat, templates, custom workflows). Use **Return to public preview** if you connected by accident.
 
-**30s narration:** Resilience → simulation card → Feed → BaseScan repay link → *"Simulation saved gas; approve+repay recovered HF."*
+**30s narration:** Resilience → simulation card → Feed (**RPC verified** badge) → BaseScan repay link → *"We don't trust the platform's word — independent Aave RPC check after every repay."*
 
 ---
 
@@ -39,7 +42,7 @@ Open the dashboard **without signing in** — Portfolio, Feed, Resilience, Workf
 | Dimension | Typical agent demo | NexusAgent |
 |-----------|-------------------|------------|
 | Deployment | Localhost | **Live Railway** dashboard + agent |
-| On-chain proof | Simulated / one tx | **4 repays** + **4 Tempo txs** |
+| On-chain proof | Simulated / one tx | **4 repays** + **4 Tempo txs** + **mainnet x402** paid HF-read |
 | Decision logic | Single LLM answer | **Multi-candidate Reasoning Harness** |
 | Failure handling | Hidden | **Resilience** feed (simulation intercept) |
 | KeeperHub | Consumer only | **Publisher** (`nexus-guardian-hf-read`) + Tempo MCP |

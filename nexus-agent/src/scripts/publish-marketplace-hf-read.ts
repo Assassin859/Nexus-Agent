@@ -12,6 +12,7 @@ import {
   updateWorkflowListing,
   validateWorkflowGraph,
   updateWorkflowEnabled,
+  updateWorkflowGraph,
 } from "../lib/mcp-client.js";
 import {
   buildHfReadListingMetadata,
@@ -76,6 +77,14 @@ async function main() {
     console.log("  Graph valid");
   }
 
+  console.log("\nPushing workflow graph (trigger → read-contract template fix)...");
+  const graphUpdate = await updateWorkflowGraph(workflowId, graph.nodes, graph.edges);
+  if (!graphUpdate.ok && !graphUpdate.isStub) {
+    console.warn("  update_workflow graph failed — check KeeperHub MCP");
+  } else {
+    console.log("  Workflow nodes/edges updated on KeeperHub");
+  }
+
   console.log("\nUpdating listing chain for x402 wallet compatibility...");
   console.log(`  Execution chain (workflow node): ${HF_READ_EXECUTION_CHAIN} (Base Sepolia)`);
   console.log(`  Listing chain (payment/discovery): ${HF_READ_LISTING_CHAIN} (Base mainnet)`);
@@ -130,7 +139,9 @@ async function main() {
       console.warn("  call_workflow stub — MCP unavailable");
     } else {
       const raw = JSON.stringify(call.data);
-      if (raw.includes("402") || raw.includes("Payment required")) {
+      if (raw.includes("Unresolved template reference")) {
+        console.warn("  call_workflow still has template errors — re-run publish after graph fix");
+      } else if (raw.includes("402") || raw.includes("Payment required")) {
         console.log("  call_workflow returned 402 — paid listing confirmed");
       } else {
         console.log("  Result:", raw.slice(0, 400));
