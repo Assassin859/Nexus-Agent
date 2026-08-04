@@ -17,7 +17,7 @@
 |-----------|-------------------|------------|
 | **Deployment** | Localhost / README only | [Live dashboard](https://spirited-heart-production-b5c5.up.railway.app) + [agent API](https://nexus-agent-production-7783.up.railway.app) |
 | **On-chain proof** | Simulated or one tx | **4× Guardian repays** + **4× Tempo** + **mainnet x402** ([BaseScan](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)) |
-| **Execution trust** | Platform status only | **Independent Aave RPC verify** after repay (`RPC verified` on Feed) |
+| **Execution trust** | Platform status only | **Independent RPC verify** after Guardian repay, Tempo transfer, and PayChain payroll (`RPC verified` on Feed) |
 | **Decision logic** | Single LLM reply | **Multi-candidate Reasoning Harness** + safety floor override ([TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) §3) |
 | **Pre-flight** | Optional / hidden | **Simulation intercept** visible on Resilience feed |
 | **KeeperHub depth** | Guardian, PayChain cron, marketplace publish, Tempo workflow, MCP surface tests |
@@ -66,7 +66,7 @@
 5. [Workflows](https://spirited-heart-production-b5c5.up.railway.app/workflows) — PayChain, DCA, Guardian, Yield  
 6. [Marketplace listing](https://app.keeperhub.com/hub?tab=marketplace) — slug `nexus-guardian-hf-read`  
 7. [Workflows → Integrations](https://spirited-heart-production-b5c5.up.railway.app/workflows) — x402 **Paid call verified** + BaseScan link  
-8. BaseScan repay: [`0x23f6424…`](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3)  
+8. BaseScan repays (4×): [`0x23f6424…`](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) · [`0xd2d8ce6…`](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) · [`0xa8400540…`](https://sepolia.basescan.org/tx/0xa8400540184814ad5a08a50c3742c832e4bc2720f5301245e8e70ecef079a17d) · [`0x162a4163…`](https://sepolia.basescan.org/tx/0x162a4163ac4843c717611541ec71056224a551865eb7dc4f8117c27feea0b0fb)  
 9. BaseScan x402: [`0xd15442…`](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)
 
 ---
@@ -78,6 +78,21 @@
 3. **HF marketplace widget** — listing live + **paid mainnet x402 proof** ([BaseScan](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)); external paid calls execute on Base Sepolia; dashboard widget uses org MCP + local Aave fallback (no auto-pay)  
 4. **Sign & Hold** — blocked upstream on KeeperHub MCP (roadmap item)  
 5. **Deplex / ApprovalSentinel** — stronger on approval-security narrow scope; we lead on **DeFi harness + multi-chain proof stack**
+
+---
+
+## Upstream KeeperHub contributions (P4)
+
+Platform fixes and docs submitted while building NexusAgent — separate from on-chain proof claims:
+
+| PR | Summary |
+|----|---------|
+| [#1895](https://github.com/KeeperHub/keeperhub/pull/1895) | Dev-login recovery after Drizzle drift + testnet onboarding chips |
+| [#1896](https://github.com/KeeperHub/keeperhub/pull/1896) | MCP aliases, tool catalog, Tempo hold/release tools, cold-start hints |
+| [#1897](https://github.com/KeeperHub/keeperhub/pull/1897) | Auth error envelopes + hackathon quickstart docs |
+| [#1898](https://github.com/KeeperHub/keeperhub/pull/1898) | **CHAIN_MISMATCH fix** + public `/executions/[id]` share pages (FRICTION-09) |
+
+Discord draft for visibility: [docs/DISCORD_UPSTREAM_PRS.md](DISCORD_UPSTREAM_PRS.md)
 
 ---
 

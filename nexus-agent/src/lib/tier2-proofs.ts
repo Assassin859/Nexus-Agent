@@ -2,6 +2,54 @@ export const HF_READ_SLUG = "nexus-guardian-hf-read";
 export const HF_READ_WORKFLOW_ID =
   process.env.HF_READ_WORKFLOW_ID || "15a4yssu4dkcim8fq3o70";
 
+export type GuardianRepayProof = {
+  txHash: string;
+  amountUSD: number;
+  timestamp: string;
+};
+
+export const GUARDIAN_REPAY_PROOF_TXS: GuardianRepayProof[] = [
+  {
+    txHash: "0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3",
+    amountUSD: 1000,
+    timestamp: "2026-08-01T18:45:07.943Z",
+  },
+  {
+    txHash: "0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127",
+    amountUSD: 1000,
+    timestamp: "2026-08-01T18:45:11.683Z",
+  },
+  {
+    txHash: "0xa8400540184814ad5a08a50c3742c832e4bc2720f5301245e8e70ecef079a17d",
+    amountUSD: 467,
+    timestamp: "2026-08-02T11:15:04.815Z",
+  },
+  {
+    txHash: "0x162a4163ac4843c717611541ec71056224a551865eb7dc4f8117c27feea0b0fb",
+    amountUSD: 533,
+    timestamp: "2026-08-02T11:40:04.715Z",
+  },
+];
+
+export type PayrollProofRecord = {
+  txHash: string;
+  amountUSD: number;
+  recipient: string;
+  workflowId: string;
+  executionId: string;
+};
+
+/** PayChain one-shot payroll proof on Base Sepolia. */
+export const PAYROLL_PROOF_TXS: PayrollProofRecord[] = [
+  {
+    txHash: "0x5a113d704ef78f510119d4e10959bc49c3a3869da571df67606583d2fc66391d",
+    amountUSD: 0.01,
+    recipient: "0xd4106369Aae69A6E704404237fF88b6C5F51Fea2",
+    workflowId: "t1v9dytjo67ahyqlk0ulj",
+    executionId: "xgumiwvubqpoxfx1cv3xf",
+  },
+];
+
 export type TempoProofRecord = {
   txHash: string;
   executionId: string;

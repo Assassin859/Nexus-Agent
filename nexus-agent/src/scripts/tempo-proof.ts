@@ -18,6 +18,7 @@ import {
   TEMPO_TESTNET_CHAIN,
 } from "../lib/tempo-proof-workflow.js";
 import { logExternalExecution } from "../lib/log-external-execution.js";
+import { verifyTempoTxReceipt } from "../lib/independent-tempo-verify.js";
 import { TEMPO_CHAIN_ID, tempoTxUrl } from "../lib/tier2-proofs.js";
 
 const agentic =
@@ -102,6 +103,7 @@ async function main() {
   }
 
   if (settled.txHash) {
+    const independentVerification = await verifyTempoTxReceipt(settled.txHash);
     const { inserted } = await logExternalExecution({
       userWallet: monitoredWallet,
       action: "tempo_transfer",
@@ -115,6 +117,7 @@ async function main() {
         keeperhubWorkflowId: workflowId,
         executionId,
         memo: TEMPO_PROOF_MEMO,
+        independentVerification,
       },
     });
     console.log(`\n  Feed log: ${inserted ? "inserted" : "already present"} in executions_log`);

@@ -13,6 +13,8 @@ import {
   evaluateRepayVerification,
   keeperhubClaimedExecutionSuccess,
 } from "../lib/independent-aave-verify.js";
+import { evaluateTempoReceipt } from "../lib/independent-tempo-verify.js";
+import { evaluatePayrollTransfer } from "../lib/independent-payroll-verify.js";
 import { buildWorkflowGraph } from "../lib/workflow-graph.js";
 import { isPendingLockConflict } from "../lib/pending-lock.js";
 import {
@@ -35,6 +37,8 @@ import { parseHfMarketplaceResult } from "../lib/parse-hf-marketplace.js";
 import {
   BASE_MAINNET_CHAIN_ID,
   baseMainnetTxUrl,
+  PAYROLL_PROOF_TXS,
+  GUARDIAN_REPAY_PROOF_TXS,
   TEMPO_CHAIN_ID,
   TEMPO_PROOF_TX,
   TEMPO_PROOF_TXS,
@@ -307,6 +311,31 @@ async function main() {
   assert(parsePathUsdBalance(1_000_000n) === 1, "Tempo Balance — 6-decimal PathUSD parse");
 
   assert(TEMPO_PROOF_TXS.length === 4, "Tempo proofs — 4 canonical txs for chat getTempoProofs");
+  assert(GUARDIAN_REPAY_PROOF_TXS.length === 4, "Guardian proofs — 4 canonical repay txs");
+  assert(PAYROLL_PROOF_TXS.length >= 1, "Payroll proofs — at least one canonical payroll tx");
+  for (const proof of GUARDIAN_REPAY_PROOF_TXS) {
+    assert(/^0x[a-fA-F0-9]{64}$/.test(proof.txHash), `Guardian proof tx hash valid — ${proof.txHash.slice(0, 10)}…`);
+    assert(proof.amountUSD > 0, `Guardian proof amount > 0 — ${proof.txHash.slice(0, 10)}…`);
+  }
+
+  const tempoReceiptOk = evaluateTempoReceipt({ status: 1 });
+  assert(tempoReceiptOk.verified === true, "Tempo verify — mined receipt passes");
+  const tempoReceiptFail = evaluateTempoReceipt({ status: 0 });
+  assert(tempoReceiptFail.verified === false, "Tempo verify — reverted receipt fails");
+  const tempoReceiptMissing = evaluateTempoReceipt(null);
+  assert(tempoReceiptMissing.verified === false, "Tempo verify — missing receipt fails");
+
+  const payrollOk = evaluatePayrollTransfer(
+    [{ from: "0xabc", to: "0xdef", value: 10_000n }],
+    { from: "0xAbC", to: "0xDeF", amountUSD: 0.01 },
+  );
+  assert(payrollOk.verified === true, "Payroll verify — matching USDC Transfer log");
+  const payrollMiss = evaluatePayrollTransfer(
+    [{ from: "0xabc", to: "0xdef", value: 20_000n }],
+    { from: "0xAbC", to: "0xDeF", amountUSD: 0.01 },
+  );
+  assert(payrollMiss.verified === false, "Payroll verify — amount mismatch fails");
+
   const tempoLogExplorer = mapExecutionLogToExplorer({
     txHash: TEMPO_PROOF_TX,
     status: "success",

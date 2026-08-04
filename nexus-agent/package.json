@@ -20,6 +20,8 @@
     "marketplace:x402-proof": "tsx src/scripts/marketplace-x402-proof.ts",
     "tempo:proof": "tsx src/scripts/tempo-proof.ts",
     "tempo:backfill-log": "tsx src/scripts/backfill-tempo-proof-log.ts",
+    "tempo:backfill-verify": "tsx src/scripts/backfill-tempo-independent-verify.ts",
+    "payroll:proof": "tsx src/scripts/payroll-proof.ts",
     "smoke:tier2": "tsx src/scripts/smoke-tier2-dashboard.ts"
   },
   "dependencies": {

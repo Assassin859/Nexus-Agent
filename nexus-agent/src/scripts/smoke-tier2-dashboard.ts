@@ -98,9 +98,9 @@ const dashHf = await dashHfRes.json();
 ok("Dashboard HF-read proxy", dashHfRes.ok && dashHf.healthFactor != null, `status=${dashHfRes.status}`);
 
 const feed = await fetch(`${agent}/api/feed/${wallet}`, { headers }).then((r) => r.json());
-const feedItems = Array.isArray(feed) ? feed : (Array.isArray(feed.items) ? feed.items : []);
-const tempoRows = feedItems.filter((r: { action?: string }) => r.action === "tempo_transfer");
-ok("Feed tempo_transfer rows", tempoRows.length >= 1, `count=${tempoRows.length}`);
+const feedStats = await fetch(`${agent}/api/feed/${wallet}/stats`, { headers }).then((r) => r.json());
+const tempoCount = feedStats.byAction?.tempo_transfer ?? 0;
+ok("Feed tempo_transfer rows (all-time stats)", tempoCount >= 4, `count=${tempoCount}`);
 
 console.log(`\n${failed === 0 ? "All checks passed." : `${failed} check(s) failed.`}\n`);
 process.exit(failed > 0 ? 1 : 0);

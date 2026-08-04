@@ -9,6 +9,7 @@ import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 
 import DecisionMatrixCard, { ExecutionLogItem } from "@/components/DecisionMatrixCard";
+import GuardianRepayProofTable from "@/components/GuardianRepayProofTable";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 
@@ -192,6 +193,8 @@ export default function ResiliencePage() {
 
       {/* AI Decision Matrix Component */}
       <DecisionMatrixCard items={feed as ExecutionLogItem[]} loading={loading} stats={feedStats} />
+
+      <GuardianRepayProofTable />
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: 20 }}>
         {scenarios.map((s) => {

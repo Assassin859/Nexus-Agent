@@ -112,6 +112,14 @@ pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts
 |----|----------|
 | `0x23f6424…770df3` | [repay $1000](https://sepolia.basescan.org/tx/0x23f6424d9dbcb2b77c13a3ca6d4e4117c7e37d4d8e433549519ec4df2c770df3) |
 | `0xd2d8ce6…a4f127` | [repay $1000](https://sepolia.basescan.org/tx/0xd2d8ce6bf3138e981d5157089dfb90b1255f91e3d8523ae0d9dc18cf43a4f127) |
+| `0xa8400540…9a17d` | [repay $467](https://sepolia.basescan.org/tx/0xa8400540184814ad5a08a50c3742c832e4bc2720f5301245e8e70ecef079a17d) |
+| `0x162a4163…b0fb` | [repay $533](https://sepolia.basescan.org/tx/0x162a4163ac4843c717611541ec71056224a551865eb7dc4f8117c27feea0b0fb) |
+
+**PayChain payroll proof (Base Sepolia):**
+
+| Tx | BaseScan |
+|----|----------|
+| `0x5a113d7…6391d` | [payroll $0.01 USDC](https://sepolia.basescan.org/tx/0x5a113d704ef78f510119d4e10959bc49c3a3869da571df67606583d2fc66391d) |
 
 **Tempo Moderato proof (4× transfer-with-memo):**
 
@@ -167,6 +175,7 @@ Dashboard uses **Next.js API proxies** for SIWE/settings (no browser CORS to age
 |-----|-----|
 | [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Architecture, harness, schemas, modules |
 | [docs/COMPETITIVE_POSITION.md](docs/COMPETITIVE_POSITION.md) | Why us vs. typical submissions |
+| [docs/DISCORD_UPSTREAM_PRS.md](docs/DISCORD_UPSTREAM_PRS.md) | Paste-ready Discord post for upstream PRs #1895–#1898 |
 
 ---
 
