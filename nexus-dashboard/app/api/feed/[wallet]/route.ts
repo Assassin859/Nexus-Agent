@@ -7,8 +7,10 @@ export async function GET(
   try {
     const agentUrl = process.env.NEXT_PUBLIC_AGENT_URL || "http://localhost:3001";
     const authHeader = req.headers.get("authorization");
+    const search = req.nextUrl.searchParams.toString();
+    const agentFeedUrl = `${agentUrl}/api/feed/${params.wallet}${search ? `?${search}` : ""}`;
 
-    const res = await fetch(`${agentUrl}/api/feed/${params.wallet}`, {
+    const res = await fetch(agentFeedUrl, {
       headers: {
         ...(authHeader ? { Authorization: authHeader } : {}),
       },

@@ -60,7 +60,7 @@ import { getTempoPathUsdBalance } from "./lib/tempo-balance.js";
 import { logExternalExecution } from "./lib/log-external-execution.js";
 import { parseHfMarketplaceResult } from "./lib/parse-hf-marketplace.js";
 import { HF_READ_SLUG, TEMPO_CHAIN_ID, tempoAddressUrl } from "./lib/tier2-proofs.js";
-import { getFeedMatrixStats } from "./lib/feed-matrix-stats.js";
+import { getFeedMatrixStats, getFeedByMatrixBucket, parseMatrixBucketParam } from "./lib/feed-matrix-stats.js";
 import { pinoHttp } from "pino-http";
 import crypto from "node:crypto";
 
@@ -670,11 +670,21 @@ app.get("/api/feed/:walletAddress", optionalAuth, async (req: express.Request, r
     enforceReadAccess(authedReq, walletAddress);
     const demoRead = isUnauthenticatedDemoRead(authedReq, walletAddress);
 
-    const logs = await db.query.executionsLog.findMany({
-      where: eq(executionsLog.userWallet, walletAddress),
-      orderBy: [desc(executionsLog.timestamp)],
-      limit: 200,
-    });
+    const bucketParam = req.query.bucket;
+    let logs;
+    if (bucketParam != null && bucketParam !== "") {
+      const bucket = parseMatrixBucketParam(bucketParam);
+      if (!bucket) {
+        return res.status(400).json({ error: "Invalid bucket — use hold, partial, full, yield, blocked, or other" });
+      }
+      logs = await getFeedByMatrixBucket(walletAddress, bucket, 200);
+    } else {
+      logs = await db.query.executionsLog.findMany({
+        where: eq(executionsLog.userWallet, walletAddress),
+        orderBy: [desc(executionsLog.timestamp)],
+        limit: 200,
+      });
+    }
 
     if (demoRead) {
       res.json({ demoRead: true, items: logs });

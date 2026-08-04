@@ -15,6 +15,7 @@ import {
 } from "../lib/independent-aave-verify.js";
 import { evaluateTempoReceipt } from "../lib/independent-tempo-verify.js";
 import { evaluatePayrollTransfer } from "../lib/independent-payroll-verify.js";
+import { getDecisionBucketFromRow, parseMatrixBucketParam } from "../lib/feed-matrix-stats.js";
 import { buildWorkflowGraph } from "../lib/workflow-graph.js";
 import { isPendingLockConflict } from "../lib/pending-lock.js";
 import {
@@ -335,6 +336,18 @@ async function main() {
     { from: "0xAbC", to: "0xDeF", amountUSD: 0.01 },
   );
   assert(payrollMiss.verified === false, "Payroll verify — amount mismatch fails");
+
+  assert(getDecisionBucketFromRow({ action: "hold", status: "success" }) === "hold", "Matrix bucket — hold action");
+  assert(
+    getDecisionBucketFromRow({
+      action: "repay",
+      status: "success",
+      aiAnalysis: { healthFactor: 1.1 },
+    }) === "full",
+    "Matrix bucket — critical HF repay → full",
+  );
+  assert(parseMatrixBucketParam("partial") === "partial", "Matrix bucket param — valid");
+  assert(parseMatrixBucketParam("invalid") === null, "Matrix bucket param — invalid");
 
   const tempoLogExplorer = mapExecutionLogToExplorer({
     txHash: TEMPO_PROOF_TX,

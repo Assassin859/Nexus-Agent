@@ -2,18 +2,14 @@
 
 import { CheckCircle2, Shield, RefreshCw, AlertTriangle, AlertOctagon, ShieldAlert, Layers } from "lucide-react";
 import { HF_CRITICAL, HF_WARNING } from "@/lib/guardian-thresholds";
+import {
+  BUCKET_LABELS,
+  getDecisionBucket,
+  type ExecutionLogItem,
+  type MatrixBucket,
+} from "@/lib/decision-matrix";
 
-export type ExecutionLogItem = {
-  id?: string;
-  action: string;
-  status: string;
-  txHash?: string | null;
-  aiAnalysis?: {
-    healthFactor?: number;
-    safetyStatus?: string;
-    [key: string]: unknown;
-  } | null;
-};
+export type { ExecutionLogItem };
 
 type Props = {
   items: ExecutionLogItem[];
@@ -25,30 +21,128 @@ type Props = {
     matrixBucketsAllTime: Record<string, number>;
     successfulExecutionsAllTime: number;
   } | null;
+  selectedBucket?: MatrixBucket | null;
+  onBucketSelect?: (bucket: MatrixBucket | null) => void;
 };
 
-export function getDecisionBucket(item: ExecutionLogItem): "hold" | "partial" | "full" | "yield" | "blocked" | "other" {
-  const { action, aiAnalysis } = item;
-  const hf = aiAnalysis?.healthFactor;
-  const ss = aiAnalysis?.safetyStatus;
+type TileConfig = {
+  bucket: MatrixBucket;
+  emoji: string;
+  label: string;
+  subtitle: string;
+  icon: typeof Shield;
+  colors: { text: string; bg: string; border: string; activeBorder: string };
+};
 
-  if (action === "hold") return "hold";
-  if (action === "block_transaction") return "blocked";
-  if (action === "rotate") return "yield";
+const TILES: TileConfig[] = [
+  {
+    bucket: "hold",
+    emoji: "🟢",
+    label: "Hold Path",
+    subtitle: `Hold · HF > ${HF_WARNING} (Healthy)`,
+    icon: Shield,
+    colors: { text: "#34d399", bg: "rgba(52, 211, 153, 0.05)", border: "rgba(52, 211, 153, 0.2)", activeBorder: "rgba(52, 211, 153, 0.55)" },
+  },
+  {
+    bucket: "partial",
+    emoji: "🟡",
+    label: "Partial Repay",
+    subtitle: `Repay · ${HF_CRITICAL} ≤ HF ≤ ${HF_WARNING}`,
+    icon: AlertTriangle,
+    colors: { text: "#f59e0b", bg: "rgba(245, 158, 11, 0.05)", border: "rgba(245, 158, 11, 0.2)", activeBorder: "rgba(245, 158, 11, 0.55)" },
+  },
+  {
+    bucket: "full",
+    emoji: "🔴",
+    label: "Full Repay",
+    subtitle: `Repay · HF < ${HF_CRITICAL} (Critical)`,
+    icon: AlertOctagon,
+    colors: { text: "#ef4444", bg: "rgba(239, 68, 68, 0.05)", border: "rgba(239, 68, 68, 0.2)", activeBorder: "rgba(239, 68, 68, 0.55)" },
+  },
+  {
+    bucket: "yield",
+    emoji: "🔵",
+    label: "Yield Rotate",
+    subtitle: "Rotate · dual-wallet skip logs",
+    icon: RefreshCw,
+    colors: { text: "#60a5fa", bg: "rgba(59, 130, 246, 0.05)", border: "rgba(59, 130, 246, 0.2)", activeBorder: "rgba(59, 130, 246, 0.55)" },
+  },
+  {
+    bucket: "blocked",
+    emoji: "⚪",
+    label: "Guarded",
+    subtitle: "Pending lock / risk block",
+    icon: ShieldAlert,
+    colors: { text: "#94a3b8", bg: "rgba(148, 163, 184, 0.05)", border: "rgba(148, 163, 184, 0.2)", activeBorder: "rgba(148, 163, 184, 0.55)" },
+  },
+  {
+    bucket: "other",
+    emoji: "⚪",
+    label: "Other",
+    subtitle: "DCA · PayChain · safe-HF repay",
+    icon: Layers,
+    colors: { text: "#94a3b8", bg: "rgba(148, 163, 184, 0.03)", border: "rgba(148, 163, 184, 0.15)", activeBorder: "rgba(148, 163, 184, 0.45)" },
+  },
+];
 
-  if (action === "repay" || action === "supply_collateral") {
-    if (hf != null && hf < HF_CRITICAL) return "full";
-    if (ss === "critical_liquidation_risk") return "full";
-    if (hf != null && hf >= HF_CRITICAL && hf <= HF_WARNING) return "partial";
-    if (ss === "warning") return "partial";
-    if (hf != null && hf > HF_WARNING) return "other";
-    return "partial";
-  }
+function MatrixTile({
+  tile,
+  count,
+  loading,
+  selected,
+  onSelect,
+}: {
+  tile: TileConfig;
+  count: number;
+  loading: boolean;
+  selected: boolean;
+  onSelect?: () => void;
+}) {
+  const Icon = tile.icon;
+  const interactive = Boolean(onSelect);
 
-  return "other";
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      disabled={!interactive}
+      aria-pressed={selected}
+      aria-label={`Filter by ${tile.label}`}
+      style={{
+        background: tile.colors.bg,
+        border: `1px solid ${selected ? tile.colors.activeBorder : tile.colors.border}`,
+        borderRadius: "var(--radius-md)",
+        padding: "12px",
+        textAlign: "left",
+        cursor: interactive ? "pointer" : "default",
+        boxShadow: selected ? `0 0 0 2px ${tile.colors.activeBorder}` : "none",
+        transition: "border-color 0.15s, box-shadow 0.15s",
+        width: "100%",
+      }}
+    >
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
+        <span style={{ fontSize: "12px", fontWeight: 700, color: tile.colors.text, display: "flex", alignItems: "center", gap: "4px" }}>
+          {tile.emoji} {tile.label}
+        </span>
+        <Icon size={14} color={tile.colors.text} />
+      </div>
+      <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--text)" }}>
+        {loading ? "-" : count}
+      </div>
+      <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
+        {tile.subtitle}
+      </div>
+    </button>
+  );
 }
 
-export default function DecisionMatrixCard({ items, loading, stats }: Props) {
+export default function DecisionMatrixCard({
+  items,
+  loading = false,
+  stats,
+  selectedBucket = null,
+  onBucketSelect,
+}: Props) {
   const successfulExecutions = stats
     ? stats.successfulExecutionsAllTime
     : items.filter((i) => i.status === "success").length;
@@ -81,7 +175,6 @@ export default function DecisionMatrixCard({ items, loading, stats }: Props) {
         marginBottom: "24px",
       }}
     >
-      {/* Top Bar: Summary Metric */}
       <div
         style={{
           display: "flex",
@@ -90,6 +183,8 @@ export default function DecisionMatrixCard({ items, loading, stats }: Props) {
           marginBottom: "16px",
           paddingBottom: "12px",
           borderBottom: "1px solid var(--border)",
+          flexWrap: "wrap",
+          gap: "12px",
         }}
       >
         <div>
@@ -108,36 +203,57 @@ export default function DecisionMatrixCard({ items, loading, stats }: Props) {
             AI Decision Matrix &amp; Execution Proofs
           </h3>
           <p style={{ fontSize: "12px", color: "var(--text-muted)", margin: "4px 0 0 0" }}>
-            {stats
-              ? `All-time breakdown across ${stats.totalRows} logged executions (feed list shows latest ${stats.feedLimit}).`
-              : "Real-time breakdown of autonomous decision paths & verified execution metrics."}
+            {selectedBucket
+              ? `Filtered view · up to 200 most recent ${BUCKET_LABELS[selectedBucket]} matches. Click tile again to clear.`
+              : stats
+                ? `All-time breakdown across ${stats.totalRows} logged executions (feed list shows latest ${stats.feedLimit}). Click a tile to filter.`
+                : "Real-time breakdown of autonomous decision paths. Click a tile to filter the feed."}
           </p>
         </div>
 
-        <div
-          style={{
-            background: "rgba(52, 211, 153, 0.1)",
-            border: "1px solid rgba(52, 211, 153, 0.25)",
-            borderRadius: "var(--radius-md)",
-            padding: "8px 14px",
-            display: "flex",
-            alignItems: "center",
-            gap: "8px",
-          }}
-        >
-          <CheckCircle2 size={16} color="#34d399" />
-          <div>
-            <div style={{ fontSize: "10px", textTransform: "uppercase", color: "#34d399", fontWeight: 700 }}>
-              Successful Executions {stats ? "(All-Time)" : "(Recent)"}
-            </div>
-            <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--text)" }}>
-              {loading ? "..." : successfulExecutions}
+        <div style={{ display: "flex", alignItems: "center", gap: "10px", flexWrap: "wrap" }}>
+          {selectedBucket && onBucketSelect && (
+            <button
+              type="button"
+              onClick={() => onBucketSelect(null)}
+              style={{
+                fontSize: "11px",
+                fontWeight: 700,
+                padding: "6px 10px",
+                borderRadius: "var(--radius-md)",
+                border: "1px solid var(--border)",
+                background: "var(--card-bg)",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+              }}
+            >
+              Show all
+            </button>
+          )}
+          <div
+            style={{
+              background: "rgba(52, 211, 153, 0.1)",
+              border: "1px solid rgba(52, 211, 153, 0.25)",
+              borderRadius: "var(--radius-md)",
+              padding: "8px 14px",
+              display: "flex",
+              alignItems: "center",
+              gap: "8px",
+            }}
+          >
+            <CheckCircle2 size={16} color="#34d399" />
+            <div>
+              <div style={{ fontSize: "10px", textTransform: "uppercase", color: "#34d399", fontWeight: 700 }}>
+                Successful Executions {stats ? "(All-Time)" : "(Recent)"}
+              </div>
+              <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--text)" }}>
+                {loading ? "..." : successfulExecutions}
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      {/* 5 AI Decision Paths Tiles */}
       <div
         style={{
           display: "grid",
@@ -145,143 +261,20 @@ export default function DecisionMatrixCard({ items, loading, stats }: Props) {
           gap: "12px",
         }}
       >
-        {/* 🟢 Hold Path */}
-        <div
-          style={{
-            background: "rgba(52, 211, 153, 0.05)",
-            border: "1px solid rgba(52, 211, 153, 0.2)",
-            borderRadius: "var(--radius-md)",
-            padding: "12px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#34d399", display: "flex", alignItems: "center", gap: "4px" }}>
-              🟢 Hold Path
-            </span>
-            <Shield size={14} color="#34d399" />
-          </div>
-          <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--text)" }}>
-            {loading ? "-" : counts.hold}
-          </div>
-          <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            Hold · HF &gt; {HF_WARNING} (Healthy)
-          </div>
-        </div>
-
-        {/* 🟡 Partial Repay Path */}
-        <div
-          style={{
-            background: "rgba(245, 158, 11, 0.05)",
-            border: "1px solid rgba(245, 158, 11, 0.2)",
-            borderRadius: "var(--radius-md)",
-            padding: "12px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#f59e0b", display: "flex", alignItems: "center", gap: "4px" }}>
-              🟡 Partial Repay
-            </span>
-            <AlertTriangle size={14} color="#f59e0b" />
-          </div>
-          <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--text)" }}>
-            {loading ? "-" : counts.partial}
-          </div>
-          <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            Repay · {HF_CRITICAL} ≤ HF ≤ {HF_WARNING}
-          </div>
-        </div>
-
-        {/* 🔴 Full Repay Path */}
-        <div
-          style={{
-            background: "rgba(239, 68, 68, 0.05)",
-            border: "1px solid rgba(239, 68, 68, 0.2)",
-            borderRadius: "var(--radius-md)",
-            padding: "12px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#ef4444", display: "flex", alignItems: "center", gap: "4px" }}>
-              🔴 Full Repay
-            </span>
-            <AlertOctagon size={14} color="#ef4444" />
-          </div>
-          <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--text)" }}>
-            {loading ? "-" : counts.full}
-          </div>
-          <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            Repay · HF &lt; {HF_CRITICAL} (Critical)
-          </div>
-        </div>
-
-        {/* 🔵 Yield Rotate Path */}
-        <div
-          style={{
-            background: "rgba(59, 130, 246, 0.05)",
-            border: "1px solid rgba(59, 130, 246, 0.2)",
-            borderRadius: "var(--radius-md)",
-            padding: "12px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#60a5fa", display: "flex", alignItems: "center", gap: "4px" }}>
-              🔵 Yield Rotate
-            </span>
-            <RefreshCw size={14} color="#60a5fa" />
-          </div>
-          <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--text)" }}>
-            {loading ? "-" : counts.yield}
-          </div>
-          <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            Rotate · dual-wallet skip logs
-          </div>
-        </div>
-
-        {/* ⚪ Guarded / Blocked Path */}
-        <div
-          style={{
-            background: "rgba(148, 163, 184, 0.05)",
-            border: "1px solid rgba(148, 163, 184, 0.2)",
-            borderRadius: "var(--radius-md)",
-            padding: "12px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#94a3b8", display: "flex", alignItems: "center", gap: "4px" }}>
-              ⚪ Guarded
-            </span>
-            <ShieldAlert size={14} color="#94a3b8" />
-          </div>
-          <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--text)" }}>
-            {loading ? "-" : counts.blocked}
-          </div>
-          <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            Pending lock / risk block
-          </div>
-        </div>
-
-        {/* Other — DCA, PayChain, proactive repay */}
-        <div
-          style={{
-            background: "rgba(148, 163, 184, 0.03)",
-            border: "1px solid rgba(148, 163, 184, 0.15)",
-            borderRadius: "var(--radius-md)",
-            padding: "12px",
-          }}
-        >
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "6px" }}>
-            <span style={{ fontSize: "12px", fontWeight: 700, color: "#94a3b8", display: "flex", alignItems: "center", gap: "4px" }}>
-              ⚪ Other
-            </span>
-            <Layers size={14} color="#94a3b8" />
-          </div>
-          <div style={{ fontSize: "20px", fontWeight: 800, color: "var(--text)" }}>
-            {loading ? "-" : counts.other}
-          </div>
-          <div style={{ fontSize: "10px", color: "var(--text-muted)", marginTop: "2px" }}>
-            DCA · PayChain · safe-HF repay
-          </div>
-        </div>
+        {TILES.map((tile) => (
+          <MatrixTile
+            key={tile.bucket}
+            tile={tile}
+            count={counts[tile.bucket]}
+            loading={loading}
+            selected={selectedBucket === tile.bucket}
+            onSelect={
+              onBucketSelect
+                ? () => onBucketSelect(selectedBucket === tile.bucket ? null : tile.bucket)
+                : undefined
+            }
+          />
+        ))}
       </div>
     </div>
   );

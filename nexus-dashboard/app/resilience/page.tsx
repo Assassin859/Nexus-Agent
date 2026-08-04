@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { CheckCircle2, Clock, ShieldX, Activity } from "lucide-react";
 import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
@@ -12,6 +12,7 @@ import DecisionMatrixCard, { ExecutionLogItem } from "@/components/DecisionMatri
 import GuardianRepayProofTable from "@/components/GuardianRepayProofTable";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
+import { BUCKET_LABELS, type MatrixBucket } from "@/lib/decision-matrix";
 
 type LogItem = {
   id?: string;
@@ -73,6 +74,10 @@ const INITIAL_SCENARIOS: ScenarioCard[] = [
 
 const PAGE_SIZE = 8;
 
+function feedUrl(wallet: string, bucket: MatrixBucket | null): string {
+  return bucket ? `/api/feed/${wallet}?bucket=${bucket}` : `/api/feed/${wallet}`;
+}
+
 export default function ResiliencePage() {
   const { walletAddress: wallet, authToken } = useWallet();
   const [scenarios, setScenarios] = useState(INITIAL_SCENARIOS);
@@ -85,95 +90,98 @@ export default function ResiliencePage() {
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [selectedBucket, setSelectedBucket] = useState<MatrixBucket | null>(null);
 
   const { page, setPage, totalPages, pagedItems, total, showPagination } = usePagination(
     feed,
     PAGE_SIZE,
-    [wallet],
+    [wallet, selectedBucket],
   );
 
-  useEffect(() => {
-    async function loadResilience() {
-      try {
-        const [feedRes, statsRes] = await Promise.all([
-          proxyFetch(`/api/feed/${wallet}`, {}, authToken),
-          proxyFetch(`/api/feed/${wallet}/stats`, {}, authToken),
-        ]);
-        const data = await feedRes.json();
-        if (feedRes.status === 401) {
-          setAuthError("Sign in with Ethereum to view resilience logs.");
-          setFeed([]);
-          setFeedStats(null);
-          return;
-        }
-        if (feedRes.status === 403) {
-          setAuthError("Forbidden — signed-in wallet does not match this feed.");
-          setFeed([]);
-          setFeedStats(null);
-          return;
-        }
-        if (!feedRes.ok) {
-          setAuthError(data.error || `Resilience feed unavailable (${feedRes.status})`);
-          setFeed([]);
-          setFeedStats(null);
-          return;
-        }
-        setAuthError(null);
-        const rows = parseFeedResponse<LogItem>(data);
-        setFeed(rows);
-
-        if (statsRes.ok) {
-          const statsData = await statsRes.json();
-          setFeedStats({
-            totalRows: statsData.totalRows ?? 0,
-            feedLimit: statsData.feedLimit ?? 200,
-            matrixBucketsAllTime: statsData.matrixBucketsAllTime ?? {},
-            successfulExecutionsAllTime: statsData.successfulExecutionsAllTime ?? 0,
-          });
-        } else {
-          setFeedStats(null);
-        }
-
-        if (rows.length > 0) {
-          const logs = rows;
-          const happy = logs.find(d => d.status === "success");
-          const delayed = rows.find(d => d.status === "delayed");
-          const pending = rows.find(d => d.status === "pending");
-          const simRevert = rows.find(d => d.status === "reverted_simulation");
-          const chainRevert = rows.find(d => d.status === "reverted_chain");
-
-          const updated = [...INITIAL_SCENARIOS];
-          if (happy) {
-            updated[0].desc = `Action ${happy.action.toUpperCase()} executed successfully for amount $${happy.amount}.`;
-            updated[0].code.text = `Status: SUCCESS (200 OK)\nReason: ${happy.reason || "Mined on Base Sepolia"}`;
-          }
-          if (delayed) {
-            updated[1].desc = `Action ${delayed.action.toUpperCase()} evaluated. Gas or cycle limit rules applied.`;
-            updated[1].code.text = `Status: DELAYED\nReason: ${delayed.reason || "Gas threshold limit active"}`;
-          }
-          if (pending) {
-            updated[2].desc = `Action ${pending.action.toUpperCase()} is currently in-flight on-chain.`;
-            updated[2].code.text = `Status: PENDING (<15m TTL)\nReason: ${pending.reason || "Waiting for mining settlement"}`;
-          }
-          if (simRevert || chainRevert) {
-            const revertTarget = simRevert || chainRevert!;
-            const isSim = revertTarget.status === "reverted_simulation";
-            updated[3].pill = { label: isSim ? "Pre-Flight Intercepted" : "Reverted On-Chain", cls: isSim ? "pill-warning" : "pill-danger" };
-            updated[3].desc = isSim
-              ? `Simulation intercepted revert before broadcasting to Base Sepolia (0 gas wasted).`
-              : `Execution reverted on-chain during broadcast.`;
-            updated[3].code.text = `Status: ${revertTarget.status.toUpperCase()}\nReason: ${revertTarget.reason || "Revert recorded"}`;
-          }
-          setScenarios(updated);
-        }
-      } catch (err) {
-        console.error("Resilience fetch error:", err);
-      } finally {
-        setLoading(false);
+  const loadResilience = useCallback(async () => {
+    try {
+      const [feedRes, statsRes] = await Promise.all([
+        proxyFetch(feedUrl(wallet, selectedBucket), {}, authToken),
+        proxyFetch(`/api/feed/${wallet}/stats`, {}, authToken),
+      ]);
+      const data = await feedRes.json();
+      if (feedRes.status === 401) {
+        setAuthError("Sign in with Ethereum to view resilience logs.");
+        setFeed([]);
+        setFeedStats(null);
+        return;
       }
+      if (feedRes.status === 403) {
+        setAuthError("Forbidden — signed-in wallet does not match this feed.");
+        setFeed([]);
+        setFeedStats(null);
+        return;
+      }
+      if (!feedRes.ok) {
+        setAuthError(data.error || `Resilience feed unavailable (${feedRes.status})`);
+        setFeed([]);
+        setFeedStats(null);
+        return;
+      }
+      setAuthError(null);
+      const rows = parseFeedResponse<LogItem>(data);
+      setFeed(rows);
+
+      if (statsRes.ok) {
+        const statsData = await statsRes.json();
+        setFeedStats({
+          totalRows: statsData.totalRows ?? 0,
+          feedLimit: statsData.feedLimit ?? 200,
+          matrixBucketsAllTime: statsData.matrixBucketsAllTime ?? {},
+          successfulExecutionsAllTime: statsData.successfulExecutionsAllTime ?? 0,
+        });
+      } else {
+        setFeedStats(null);
+      }
+
+      if (!selectedBucket && rows.length > 0) {
+        const logs = rows;
+        const happy = logs.find(d => d.status === "success");
+        const delayed = rows.find(d => d.status === "delayed");
+        const pending = rows.find(d => d.status === "pending");
+        const simRevert = rows.find(d => d.status === "reverted_simulation");
+        const chainRevert = rows.find(d => d.status === "reverted_chain");
+
+        const updated = [...INITIAL_SCENARIOS];
+        if (happy) {
+          updated[0].desc = `Action ${happy.action.toUpperCase()} executed successfully for amount $${happy.amount}.`;
+          updated[0].code.text = `Status: SUCCESS (200 OK)\nReason: ${happy.reason || "Mined on Base Sepolia"}`;
+        }
+        if (delayed) {
+          updated[1].desc = `Action ${delayed.action.toUpperCase()} evaluated. Gas or cycle limit rules applied.`;
+          updated[1].code.text = `Status: DELAYED\nReason: ${delayed.reason || "Gas threshold limit active"}`;
+        }
+        if (pending) {
+          updated[2].desc = `Action ${pending.action.toUpperCase()} is currently in-flight on-chain.`;
+          updated[2].code.text = `Status: PENDING (<15m TTL)\nReason: ${pending.reason || "Waiting for mining settlement"}`;
+        }
+        if (simRevert || chainRevert) {
+          const revertTarget = simRevert || chainRevert!;
+          const isSim = revertTarget.status === "reverted_simulation";
+          updated[3].pill = { label: isSim ? "Pre-Flight Intercepted" : "Reverted On-Chain", cls: isSim ? "pill-warning" : "pill-danger" };
+          updated[3].desc = isSim
+            ? `Simulation intercepted revert before broadcasting to Base Sepolia (0 gas wasted).`
+            : `Execution reverted on-chain during broadcast.`;
+          updated[3].code.text = `Status: ${revertTarget.status.toUpperCase()}\nReason: ${revertTarget.reason || "Revert recorded"}`;
+        }
+        setScenarios(updated);
+      }
+    } catch (err) {
+      console.error("Resilience fetch error:", err);
+    } finally {
+      setLoading(false);
     }
+  }, [wallet, authToken, selectedBucket]);
+
+  useEffect(() => {
+    setLoading(true);
     loadResilience();
-  }, [wallet, authToken]);
+  }, [loadResilience]);
 
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
@@ -192,7 +200,13 @@ export default function ResiliencePage() {
       )}
 
       {/* AI Decision Matrix Component */}
-      <DecisionMatrixCard items={feed as ExecutionLogItem[]} loading={loading} stats={feedStats} />
+      <DecisionMatrixCard
+        items={feed as ExecutionLogItem[]}
+        loading={loading}
+        stats={feedStats}
+        selectedBucket={selectedBucket}
+        onBucketSelect={setSelectedBucket}
+      />
 
       <GuardianRepayProofTable />
 
@@ -242,13 +256,32 @@ export default function ResiliencePage() {
           <p className="page-subtitle" style={{ marginTop: 4 }}>Paginated history of simulated and broadcast actions</p>
         </div>
 
+        {selectedBucket && !loading && (
+          <div
+            className="card"
+            style={{
+              padding: "10px 14px",
+              fontSize: 12,
+              color: "var(--text-muted)",
+              borderLeft: "3px solid var(--primary)",
+            }}
+          >
+            Showing <strong style={{ color: "var(--text)" }}>{BUCKET_LABELS[selectedBucket]}</strong>
+            {" · "}
+            {feed.length} execution{feed.length === 1 ? "" : "s"}
+            {feed.length >= 200 ? " (up to 200 most recent matches)" : ""}
+          </div>
+        )}
+
         {loading ? (
           <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 24 }}>
             Loading execution log...
           </div>
         ) : feed.length === 0 ? (
           <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 24 }}>
-            No execution logs yet.
+            {selectedBucket
+              ? `No ${BUCKET_LABELS[selectedBucket]} executions found.`
+              : "No execution logs yet."}
           </div>
         ) : (
           <>

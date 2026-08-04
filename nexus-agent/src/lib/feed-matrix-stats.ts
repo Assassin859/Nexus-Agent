@@ -4,6 +4,21 @@ import { executionsLog } from "../db/schema.js";
 
 export type MatrixBucket = "hold" | "partial" | "full" | "yield" | "blocked" | "other";
 
+const VALID_BUCKETS = new Set<MatrixBucket>([
+  "hold",
+  "partial",
+  "full",
+  "yield",
+  "blocked",
+  "other",
+]);
+
+export function parseMatrixBucketParam(value: unknown): MatrixBucket | null {
+  if (typeof value !== "string") return null;
+  const bucket = value as MatrixBucket;
+  return VALID_BUCKETS.has(bucket) ? bucket : null;
+}
+
 const HF_CRITICAL = 1.15;
 const HF_WARNING = 1.4;
 
@@ -107,4 +122,41 @@ export async function getFeedMatrixStats(walletAddress: string) {
     successfulExecutionsAllTime: successfulExecutions,
     successfulExecutionsRecent200: recentSuccessful,
   };
+}
+
+const FEED_BUCKET_BATCH = 500;
+const FEED_BUCKET_MAX_SCAN = 5000;
+
+/** Return up to `limit` newest executions_log rows matching a decision-matrix bucket. */
+export async function getFeedByMatrixBucket(
+  walletAddress: string,
+  bucket: MatrixBucket,
+  limit = 200,
+) {
+  const wallet = walletAddress.toLowerCase();
+  const matched: Awaited<ReturnType<typeof db.query.executionsLog.findMany>> = [];
+  let offset = 0;
+
+  while (matched.length < limit && offset < FEED_BUCKET_MAX_SCAN) {
+    const batch = await db.query.executionsLog.findMany({
+      where: eq(executionsLog.userWallet, wallet),
+      orderBy: [desc(executionsLog.timestamp)],
+      limit: FEED_BUCKET_BATCH,
+      offset,
+    });
+
+    if (batch.length === 0) break;
+
+    for (const row of batch) {
+      if (getDecisionBucketFromRow(row) === bucket) {
+        matched.push(row);
+        if (matched.length >= limit) break;
+      }
+    }
+
+    offset += batch.length;
+    if (batch.length < FEED_BUCKET_BATCH) break;
+  }
+
+  return matched;
 }
