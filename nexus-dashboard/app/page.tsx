@@ -12,6 +12,7 @@ import IntegrationsProofCard from "@/components/IntegrationsProofCard";
 import HfReadWidget from "@/components/HfReadWidget";
 import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
+import StaleDemoSessionBanner from "@/components/StaleDemoSessionBanner";
 import { HF_CRITICAL, HF_WARNING, NETWORK_LABEL } from "@/lib/guardian-thresholds";
 
 type PortfolioData = {
@@ -127,6 +128,7 @@ export default function PortfolioPage() {
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <DemoModeBanner />
       <PersonalWalletBanner />
+      <StaleDemoSessionBanner />
 
       {/* Auth & Offline Hint Banners */}
       {data?._unauthorized && (

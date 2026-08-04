@@ -27,6 +27,13 @@ export type PaychainResponse = {
 };
 
 import { resolveKeeperHubApiKey } from "../lib/user-context.js";
+import { getWalletContext } from "../lib/agentic-wallet.js";
+
+function paychainDualWalletNotice(walletAddress: string): string {
+  const ctx = getWalletContext(walletAddress);
+  if (!ctx || ctx.sameWallet || !ctx.signerWallet) return "";
+  return `\n\nNote: Payroll USDC is debited from the agentic MPC wallet (\`${ctx.signerWallet}\`), not your MetaMask monitored wallet. Ensure the agentic wallet is funded.`;
+}
 
 export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
   const walletAddress = req.walletAddress.toLowerCase();
@@ -126,7 +133,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
       return {
         success: true,
         verification_required: false,
-        message: `🏦 Deposited ${amount} USDC into the '${matchedPayee.name}' Shared Team Vault Pool (${poolAddr.slice(0, 8)}...). Team members (${matchedPayee.memberCount} registered) can withdraw as needed.`,
+        message: `🏦 Deposited ${amount} USDC into the '${matchedPayee.name}' Shared Team Vault Pool (${poolAddr.slice(0, 8)}...). Team members (${matchedPayee.memberCount} registered) can withdraw as needed.${paychainDualWalletNotice(walletAddress)}`,
         workflowId,
       };
     }
@@ -250,7 +257,7 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
     return {
       success: true,
       verification_required: false,
-      message: `👥 Resolved '${matchedPayee.name}' (${targets.length} wallet${targets.length > 1 ? "s" : ""}). ${msgDetails}`,
+      message: `👥 Resolved '${matchedPayee.name}' (${targets.length} wallet${targets.length > 1 ? "s" : ""}). ${msgDetails}${paychainDualWalletNotice(walletAddress)}`,
       workflowId: createdRemoteIds[0],
     };
   }
@@ -382,9 +389,9 @@ export async function handle(req: PaychainRequest): Promise<PaychainResponse> {
   return {
     success: true,
     verification_required: false,
-    message: isExplicitOverride 
+    message: (isExplicitOverride
       ? `Explicit override confirmed! Registered payroll workflow of ${decision.recommendation.amount} USDC for ${recipientAddr}.`
-      : decision.userExplanation,
+      : decision.userExplanation) + paychainDualWalletNotice(walletAddress),
     workflowId,
     aiAnalysis: decision.analysis,
   };

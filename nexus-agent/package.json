@@ -22,7 +22,11 @@
     "tempo:backfill-log": "tsx src/scripts/backfill-tempo-proof-log.ts",
     "tempo:backfill-verify": "tsx src/scripts/backfill-tempo-independent-verify.ts",
     "payroll:proof": "tsx src/scripts/payroll-proof.ts",
-    "smoke:tier2": "tsx src/scripts/smoke-tier2-dashboard.ts"
+    "dca:proof": "tsx src/scripts/dca-proof.ts",
+    "yield:proof": "tsx src/scripts/yield-proof.ts",
+    "yield:proof:prepare": "tsx src/scripts/yield-proof.ts --prepare",
+    "smoke:tier2": "tsx src/scripts/smoke-tier2-dashboard.ts",
+    "smoke:live-triggers": "tsx src/scripts/live-trigger-smoke.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.0.12",

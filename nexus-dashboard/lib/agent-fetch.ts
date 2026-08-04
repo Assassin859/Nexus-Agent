@@ -73,7 +73,7 @@ async function fetchWithDemoRetry(
   const res = await fetch(url, { ...init, headers });
 
   if (
-    res.status === 401 &&
+    (res.status === 401 || res.status === 403) &&
     token &&
     typeof window !== "undefined" &&
     isDemoReadRequest(pathFromFetchUrl(url), init)

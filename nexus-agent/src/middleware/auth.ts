@@ -115,7 +115,8 @@ export function optionalAuth(req: Request, _res: Response, next: NextFunction): 
  * - No JWT + demo wallet → allow
  * - No JWT + other wallet → 401
  * - Valid JWT + same wallet → allow
- * - Valid JWT + different wallet → 403
+ * - Valid JWT + different wallet + demo target → allow (public demo data)
+ * - Valid JWT + different wallet + non-demo target → 403
  */
 export function enforceReadAccess(req: OptionalAuthedRequest, targetWallet: string): void {
   const wallet = normalizeWallet(targetWallet);
@@ -124,6 +125,9 @@ export function enforceReadAccess(req: OptionalAuthedRequest, targetWallet: stri
   }
 
   if (req.userWallet) {
+    if (isDemoWallet(wallet)) {
+      return;
+    }
     assertWalletScope(req as AuthedRequest, wallet);
     return;
   }
@@ -133,6 +137,10 @@ export function enforceReadAccess(req: OptionalAuthedRequest, targetWallet: stri
   }
 }
 
+/** True when response should use the public demo-read wrapper (no scoped JWT for this wallet). */
 export function isUnauthenticatedDemoRead(req: OptionalAuthedRequest, targetWallet: string): boolean {
-  return !req.userWallet && isDemoWallet(targetWallet);
+  const wallet = normalizeWallet(targetWallet);
+  if (!isDemoWallet(wallet)) return false;
+  if (!req.userWallet) return true;
+  return req.userWallet !== wallet;
 }

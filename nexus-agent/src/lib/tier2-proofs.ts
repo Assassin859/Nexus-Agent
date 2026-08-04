@@ -50,6 +50,56 @@ export const PAYROLL_PROOF_TXS: PayrollProofRecord[] = [
   },
 ];
 
+export type DcaProofRecord = {
+  txHash: string;
+  amountUSD: number;
+  workflowId: string;
+  executionId: string;
+};
+
+/** DCA proof on Base Sepolia (USDC leg — Sepolia Uniswap pool illiquid). */
+export const DCA_PROOF_TXS: DcaProofRecord[] = [
+  {
+    txHash: "0xb1d5d0cd6acd22d0602eda018fee969e57bde5c3dceffeb5275072594f3214ca",
+    amountUSD: 2,
+    workflowId: "dya1swzeog0xg4xkg5lok",
+    executionId: "v8grhn3mirzp07fcz2s51",
+  },
+];
+
+export type YieldProofRecord = {
+  txHash: string;
+  amountUSD: number;
+  round: number;
+  workflowId: string;
+  executionId: string;
+};
+
+/** Yield Aave→Compound rotate proofs on Base Sepolia. */
+export const YIELD_PROOF_TXS: YieldProofRecord[] = [
+  {
+    txHash: "0x76ed48b021ee8239ec05ff0ea7a0deff0d98fc55c367f78eea5575c0d80d68a1",
+    amountUSD: 1.5,
+    round: 1,
+    workflowId: "2v3u8t81jfe97ocwwu09f",
+    executionId: "r40r4ut7skd1g5ildt3en",
+  },
+  {
+    txHash: "0x42ee234ed84381d94807e9843ffb234a89b84c3e2bc32226ec7dd860d191211e",
+    amountUSD: 1.5,
+    round: 2,
+    workflowId: "wh03cuzhvpmw6c2es2kvg",
+    executionId: "0d98h2csopn5of58onswh",
+  },
+  {
+    txHash: "0x33b945bb07802f0972139974ec4a1473e1f98c9b96de0881eccfd279a9856c13",
+    amountUSD: 1.5,
+    round: 3,
+    workflowId: "86jqcffltk5k14h83g3fk",
+    executionId: "l7pv7969o8k9pal5vkpvj",
+  },
+];
+
 export type TempoProofRecord = {
   txHash: string;
   executionId: string;

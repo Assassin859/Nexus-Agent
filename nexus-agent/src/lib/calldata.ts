@@ -5,8 +5,12 @@ const abi = new AbiCoder();
 // ─── Contract Addresses (Aave V3.2 Base Sepolia) ──────────────────────────────
 export const AAVE_V3_POOL       = "0x8bAB6d1b75f19e9eD9fCe8b9BD338844fF79aE27";
 export const UNISWAP_V3_ROUTER  = "0xE592427A0AEce92De3Edee1F18E0157C05861564";
+export const UNISWAP_V3_ROUTER_02 = "0x94cC0AaC535CCDB3C01d6787D6413C739ae12bc4";
 export const USDC_SEPOLIA       = "0xba50Cd2A20f6DA35D788639E581bca8d0B5d4D5f";
-export const WETH_SEPOLIA       = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
+/** Canonical Base Sepolia WETH — also used for swap calldata on Sepolia */
+export const WETH_SEPOLIA       = "0x4200000000000000000000000000000000000006";
+/** Legacy Sepolia WETH used in early calldata — kept for router probe fallback */
+export const WETH_SEPOLIA_LEGACY = "0x7b79995e5f793A07Bc00c21412e50Ecae098E7f9";
 // Compound V3 cUSDCv3 on Sepolia (replaces Morpho which has no stable Sepolia deployment)
 export const COMPOUND_V3_USDC  = "0xAec1F48e02Cfb822Be958B68C7957156EB3F0b6e";
 
@@ -101,20 +105,41 @@ export function encodeUniswapSwap(
   amountInUSD: number,
   recipient: string,
   maxSlippagePct = 0.5,
-  ethPriceUSD = 3000
+  ethPriceUSD = 3000,
+  fee = 3000,
 ): string {
   const amountIn = parseUnits(amountInUSD.toFixed(6), 6); // USDC 6 decimals
   // amountOutMinimum: estimate WETH output using live Chainlink price, apply slippage tolerance
   const estimatedEthOut = amountInUSD / ethPriceUSD;
   const minEthOut = estimatedEthOut * (1 - maxSlippagePct / 100);
   const amountOutMinimum = parseUnits(minEthOut.toFixed(18), 18);
-  const deadline = Math.floor(Date.now() / 1000) + 20 * 60; // 20 min from now
+  return encodeUniswapSwapRaw(amountInUSD, recipient, amountOutMinimum, fee);
+}
 
-  // ExactInputSingleParams struct
+/** Testnet proof helper — zero minOut, configurable fee tier. */
+export function encodeUniswapSwapProof(
+  amountInUSD: number,
+  recipient: string,
+  fee = 3000,
+  tokenOut: string = WETH_SEPOLIA,
+): string {
+  return encodeUniswapSwapRaw(amountInUSD, recipient, 0n, fee, tokenOut);
+}
+
+function encodeUniswapSwapRaw(
+  amountInUSD: number,
+  recipient: string,
+  amountOutMinimum: bigint,
+  fee: number,
+  tokenOut: string = WETH_SEPOLIA,
+): string {
+  const amountIn = parseUnits(amountInUSD.toFixed(6), 6);
+  const deadline = Math.floor(Date.now() / 1000) + 20 * 60;
+
   const params = {
     tokenIn: USDC_SEPOLIA,
-    tokenOut: WETH_SEPOLIA,
-    fee: 3000, // 0.3% pool
+    tokenOut,
+    fee,
     recipient,
     deadline,
     amountIn,
@@ -122,7 +147,6 @@ export function encodeUniswapSwap(
     sqrtPriceLimitX96: 0n,
   };
 
-  // function exactInputSingle(ExactInputSingleParams calldata params)
   const selector = "0x414bf389";
   const encoded = abi.encode(
     ["tuple(address,address,uint24,address,uint256,uint256,uint256,uint160)"],

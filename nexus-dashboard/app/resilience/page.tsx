@@ -7,6 +7,7 @@ import { proxyFetch } from "@/lib/agent-fetch";
 import { parseFeedResponse } from "@/lib/demo-wallet";
 import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
+import StaleDemoSessionBanner from "@/components/StaleDemoSessionBanner";
 
 import DecisionMatrixCard, { ExecutionLogItem } from "@/components/DecisionMatrixCard";
 import GuardianRepayProofTable from "@/components/GuardianRepayProofTable";
@@ -183,6 +184,8 @@ export default function ResiliencePage() {
   useEffect(() => {
     setLoading(true);
     loadResilience();
+    const interval = setInterval(loadResilience, 5000);
+    return () => clearInterval(interval);
   }, [loadResilience]);
 
   return (
@@ -194,6 +197,7 @@ export default function ResiliencePage() {
 
       <DemoModeBanner />
       <PersonalWalletBanner />
+      <StaleDemoSessionBanner />
 
       {authError && (
         <div className="card" style={{ color: "#f59e0b", fontSize: 13, padding: 14 }}>

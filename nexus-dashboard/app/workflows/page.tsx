@@ -7,6 +7,8 @@ import { useWallet } from "@/context/WalletContext";
 import { proxyFetch } from "@/lib/agent-fetch";
 import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
+import StaleDemoSessionBanner from "@/components/StaleDemoSessionBanner";
+import DualWalletPayrollNotice from "@/components/DualWalletPayrollNotice";
 import KeeperHubSyncModal from "@/components/KeeperHubSyncModal";
 import { isKeeperHubWorkflowId } from "@/lib/keeperhub-links";
 import KeeperHubWorkflowLink from "@/components/KeeperHubWorkflowLink";
@@ -239,6 +241,8 @@ export default function WorkflowsPage() {
 
       <DemoModeBanner />
       <PersonalWalletBanner />
+      <StaleDemoSessionBanner />
+      <DualWalletPayrollNotice />
 
       <div className="grid-metrics">
         <div className="card metric-card">

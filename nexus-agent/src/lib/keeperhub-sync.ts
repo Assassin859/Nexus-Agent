@@ -1,6 +1,7 @@
 import { db } from "../db/client.js";
-import { activeWorkflows, executionsLog, userSettings } from "../db/schema.js";
+import { activeWorkflows, executionsLog } from "../db/schema.js";
 import { getExecutionLogs } from "./mcp-client.js";
+import { resolveKeeperHubApiKey } from "./user-context.js";
 import { eq, and, desc } from "drizzle-orm";
 import { childLogger } from "./logger.js";
 
@@ -17,12 +18,7 @@ export async function syncKeeperHubState(walletAddress: string): Promise<{ workf
   const wallet = walletAddress.toLowerCase();
   const log = childLogger({ module: "sync", wallet: wallet.slice(0, 8) });
 
-  // 1. Fetch user's KeeperHub API key from DB user_settings
-  const settings = await db.query.userSettings.findFirst({
-    where: eq(userSettings.userWallet, wallet),
-  });
-
-  const apiKey = settings?.keeperhubApiKey || process.env.KEEPERHUB_API_KEY;
+  const apiKey = await resolveKeeperHubApiKey(wallet);
   if (!apiKey) {
     log.info("No KeeperHub API key available — skipping remote log sync.");
     return { workflowsSynced: 0, logsSynced: 0 };

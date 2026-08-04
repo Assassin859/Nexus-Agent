@@ -26,6 +26,15 @@ function ok(label: string, cond: boolean, detail?: string) {
   }
 }
 
+function feedItems(payload: unknown): unknown[] {
+  if (Array.isArray(payload)) return payload;
+  if (payload && typeof payload === "object") {
+    const obj = payload as { items?: unknown[]; feed?: unknown[] };
+    return obj.items ?? obj.feed ?? [];
+  }
+  return [];
+}
+
 console.log("\n=== Tier 2 Dashboard Smoke ===");
 console.log(`Agent:     ${agent}`);
 console.log(`Dashboard: ${dash}`);
@@ -101,6 +110,23 @@ const feed = await fetch(`${agent}/api/feed/${wallet}`, { headers }).then((r) =>
 const feedStats = await fetch(`${agent}/api/feed/${wallet}/stats`, { headers }).then((r) => r.json());
 const tempoCount = feedStats.byAction?.tempo_transfer ?? 0;
 ok("Feed tempo_transfer rows (all-time stats)", tempoCount >= 4, `count=${tempoCount}`);
+
+const minedFeed = await fetch(`${agent}/api/feed/${wallet}?mined=true`, { headers }).then((r) => r.json());
+const minedItems = feedItems(minedFeed);
+ok("Mined feed items", minedItems.length >= 15, `count=${minedItems.length}`);
+
+const rotateCount = feedStats.byAction?.rotate ?? 0;
+const swapCount = feedStats.byAction?.swap ?? 0;
+ok("Feed rotate rows (all-time)", rotateCount >= 3, `rotate=${rotateCount}`);
+ok("Feed swap rows (all-time)", swapCount >= 1, `swap=${swapCount}`);
+
+const yieldBucket = await fetch(`${agent}/api/feed/${wallet}?bucket=yield`, { headers }).then((r) => r.json());
+const yieldItems = feedItems(yieldBucket) as { action?: string }[];
+ok(
+  "Yield matrix bucket has rotate",
+  yieldItems.some((r) => r.action === "rotate"),
+  `rows=${yieldItems.length}`,
+);
 
 console.log(`\n${failed === 0 ? "All checks passed." : `${failed} check(s) failed.`}\n`);
 process.exit(failed > 0 ? 1 : 0);

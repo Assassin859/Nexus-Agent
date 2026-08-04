@@ -8,6 +8,7 @@ import { proxyFetch } from "@/lib/agent-fetch";
 import { parseFeedResponse } from "@/lib/demo-wallet";
 import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
+import StaleDemoSessionBanner from "@/components/StaleDemoSessionBanner";
 import TempoProofTable from "@/components/TempoProofTable";
 import TransactionCard from "@/components/TransactionCard";
 import { TEMPO_CHAIN_ID } from "@/lib/tier2-proofs";
@@ -96,6 +97,7 @@ export default function TempoPage() {
 
       <DemoModeBanner />
       <PersonalWalletBanner />
+      <StaleDemoSessionBanner />
 
       <div className="card" style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 20 }}>
         <div>

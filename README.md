@@ -35,6 +35,35 @@ Open the dashboard **without signing in** — Portfolio, Feed, Resilience, Workf
 
 **30s narration:** Resilience → simulation card → Feed (**RPC verified** badge) → BaseScan repay link → *"We don't trust the platform's word — independent Aave RPC check after every repay."*
 
+### Live-trigger demo (video segment B)
+
+Sign in with the **monitored demo wallet** MetaMask account so feed proofs stay visible while chat/triggers run. Chat writes (payroll, DCA schedule) require a personal `kh_...` API key in KeeperHub Sync.
+
+| Trigger | Expected on demo |
+|---------|------------------|
+| `POST /api/trigger/guardian` | 200 — likely `hold` when HF is healthy |
+| `POST /api/trigger/dca` | 200 — Sepolia Uniswap may revert; show mined DCA proof in Feed instead |
+| `POST /api/trigger/yield` | 200 — on-chain skip (dual-wallet); Yield Rotate tile already has 3 mined proofs |
+| Chat payroll | USDC debits **agentic MPC wallet**, not MetaMask — see dual-wallet banner on Workflows |
+
+**Pre-recording checklist:**
+
+```powershell
+pnpm --prefix nexus-agent run verify
+pnpm --prefix nexus-agent run build
+pnpm --prefix nexus-dashboard exec tsc --noEmit
+$env:AGENT_URL="https://nexus-agent-production-7783.up.railway.app"
+$env:DASHBOARD_URL="https://spirited-heart-production-b5c5.up.railway.app"
+pnpm --prefix nexus-agent run smoke:tier2
+pnpm --prefix nexus-agent run smoke:live-triggers
+```
+
+1. Incognito → Portfolio HF loads without sign-in  
+2. Feed → **On-chain proofs** → swap + 3 rotate rows with BaseScan  
+3. Resilience → **Yield Rotate** tile > 0 → click to filter  
+4. Rehearsal browser with old SIWE token → pages still load (public demo data)  
+5. Live segment: SIWE as demo wallet → chat read-only works without `kh_` key  
+
 ---
 
 ## Why NexusAgent (vs. typical submissions)
@@ -120,6 +149,24 @@ pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts
 | Tx | BaseScan |
 |----|----------|
 | `0x5a113d7…6391d` | [payroll $0.01 USDC](https://sepolia.basescan.org/tx/0x5a113d704ef78f510119d4e10959bc49c3a3869da571df67606583d2fc66391d) |
+
+**DCA proof (Base Sepolia):**
+
+| Tx | BaseScan |
+|----|----------|
+| `0xb1d5d0…214ca` | [DCA $2 USDC leg](https://sepolia.basescan.org/tx/0xb1d5d0cd6acd22d0602eda018fee969e57bde5c3dceffeb5275072594f3214ca) |
+
+Sepolia Uniswap V3 USDC→WETH pools are illiquid; proof script mines the USDC disbursement leg via KeeperHub MCP (same feed `swap` action).
+
+**Yield rotate proofs (Base Sepolia, 3× Aave→Compound):**
+
+| Round | Tx | BaseScan |
+|-------|-----|----------|
+| 1 | `0x76ed48…d68a1` | [rotate $1.50](https://sepolia.basescan.org/tx/0x76ed48b021ee8239ec05ff0ea7a0deff0d98fc55c367f78eea5575c0d80d68a1) |
+| 2 | `0x42ee23…211e` | [rotate $1.50](https://sepolia.basescan.org/tx/0x42ee234ed84381d94807e9843ffb234a89b84c3e2bc32226ec7dd860d191211e) |
+| 3 | `0x33b945…6c13` | [rotate $1.50](https://sepolia.basescan.org/tx/0x33b945bb07802f0972139974ec4a1473e1f98c9b96de0881eccfd279a9856c13) |
+
+Proof scripts execute on the **agentic** signer but log to the **monitored** wallet for Feed visibility. Cron yield trigger still skips on-chain when wallets differ (no Aave `withdraw` onBehalfOf).
 
 **Tempo Moderato proof (4× transfer-with-memo):**
 

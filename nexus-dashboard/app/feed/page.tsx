@@ -8,6 +8,7 @@ import TransactionCard from "@/components/TransactionCard";
 import DecisionMatrixCard from "@/components/DecisionMatrixCard";
 import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
+import StaleDemoSessionBanner from "@/components/StaleDemoSessionBanner";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { BUCKET_LABELS, type MatrixBucket } from "@/lib/decision-matrix";
@@ -158,6 +159,7 @@ export default function FeedPage() {
 
       <DemoModeBanner />
       <PersonalWalletBanner />
+      <StaleDemoSessionBanner />
 
       {authError && (
         <div className="card" style={{ color: "#f59e0b", fontSize: 13, padding: 14 }}>

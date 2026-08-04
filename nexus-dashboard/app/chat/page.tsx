@@ -8,6 +8,8 @@ import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { HF_WARNING } from "@/lib/guardian-thresholds";
 import { isDemoReadMode } from "@/lib/demo-wallet";
+import StaleDemoSessionBanner from "@/components/StaleDemoSessionBanner";
+import DualWalletPayrollNotice from "@/components/DualWalletPayrollNotice";
 
 type PortfolioData = {
   healthFactor: number | null;
@@ -213,6 +215,9 @@ export default function ChatPage() {
           Clear History
         </button>
       </div>
+
+      <StaleDemoSessionBanner />
+      {!demoReadOnly && <DualWalletPayrollNotice />}
 
       {!authToken && (
         <div style={{
