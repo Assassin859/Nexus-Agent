@@ -8,7 +8,7 @@
  *
  * Usage: pnpm --prefix nexus-agent run marketplace:x402-proof
  */
-import { ethers } from "ethers";
+import { ethers, EventLog } from "ethers";
 import "../lib/env.js";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
@@ -100,9 +100,10 @@ async function fetchRecentX402PaymentTx(buyerAddress: string): Promise<string | 
       block - 9999,
       block,
     );
-    const out = logs.filter((l) => {
-      const value = l.args?.value as bigint | undefined;
-      return value !== undefined && value > 0n;
+    const out = logs.filter((l): l is EventLog => {
+      if (!(l instanceof EventLog)) return false;
+      const value = l.args.value as bigint;
+      return value > 0n;
     });
     if (out.length === 0) return null;
     return out[out.length - 1]!.transactionHash;
