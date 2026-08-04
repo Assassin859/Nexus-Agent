@@ -10,7 +10,6 @@ import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 
 import DecisionMatrixCard, { ExecutionLogItem } from "@/components/DecisionMatrixCard";
 import GuardianRepayProofTable from "@/components/GuardianRepayProofTable";
-import OnChainProofStrip from "@/components/OnChainProofStrip";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { BUCKET_LABELS, type MatrixBucket } from "@/lib/decision-matrix";
@@ -210,8 +209,6 @@ export default function ResiliencePage() {
         selectedBucket={selectedBucket}
         onBucketSelect={setSelectedBucket}
       />
-
-      <OnChainProofStrip />
 
       <GuardianRepayProofTable />
 

@@ -6,7 +6,6 @@ import { proxyFetch } from "@/lib/agent-fetch";
 import { parseFeedResponse } from "@/lib/demo-wallet";
 import TransactionCard from "@/components/TransactionCard";
 import DecisionMatrixCard from "@/components/DecisionMatrixCard";
-import OnChainProofStrip from "@/components/OnChainProofStrip";
 import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 import Pagination from "@/components/Pagination";
@@ -165,8 +164,6 @@ export default function FeedPage() {
           {authError}
         </div>
       )}
-
-      <OnChainProofStrip />
 
       <DecisionMatrixCard
         items={feed}
