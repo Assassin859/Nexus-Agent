@@ -20,6 +20,7 @@ type Props = {
     feedLimit: number;
     matrixBucketsAllTime: Record<string, number>;
     successfulExecutionsAllTime: number;
+    minedExecutionsAllTime?: number;
   } | null;
   selectedBucket?: MatrixBucket | null;
   onBucketSelect?: (bucket: MatrixBucket | null) => void;
@@ -143,9 +144,11 @@ export default function DecisionMatrixCard({
   selectedBucket = null,
   onBucketSelect,
 }: Props) {
-  const successfulExecutions = stats
+  const minedCount = stats?.minedExecutionsAllTime ?? items.filter((i) => i.txHash?.startsWith("0x") && (i.txHash?.length ?? 0) === 66).length;
+  const decisionsLogged = stats
     ? stats.successfulExecutionsAllTime
     : items.filter((i) => i.status === "success").length;
+  const totalLogged = stats?.totalRows;
 
   const counts = stats
     ? {
@@ -230,24 +233,45 @@ export default function DecisionMatrixCard({
               Show all
             </button>
           )}
-          <div
-            style={{
-              background: "rgba(52, 211, 153, 0.1)",
-              border: "1px solid rgba(52, 211, 153, 0.25)",
-              borderRadius: "var(--radius-md)",
-              padding: "8px 14px",
-              display: "flex",
-              alignItems: "center",
-              gap: "8px",
-            }}
-          >
-            <CheckCircle2 size={16} color="#34d399" />
-            <div>
-              <div style={{ fontSize: "10px", textTransform: "uppercase", color: "#34d399", fontWeight: 700 }}>
-                Successful Executions {stats ? "(All-Time)" : "(Recent)"}
+          <div style={{ display: "flex", alignItems: "stretch", gap: "8px", flexWrap: "wrap" }}>
+            <div
+              style={{
+                background: "rgba(52, 211, 153, 0.1)",
+                border: "1px solid rgba(52, 211, 153, 0.25)",
+                borderRadius: "var(--radius-md)",
+                padding: "8px 14px",
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+              }}
+            >
+              <CheckCircle2 size={16} color="#34d399" />
+              <div>
+                <div style={{ fontSize: "10px", textTransform: "uppercase", color: "#34d399", fontWeight: 700 }}>
+                  Mined on-chain {stats ? "(All-Time)" : ""}
+                </div>
+                <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--text)" }}>
+                  {loading ? "..." : minedCount}
+                </div>
               </div>
-              <div style={{ fontSize: "18px", fontWeight: 800, color: "var(--text)" }}>
-                {loading ? "..." : successfulExecutions}
+            </div>
+            <div
+              style={{
+                background: "rgba(148, 163, 184, 0.08)",
+                border: "1px solid rgba(148, 163, 184, 0.2)",
+                borderRadius: "var(--radius-md)",
+                padding: "8px 14px",
+                display: "flex",
+                alignItems: "center",
+              }}
+            >
+              <div>
+                <div style={{ fontSize: "10px", textTransform: "uppercase", color: "#94a3b8", fontWeight: 700 }}>
+                  Decisions logged
+                </div>
+                <div style={{ fontSize: "14px", fontWeight: 700, color: "var(--text-muted)" }}>
+                  {loading ? "..." : totalLogged != null ? `${decisionsLogged} success · ${totalLogged} total` : decisionsLogged}
+                </div>
               </div>
             </div>
           </div>

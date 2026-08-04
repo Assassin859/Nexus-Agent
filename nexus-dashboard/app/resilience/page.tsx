@@ -10,6 +10,7 @@ import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 
 import DecisionMatrixCard, { ExecutionLogItem } from "@/components/DecisionMatrixCard";
 import GuardianRepayProofTable from "@/components/GuardianRepayProofTable";
+import OnChainProofStrip from "@/components/OnChainProofStrip";
 import Pagination from "@/components/Pagination";
 import { usePagination } from "@/hooks/usePagination";
 import { BUCKET_LABELS, type MatrixBucket } from "@/lib/decision-matrix";
@@ -87,6 +88,7 @@ export default function ResiliencePage() {
     feedLimit: number;
     matrixBucketsAllTime: Record<string, number>;
     successfulExecutionsAllTime: number;
+    minedExecutionsAllTime: number;
   } | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -129,12 +131,13 @@ export default function ResiliencePage() {
 
       if (statsRes.ok) {
         const statsData = await statsRes.json();
-        setFeedStats({
-          totalRows: statsData.totalRows ?? 0,
-          feedLimit: statsData.feedLimit ?? 200,
-          matrixBucketsAllTime: statsData.matrixBucketsAllTime ?? {},
-          successfulExecutionsAllTime: statsData.successfulExecutionsAllTime ?? 0,
-        });
+          setFeedStats({
+            totalRows: statsData.totalRows ?? 0,
+            feedLimit: statsData.feedLimit ?? 200,
+            matrixBucketsAllTime: statsData.matrixBucketsAllTime ?? {},
+            successfulExecutionsAllTime: statsData.successfulExecutionsAllTime ?? 0,
+            minedExecutionsAllTime: statsData.minedExecutionsAllTime ?? 0,
+          });
       } else {
         setFeedStats(null);
       }
@@ -207,6 +210,8 @@ export default function ResiliencePage() {
         selectedBucket={selectedBucket}
         onBucketSelect={setSelectedBucket}
       />
+
+      <OnChainProofStrip />
 
       <GuardianRepayProofTable />
 

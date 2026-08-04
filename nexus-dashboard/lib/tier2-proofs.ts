@@ -31,6 +31,25 @@ export const GUARDIAN_REPAY_PROOF_TXS: GuardianRepayProof[] = [
   },
 ];
 
+export type PayrollProofRecord = {
+  txHash: string;
+  amountUSD: number;
+  recipient: string;
+  workflowId: string;
+  executionId: string;
+};
+
+/** PayChain one-shot payroll proof on Base Sepolia. */
+export const PAYROLL_PROOF_TXS: PayrollProofRecord[] = [
+  {
+    txHash: "0x5a113d704ef78f510119d4e10959bc49c3a3869da571df67606583d2fc66391d",
+    amountUSD: 0.01,
+    recipient: "0xd4106369Aae69A6E704404237fF88b6C5F51Fea2",
+    workflowId: "t1v9dytjo67ahyqlk0ulj",
+    executionId: "xgumiwvubqpoxfx1cv3xf",
+  },
+];
+
 export type TempoProofRecord = {
   txHash: string;
   executionId: string;
@@ -89,6 +108,10 @@ export function tempoTxUrl(txHash: string): string {
 
 export function tempoAddressUrl(address: string): string {
   return `https://explore.testnet.tempo.xyz/address/${address}`;
+}
+
+export function baseSepoliaTxUrl(txHash: string): string {
+  return `https://sepolia.basescan.org/tx/${txHash}`;
 }
 
 export function baseMainnetTxUrl(txHash: string): string {

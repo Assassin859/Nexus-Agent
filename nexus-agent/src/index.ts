@@ -60,7 +60,7 @@ import { getTempoPathUsdBalance } from "./lib/tempo-balance.js";
 import { logExternalExecution } from "./lib/log-external-execution.js";
 import { parseHfMarketplaceResult } from "./lib/parse-hf-marketplace.js";
 import { HF_READ_SLUG, TEMPO_CHAIN_ID, tempoAddressUrl } from "./lib/tier2-proofs.js";
-import { getFeedMatrixStats, getFeedByMatrixBucket, parseMatrixBucketParam } from "./lib/feed-matrix-stats.js";
+import { getFeedMatrixStats, getFeedByMatrixBucket, getFeedMinedOnly, parseMatrixBucketParam, parseMinedFeedParam } from "./lib/feed-matrix-stats.js";
 import { pinoHttp } from "pino-http";
 import crypto from "node:crypto";
 
@@ -671,8 +671,15 @@ app.get("/api/feed/:walletAddress", optionalAuth, async (req: express.Request, r
     const demoRead = isUnauthenticatedDemoRead(authedReq, walletAddress);
 
     const bucketParam = req.query.bucket;
+    const minedParam = parseMinedFeedParam(req.query.mined);
+    if (req.query.mined != null && req.query.mined !== "" && minedParam === null) {
+      return res.status(400).json({ error: "Invalid mined param — use mined=true" });
+    }
+
     let logs;
-    if (bucketParam != null && bucketParam !== "") {
+    if (minedParam === true) {
+      logs = await getFeedMinedOnly(walletAddress, 200);
+    } else if (bucketParam != null && bucketParam !== "") {
       const bucket = parseMatrixBucketParam(bucketParam);
       if (!bucket) {
         return res.status(400).json({ error: "Invalid bucket — use hold, partial, full, yield, blocked, or other" });

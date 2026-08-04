@@ -25,7 +25,7 @@ Open the dashboard **without signing in** — Portfolio, Feed, Resilience, Workf
 
 1. [Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF, collateral, workflows summary  
 2. [Resilience](https://spirited-heart-production-b5c5.up.railway.app/resilience) — simulation intercept → mined repay arc  
-3. [Feed](https://spirited-heart-production-b5c5.up.railway.app/feed) — Guardian repays, holds, Tempo rows  
+3. [Feed](https://spirited-heart-production-b5c5.up.railway.app/feed) — defaults to **on-chain proofs** (pinned BaseScan/Tempo links + mined txs only); toggle **All decisions** for full cron log  
 4. [Workflows](https://spirited-heart-production-b5c5.up.railway.app/workflows) — PayChain, DCA, Guardian, Yield + platform modules  
 5. [/tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo) — 4 attestation txs with Tempo Explorer links  
 6. [Marketplace listing](https://app.keeperhub.com/hub?tab=marketplace) — slug `nexus-guardian-hf-read`  

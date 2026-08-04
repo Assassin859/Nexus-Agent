@@ -1,4 +1,4 @@
-import { eq, desc, sql } from "drizzle-orm";
+import { eq, desc, sql, and, isNotNull } from "drizzle-orm";
 import { db } from "../db/client.js";
 import { executionsLog } from "../db/schema.js";
 
@@ -17,6 +17,20 @@ export function parseMatrixBucketParam(value: unknown): MatrixBucket | null {
   if (typeof value !== "string") return null;
   const bucket = value as MatrixBucket;
   return VALID_BUCKETS.has(bucket) ? bucket : null;
+}
+
+const VALID_TX = /^0x[a-fA-F0-9]{64}$/;
+
+/** Valid mined tx hash (excludes stub placeholders). */
+export function isValidExecutionTxHash(h: string | null | undefined): boolean {
+  return typeof h === "string" && VALID_TX.test(h) && !h.includes("11111111");
+}
+
+export function parseMinedFeedParam(value: unknown): boolean | null {
+  if (value == null || value === "") return null;
+  if (value === "true") return true;
+  if (value === "false") return false;
+  return null;
 }
 
 const HF_CRITICAL = 1.15;
@@ -94,7 +108,7 @@ export async function getFeedMatrixStats(walletAddress: string) {
 
   const allRows = await db.query.executionsLog.findMany({
     where: eq(executionsLog.userWallet, wallet),
-    columns: { action: true, status: true, aiAnalysis: true },
+    columns: { action: true, status: true, aiAnalysis: true, txHash: true },
   });
 
   const recentRows = await db.query.executionsLog.findMany({
@@ -106,6 +120,7 @@ export async function getFeedMatrixStats(walletAddress: string) {
 
   const successfulExecutions = allRows.filter((r) => r.status === "success").length;
   const recentSuccessful = recentRows.filter((r) => r.status === "success").length;
+  const minedExecutionsAllTime = allRows.filter((r) => isValidExecutionTxHash(r.txHash)).length;
 
   return {
     wallet,
@@ -121,6 +136,7 @@ export async function getFeedMatrixStats(walletAddress: string) {
     matrixBucketsRecent200: computeMatrixBuckets(recentRows),
     successfulExecutionsAllTime: successfulExecutions,
     successfulExecutionsRecent200: recentSuccessful,
+    minedExecutionsAllTime,
   };
 }
 
@@ -159,4 +175,17 @@ export async function getFeedByMatrixBucket(
   }
 
   return matched;
+}
+
+const FEED_MINED_OVERFETCH = 500;
+
+/** Return up to `limit` newest rows with a valid on-chain tx hash. */
+export async function getFeedMinedOnly(walletAddress: string, limit = 200) {
+  const wallet = walletAddress.toLowerCase();
+  const rows = await db.query.executionsLog.findMany({
+    where: and(eq(executionsLog.userWallet, wallet), isNotNull(executionsLog.txHash)),
+    orderBy: [desc(executionsLog.timestamp)],
+    limit: FEED_MINED_OVERFETCH,
+  });
+  return rows.filter((r) => isValidExecutionTxHash(r.txHash)).slice(0, limit);
 }

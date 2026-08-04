@@ -15,7 +15,7 @@ import {
 } from "../lib/independent-aave-verify.js";
 import { evaluateTempoReceipt } from "../lib/independent-tempo-verify.js";
 import { evaluatePayrollTransfer } from "../lib/independent-payroll-verify.js";
-import { getDecisionBucketFromRow, parseMatrixBucketParam } from "../lib/feed-matrix-stats.js";
+import { getDecisionBucketFromRow, parseMatrixBucketParam, isValidExecutionTxHash, parseMinedFeedParam } from "../lib/feed-matrix-stats.js";
 import { buildWorkflowGraph } from "../lib/workflow-graph.js";
 import { isPendingLockConflict } from "../lib/pending-lock.js";
 import {
@@ -348,6 +348,10 @@ async function main() {
   );
   assert(parseMatrixBucketParam("partial") === "partial", "Matrix bucket param — valid");
   assert(parseMatrixBucketParam("invalid") === null, "Matrix bucket param — invalid");
+  assert(isValidExecutionTxHash("0x" + "a".repeat(64)) === true, "Tx hash valid — 32-byte hex");
+  assert(isValidExecutionTxHash("0x" + "1".repeat(64)) === false, "Tx hash invalid — stub placeholder");
+  assert(parseMinedFeedParam("true") === true, "Mined feed param — true");
+  assert(parseMinedFeedParam("yes") === null, "Mined feed param — invalid");
 
   const tempoLogExplorer = mapExecutionLogToExplorer({
     txHash: TEMPO_PROOF_TX,

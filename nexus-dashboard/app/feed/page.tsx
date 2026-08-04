@@ -6,6 +6,7 @@ import { proxyFetch } from "@/lib/agent-fetch";
 import { parseFeedResponse } from "@/lib/demo-wallet";
 import TransactionCard from "@/components/TransactionCard";
 import DecisionMatrixCard from "@/components/DecisionMatrixCard";
+import OnChainProofStrip from "@/components/OnChainProofStrip";
 import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 import Pagination from "@/components/Pagination";
@@ -24,6 +25,8 @@ type FeedItem = {
   aiAnalysis?: Record<string, unknown>;
 };
 
+type FeedView = "onchain" | "all";
+
 const PAGE_SIZE = 10;
 
 type FeedStats = {
@@ -31,10 +34,13 @@ type FeedStats = {
   feedLimit: number;
   matrixBucketsAllTime: Record<string, number>;
   successfulExecutionsAllTime: number;
+  minedExecutionsAllTime: number;
 };
 
-function feedUrl(wallet: string, bucket: MatrixBucket | null): string {
-  return bucket ? `/api/feed/${wallet}?bucket=${bucket}` : `/api/feed/${wallet}`;
+function feedUrl(wallet: string, feedView: FeedView, bucket: MatrixBucket | null): string {
+  if (bucket) return `/api/feed/${wallet}?bucket=${bucket}`;
+  if (feedView === "onchain") return `/api/feed/${wallet}?mined=true`;
+  return `/api/feed/${wallet}`;
 }
 
 export default function FeedPage() {
@@ -43,18 +49,29 @@ export default function FeedPage() {
   const [feedStats, setFeedStats] = useState<FeedStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [authError, setAuthError] = useState<string | null>(null);
+  const [feedView, setFeedView] = useState<FeedView>("onchain");
   const [selectedBucket, setSelectedBucket] = useState<MatrixBucket | null>(null);
 
   const { page, setPage, totalPages, pagedItems, total, showPagination } = usePagination(
     feed,
     PAGE_SIZE,
-    [walletAddress, selectedBucket],
+    [walletAddress, selectedBucket, feedView],
   );
+
+  const handleFeedViewChange = (view: FeedView) => {
+    setFeedView(view);
+    if (view === "onchain") setSelectedBucket(null);
+  };
+
+  const handleBucketSelect = (bucket: MatrixBucket | null) => {
+    setSelectedBucket(bucket);
+    if (bucket) setFeedView("all");
+  };
 
   const loadFeed = useCallback(async () => {
     try {
       const [feedRes, statsRes] = await Promise.all([
-        proxyFetch(feedUrl(walletAddress, selectedBucket), {}, authToken),
+        proxyFetch(feedUrl(walletAddress, feedView, selectedBucket), {}, authToken),
         proxyFetch(`/api/feed/${walletAddress}/stats`, {}, authToken),
       ]);
       const data = await feedRes.json();
@@ -86,6 +103,7 @@ export default function FeedPage() {
           feedLimit: statsData.feedLimit ?? 200,
           matrixBucketsAllTime: statsData.matrixBucketsAllTime ?? {},
           successfulExecutionsAllTime: statsData.successfulExecutionsAllTime ?? 0,
+          minedExecutionsAllTime: statsData.minedExecutionsAllTime ?? 0,
         });
       } else {
         setFeedStats(null);
@@ -96,7 +114,7 @@ export default function FeedPage() {
     } finally {
       setLoading(false);
     }
-  }, [walletAddress, authToken, selectedBucket]);
+  }, [walletAddress, authToken, selectedBucket, feedView]);
 
   useEffect(() => {
     setLoading(true);
@@ -105,11 +123,38 @@ export default function FeedPage() {
     return () => clearInterval(interval);
   }, [loadFeed]);
 
+  const showingOnChainOnly = feedView === "onchain" && !selectedBucket;
+
   return (
     <div className="animate-in" style={{ display: "flex", flexDirection: "column", gap: 28 }}>
       <div className="page-header">
         <h1 className="page-title">Live Execution Feed</h1>
         <p className="page-subtitle">Real-time audit log of autonomous transactions managed by KeeperHub MCP</p>
+        <div style={{ display: "flex", gap: 8, marginTop: 12, flexWrap: "wrap" }}>
+          {(["onchain", "all"] as const).map((view) => (
+            <button
+              key={view}
+              type="button"
+              onClick={() => handleFeedViewChange(view)}
+              style={{
+                fontSize: 12,
+                fontWeight: 700,
+                padding: "8px 14px",
+                borderRadius: "var(--radius-md)",
+                border: feedView === view && !selectedBucket
+                  ? "1px solid rgba(99, 102, 241, 0.5)"
+                  : "1px solid var(--border)",
+                background: feedView === view && !selectedBucket
+                  ? "rgba(99, 102, 241, 0.12)"
+                  : "var(--card-bg)",
+                color: feedView === view && !selectedBucket ? "#818cf8" : "var(--text-muted)",
+                cursor: "pointer",
+              }}
+            >
+              {view === "onchain" ? "On-chain proofs" : "All decisions"}
+            </button>
+          ))}
+        </div>
       </div>
 
       <DemoModeBanner />
@@ -121,15 +166,33 @@ export default function FeedPage() {
         </div>
       )}
 
+      <OnChainProofStrip />
+
       <DecisionMatrixCard
         items={feed}
         loading={loading}
         stats={feedStats}
         selectedBucket={selectedBucket}
-        onBucketSelect={setSelectedBucket}
+        onBucketSelect={handleBucketSelect}
       />
 
       <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+        {showingOnChainOnly && !loading && (
+          <div
+            className="card"
+            style={{
+              padding: "10px 14px",
+              fontSize: 12,
+              color: "var(--text-muted)",
+              borderLeft: "3px solid #34d399",
+            }}
+          >
+            Showing <strong style={{ color: "var(--text)" }}>mined on-chain executions only</strong>
+            {" · "}
+            {feed.length} proof{feed.length === 1 ? "" : "s"}
+          </div>
+        )}
+
         {selectedBucket && !loading && (
           <div
             className="card"
@@ -155,13 +218,15 @@ export default function FeedPage() {
           <div className="card" style={{ color: "var(--text-muted)", textAlign: "center", padding: 30 }}>
             {selectedBucket
               ? `No ${BUCKET_LABELS[selectedBucket]} executions found.`
-              : (
-                <>
-                  No executions logged yet for wallet{" "}
-                  <span style={{ fontFamily: "monospace", color: "#818cf8" }}>{walletAddress.slice(0, 8)}...</span>.
-                  Trigger a workflow in AI Chat or Templates to see live events.
-                </>
-              )}
+              : showingOnChainOnly
+                ? "No mined on-chain executions found."
+                : (
+                  <>
+                    No executions logged yet for wallet{" "}
+                    <span style={{ fontFamily: "monospace", color: "#818cf8" }}>{walletAddress.slice(0, 8)}...</span>.
+                    Trigger a workflow in AI Chat or Templates to see live events.
+                  </>
+                )}
           </div>
         ) : (
           <>
