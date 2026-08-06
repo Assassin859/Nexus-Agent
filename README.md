@@ -5,7 +5,7 @@
 
 **NexusAgent doesn't trust its execution layer's word — it independently re-checks Aave on-chain state after every Guardian action, and refuses to broadcast anything the pre-flight simulation can't prove is safe.**
 
-Live production stack: **multi-candidate Reasoning Harness**, **4× mined Base Sepolia Guardian repays** (RPC-verified on new feed rows), **mainnet x402** paid marketplace consumption ([BaseScan](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)), **4× Tempo Moderato** attestation txs, and a **published** KeeperHub listing (`nexus-guardian-hf-read`).
+Live production stack: **multi-candidate Reasoning Harness**, **mined Base Sepolia Guardian repays / DCA / yield rotates** (RPC-verified on Feed), **35 mined txs** on Feed (incl. live mining session Aug 6), **mainnet x402** paid marketplace consumption ([BaseScan](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)), **4× Tempo Moderato** attestation txs, and a **published** KeeperHub listing (`nexus-guardian-hf-read`).
 
 ## Live URLs
 
@@ -21,7 +21,7 @@ Live production stack: **multi-candidate Reasoning Harness**, **4× mined Base S
 
 ## Judge path (no wallet required)
 
-Open the dashboard **without signing in** — Portfolio, Feed, Resilience, Workflows, and Chat load in **public preview** (read-only live data for the monitored wallet).
+Open the dashboard **without signing in** — Portfolio, Feed, Resilience, Workflows, and Chat load in **public preview** (read-only live data for the monitored wallet). Demo wallet data stays readable even if a previous SIWE session left a JWT in the browser (no 403 on judge path).
 
 1. [Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF, collateral, workflows summary  
 2. [Resilience](https://spirited-heart-production-b5c5.up.railway.app/resilience) — simulation intercept → mined repay arc  
@@ -71,11 +71,11 @@ pnpm --prefix nexus-agent run smoke:live-triggers
 | Dimension | Typical agent demo | NexusAgent |
 |-----------|-------------------|------------|
 | Deployment | Localhost | **Live Railway** dashboard + agent |
-| On-chain proof | Simulated / one tx | **4 repays** + **4 Tempo txs** + **mainnet x402** paid HF-read |
+| On-chain proof | Simulated / one tx | **35 mined txs** (repays + DCA + yield + payroll + Tempo + x402) |
 | Decision logic | Single LLM answer | **Multi-candidate Reasoning Harness** |
 | Failure handling | Hidden | **Resilience** feed (simulation intercept) |
 | KeeperHub | Consumer only | **Publisher** (`nexus-guardian-hf-read`) + Tempo MCP |
-| Tests | Ad hoc | **60+** harness tests + production smoke |
+| Tests | Ad hoc | **119** harness tests + production smoke (`smoke:tier2`, `smoke:live-triggers`) |
 
 Full competitor cross-check: [docs/COMPETITIVE_POSITION.md](docs/COMPETITIVE_POSITION.md)
 
@@ -85,7 +85,7 @@ Full competitor cross-check: [docs/COMPETITIVE_POSITION.md](docs/COMPETITIVE_POS
 
 AI brain that monitors Aave V3.2 health factors, runs a **multi-candidate Reasoning Harness**, pre-flight simulates every tx, and executes via **KeeperHub MCP** + Turnkey MPC wallet.
 
-**Guardian** — mined repay txs (HF recovery) plus documented simulation → success resilience arc. **PayChain** — KeeperHub cron payroll scheduling. **Tier 2** — marketplace HF-read listing, Tempo Moderato proofs. **DCA / Yield** — registered workflows; testnet liquidity and dual-wallet constraints documented below.
+**Guardian** — mined repay txs (HF recovery) plus documented simulation → success resilience arc. **PayChain** — KeeperHub cron payroll scheduling (USDC debits **agentic MPC wallet** in dual-wallet mode). **Tier 2** — marketplace HF-read listing, Tempo Moderato proofs. **DCA / Yield** — mined proof scripts (`dca:proof`, `yield:proof`); cron yield trigger skips on-chain when wallets differ.
 
 ---
 
@@ -125,12 +125,19 @@ Browser: SIWE sign-in → KeeperHub Sync (`kh_...`) → Chat: *"What is my healt
 ## Verification (judges & developers)
 
 ```bash
-pnpm --prefix nexus-agent run verify              # 60+ harness tests
+pnpm --prefix nexus-agent run verify              # 119 harness tests (Tier A + optional HTTP)
 pnpm --prefix nexus-agent run verify:integration  # integration checks
-pnpm --prefix nexus-agent run smoke:tier2         # production Tier 2 (set AGENT_URL)
+pnpm --prefix nexus-agent run smoke:tier2         # production Tier 2 (set AGENT_URL + DASHBOARD_URL)
+pnpm --prefix nexus-agent run smoke:live-triggers # guardian/dca/yield triggers + mined feed
 pnpm --prefix nexus-agent run e2e                 # full-system E2E
 pnpm --prefix nexus-agent run surfaces            # KeeperHub MCP surface catalog
 pnpm --prefix nexus-agent exec tsx src/scripts/db-audit.ts
+
+# On-chain proof scripts (local, production DATABASE_URL)
+pnpm --prefix nexus-agent run yield:proof:prepare
+pnpm --prefix nexus-agent run yield:proof
+pnpm --prefix nexus-agent run dca:proof
+pnpm --prefix nexus-agent run mine:session   # multi-round DCA + yield + repay (local)
 ```
 
 ---
@@ -196,9 +203,9 @@ Separate buyer wallet via `@keeperhub/wallet` (not org `kh_` key). Payment settl
 | Wallet | Env | Role |
 |--------|-----|------|
 | Monitored | `NEXT_PUBLIC_WALLET_ADDRESS` | MetaMask — Aave position reads |
-| Agentic signer | `AGENTIC_WALLET_ADDRESS` | KeeperHub MPC — signs repays (`onBehalfOf`) |
+| Agentic signer | `AGENTIC_WALLET_ADDRESS` | KeeperHub MPC — signs repays (`onBehalfOf`), PayChain payroll, proof scripts |
 
-Yield rotator skips on-chain when these differ (no Aave `withdraw` onBehalfOf).
+Yield rotator **cron** skips on-chain when these differ (no Aave `withdraw` onBehalfOf). **Proof scripts** (`yield:proof`, `dca:proof`) execute on the agentic signer and log to the monitored wallet for Feed visibility. PayChain payroll USDC is debited from the agentic wallet — see dual-wallet banner on Workflows.
 
 ---
 
@@ -229,9 +236,10 @@ Dashboard uses **Next.js API proxies** for SIWE/settings (no browser CORS to age
 ## Known constraints
 
 - **KeeperHub OAuth ≠ API key** — full MCP write access requires pasting org `kh_...` key in KeeperHub Sync after SIWE  
-- **Dual-wallet** — Yield rotator skips on-chain when monitored wallet ≠ agentic MPC signer  
+- **Dual-wallet** — Yield cron skips on-chain; PayChain debits agentic MPC wallet; proof scripts bypass for demo txs  
+- **Public demo read** — demo wallet is always readable (even with stale JWT from a prior SIWE session)  
 - **Guardian at safe HF** — logs `hold`, not a new repay (by design — no wasted gas)  
-- **DCA / Yield on testnet** — Uniswap liquidity and Compound APY reads may limit live swaps  
+- **DCA live trigger** — Sepolia Uniswap illiquid; mined DCA proof uses USDC disbursement fallback  
 - **MCP availability** — if KeeperHub MCP is unreachable, workflows register locally until sync succeeds  
 
 ---

@@ -26,7 +26,8 @@
     "yield:proof": "tsx src/scripts/yield-proof.ts",
     "yield:proof:prepare": "tsx src/scripts/yield-proof.ts --prepare",
     "smoke:tier2": "tsx src/scripts/smoke-tier2-dashboard.ts",
-    "smoke:live-triggers": "tsx src/scripts/live-trigger-smoke.ts"
+    "smoke:live-triggers": "tsx src/scripts/live-trigger-smoke.ts",
+    "mine:session": "tsx src/scripts/mine-session.ts"
   },
   "dependencies": {
     "@ai-sdk/google": "^1.0.12",

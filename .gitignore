@@ -6,6 +6,20 @@ dist/
 .next/
 nexus-dashboard/.next/
 env
+*.tsbuildinfo
+
+# ── Root scratch / ad-hoc dev tests (local only) ─────────────────────────────
+scratch/
+body.json
+test-brain.js
+test-brain.ps1
+test-chat-memory.mjs
+test-payees-issue.js
+run-scenarios.js
+local-test-node.mjs
+nexus-agent/local-test-node.mjs
+nexus-agent/test-token.mjs
+nexus-agent/src/db/wipe.ts
 
 # ── Local-only docs (team reference — not published to GitHub) ───────────────
 goal.md
