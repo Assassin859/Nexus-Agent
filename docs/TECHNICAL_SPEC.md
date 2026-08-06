@@ -1,6 +1,6 @@
 # NexusAgent — Technical Architecture & Implementation Specification
 
-> **Document status:** **Authoritative** for Agents Onchain 2026 submission · **Last verified:** 2026-08-06 (harness **119/121**, production Tier 2 smoke **16/16**, live-triggers **8/8**, **35 mined** feed proofs)  
+> **Document status:** **Authoritative** for Agents Onchain 2026 submission · **Last verified:** 2026-08-06 (harness **126/128**, production Tier 2 smoke **16/16**, live-triggers **8/8**, **35 mined** feed proofs, manual Aave controls deployed)  
 > **Brain provider:** OpenRouter `google/gemini-2.5-flash` via [`getBrainModel()`](../nexus-agent/src/brain/provider.ts).
 
 > **Live demo:** [Dashboard](https://spirited-heart-production-b5c5.up.railway.app) · [Tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo) · [Agent API](https://nexus-agent-production-7783.up.railway.app)  
@@ -27,6 +27,8 @@ The end user never manually builds calldata, calculates gas limits, or construct
 **Tier 2 — Marketplace + Tempo:** Published read-only listing `nexus-guardian-hf-read` ($0.01/call x402); **4× Tempo Moderato** `transfer-with-memo` proofs on chain 42431 ([/tempo](https://spirited-heart-production-b5c5.up.railway.app/tempo)). Public attestation via Tempo Explorer — not KeeperHub execution deep links (404 outside org).
 
 **Documented scaffolding — DCA / Yield:** **Mined proof scripts** (`dca:proof`, `yield:proof`) execute on agentic signer, log to monitored wallet — **1 DCA + 3 yield rotates** on Feed. Cron yield trigger skips on-chain when monitored wallet ≠ agentic MPC signer. Live DCA Uniswap swap blocked on Sepolia liquidity (proof uses USDC disbursement fallback).
+
+**Manual Aave position controls:** Signed-in users can supply, borrow, repay, or withdraw USDC on Aave V3 via Portfolio UI (`AavePositionPanel`) or chat tool `executeAavePosition`. Flow: preview (balance/capacity guards + on-chain simulation) → confirm → KeeperHub MCP workflow → independent RPC verification for all action types. Module: [`aave-position.ts`](../nexus-agent/src/modules/aave-position.ts). API: `POST /api/aave/preview`, `POST /api/aave/action`.
 
 **Demo read auth:** Demo/monitored wallet is **always publicly readable** — even when a valid JWT for another wallet is present (`enforceReadAccess` + dashboard stale-session banner). Judges can browse without incognito after rehearsing with SIWE.
 
@@ -111,7 +113,8 @@ NexusAgent features a **Dual-Wallet Architecture**, separating position monitori
 * **Aave V3 `supply(asset, amount, onBehalfOf, referralCode)`**: The agentic MPC wallet supplies collateral into Aave on behalf of `userWallet`. Fully dual-wallet compatible.
 * **Uniswap V3 Swaps**: DCA swaps spend USDC from `signerWallet` and set `recipient = userWallet`. Sepolia pools may be illiquid — `dca:proof` falls back to USDC disbursement leg.
 * **PayChain payroll**: USDC transfer steps are signed by `signerWallet` (agentic MPC). Dashboard shows dual-wallet notice; success messages include funding reminder.
-* **Yield Rotator Scope Constraint**: Aave V3 `withdraw(asset, amount, to)` **lacks** an `onBehalfOf` parameter (it burns the caller's aTokens). Therefore, the **Yield Rotator** explicitly enforces `signerWallet === monitoredWallet` before executing Aave -> Compound rotates. **`yield:proof`** bypasses this for demo txs by executing on agentic wallet and logging to monitored wallet.
+* **Aave V3 `borrow(asset, amount, rateMode, referralCode, onBehalfOf)`**: Agentic wallet borrows on behalf of `userWallet` when wallets differ — requires **credit delegation** or simulation blocks at preview.
+* **Aave V3 `withdraw(asset, amount, to)`**: No `onBehalfOf`. Yield rotator cron enforces same-wallet; **manual withdraw** in dual-wallet mode targets agentic Aave supply only.
 
 ---
 
@@ -213,6 +216,16 @@ OPENROUTER_API_KEY  →  GEMINI_API_KEY  →  OPENAI_API_KEY  →  GITHUB_TOKEN
 6. **`queryPortfolio`**: Fetches live Aave V3 health factor, debt, collateral, and Compound V3 APY comparisons.
 7. **`triggerStrategy`**: Forces an immediate ad-hoc run of Guardian, Yield Rotator, or DCA.
 8. **`getLiveTransactions`**: Fetches recent execution logs with verified BaseScan links.
+9. **`executeAavePosition`**: Manual Aave supply/borrow/repay/withdraw — preview with simulation, confirm (including natural-language "confirm" detection), execute via MCP.
+
+### REST endpoints (manual Aave)
+
+| Route | Auth | Body |
+|-------|------|------|
+| `POST /api/aave/preview` | SIWE JWT | `{ action, amountUSD }` |
+| `POST /api/aave/action` | SIWE JWT | `{ action, amountUSD, confirm: true }` |
+
+Dashboard proxies: `nexus-dashboard/app/api/aave/preview`, `.../action`.
 
 ---
 
@@ -266,6 +279,15 @@ OPENROUTER_API_KEY  →  GEMINI_API_KEY  →  OPENAI_API_KEY  →  GITHUB_TOKEN
 
 ---
 
+### 🏦 Module 5: Manual Aave Position Controls (`modules/aave-position.ts`)
+
+* **Actions:** `supply` | `borrow` | `repay` | `withdraw` (USDC on Base Sepolia Aave V3.2).
+* **Preview pipeline:** Read monitored position + agentic USDC balance → clamp amount → dual-wallet warnings → **on-chain simulation** (blocks if revert, e.g. missing credit delegation on borrow).
+* **Execute pipeline:** Re-preview → simulate → `acquirePendingLock` (shares `supply_collateral` / `repay` keys with Guardian) → capped approve if needed → KeeperHub MCP workflow → poll → **independent RPC verify** (`evaluateSupplyVerification`, `evaluateRepayVerification`, `evaluateBorrowVerification`, `evaluateWithdrawVerification`).
+* **Dual-wallet verify wallet:** Withdraw verification reads agentic wallet position when wallets differ.
+
+---
+
 ## 7. Database Schema
 
 **Source of truth:** `nexus-agent/src/db/schema.ts`
@@ -280,7 +302,7 @@ Migrations: `nexus-agent/drizzle/`. Partial unique index on `executions_log (use
 
 Next.js 14 on Railway: **https://spirited-heart-production-b5c5.up.railway.app**
 
-Pages: Portfolio · Chat · Workflows · Payees · Feed · Resilience · Alerts · Templates
+Pages: Portfolio (incl. **Aave Position Controls** when signed-in) · Chat · Workflows · Payees · Feed · Resilience · Alerts · Templates
 
 Server-side API proxies forward auth, portfolio, feed, chat, and settings to the agent (avoids browser CORS).
 
@@ -298,7 +320,7 @@ Run via `pnpm verify`:
 
 ```bash
 pnpm --prefix nexus-agent run verify
-# Summary: ✓ 119 passed | ⚠ 2–3 skipped | ✗ 0 failed
+# Summary: ✓ 126 passed | ⚠ 2–3 skipped | ✗ 0 failed
 
 $env:AGENT_URL="https://nexus-agent-production-7783.up.railway.app"
 $env:DASHBOARD_URL="https://spirited-heart-production-b5c5.up.railway.app"

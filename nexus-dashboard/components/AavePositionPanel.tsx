@@ -38,6 +38,13 @@ const ACTIONS: { id: Action; label: string; icon: typeof Landmark }[] = [
   { id: "withdraw", label: "Withdraw", icon: LogOut },
 ];
 
+function formatPanelError(message: string): string {
+  if (message.length <= 280 && !/0x[a-fA-F0-9]{32,}/.test(message)) return message;
+  const sentence = message.match(/^[^.!?]+[.!?]/)?.[0];
+  if (sentence && sentence.length <= 280) return sentence.trim();
+  return "This action is blocked. Check dual-wallet notes above or try a smaller amount.";
+}
+
 export default function AavePositionPanel({
   healthFactor,
   debtUSD,
@@ -85,7 +92,7 @@ export default function AavePositionPanel({
         return;
       }
       setPreview(data);
-      if (data.blocked) setError(data.blockReason ?? "Action blocked");
+      if (data.blocked) setError(formatPanelError(data.blockReason ?? "Action blocked"));
     } catch (e) {
       setError(e instanceof Error ? e.message : "Preview failed");
     } finally {
@@ -168,6 +175,22 @@ export default function AavePositionPanel({
             Dual-wallet: supply and repay use <code>onBehalfOf</code> your monitored wallet. Borrow may need credit
             delegation; withdraw uses agentic Aave supply only.
           </span>
+        </div>
+      )}
+
+      {!sameWallet && action === "borrow" && (
+        <div
+          style={{
+            fontSize: 12,
+            color: "#fbbf24",
+            background: "rgba(251,191,36,0.08)",
+            border: "1px solid rgba(251,191,36,0.25)",
+            borderRadius: 8,
+            padding: "10px 12px",
+          }}
+        >
+          Borrow requires Aave credit delegation from your monitored wallet to the agentic MPC wallet.
+          Preview will confirm whether delegation is set up.
         </div>
       )}
 
@@ -281,7 +304,17 @@ export default function AavePositionPanel({
       )}
 
       {error && (
-        <p style={{ margin: 0, fontSize: 13, color: "#f87171" }}>{error}</p>
+        <p
+          style={{
+            margin: 0,
+            fontSize: 13,
+            color: preview?.blocked ? "#fbbf24" : "#f87171",
+            lineHeight: 1.5,
+            maxWidth: 560,
+          }}
+        >
+          {formatPanelError(error)}
+        </p>
       )}
       {message && (
         <p style={{ margin: 0, fontSize: 13, color: "#34d399" }}>{message}</p>

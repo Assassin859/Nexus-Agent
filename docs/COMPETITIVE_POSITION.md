@@ -7,7 +7,7 @@
 
 ## One-line moat
 
-**Production autonomous DeFi Guardian that independently re-verifies Aave after every repay (RPC, not platform status), with mined Base Sepolia repays, Base mainnet x402 publisher proof, a formal Reasoning Harness, and verifiable Tempo Moderato proofs — not a chat wrapper or single-script demo.**
+**Production autonomous DeFi Guardian that independently re-verifies Aave after every repay and manual position action (RPC, not platform status), with mined Base Sepolia repays, manual Aave controls, Base mainnet x402 publisher proof, a formal Reasoning Harness, and verifiable Tempo Moderato proofs — not a chat wrapper or single-script demo.**
 
 ---
 
@@ -17,7 +17,7 @@
 |-----------|-------------------|------------|
 | **Deployment** | Localhost / README only | [Live dashboard](https://spirited-heart-production-b5c5.up.railway.app) + [agent API](https://nexus-agent-production-7783.up.railway.app) |
 | **On-chain proof** | Simulated or one tx | **35 mined txs** — Guardian repays + DCA + yield rotates + payroll + 4× Tempo + mainnet x402 |
-| **Execution trust** | Platform status only | **Independent RPC verify** after Guardian repay, Tempo transfer, and PayChain payroll (`RPC verified` on Feed) |
+| **Execution trust** | Platform status only | **Independent RPC verify** after Guardian repay, manual Aave actions, Tempo transfer, and PayChain payroll (`RPC verified` on Feed) |
 | **Decision logic** | Single LLM reply | **Multi-candidate Reasoning Harness** + safety floor override ([TECHNICAL_SPEC.md](TECHNICAL_SPEC.md) §3) |
 | **Pre-flight** | Optional / hidden | **Simulation intercept** visible on Resilience feed |
 | **KeeperHub depth** | Guardian, PayChain cron, marketplace publish, Tempo workflow, MCP surface tests |
@@ -25,7 +25,7 @@
 | **Multi-chain story** | Single L2 | **Base Sepolia** (Aave) + **Base mainnet** (x402) + **Tempo Moderato** (42431) |
 | **Audit trail** | Ad hoc logs | Postgres `executions_log`, chain-aware Feed |
 | **Integration constraints** | Undocumented | KeeperHub OAuth vs API key, dual-wallet yield guard documented in README |
-| **Test harness** | Sparse | **119** offline tests + Tier 2 + live-trigger production smoke |
+| **Test harness** | Sparse | **126** offline tests + Tier 2 + live-trigger production smoke |
 
 ---
 
@@ -59,7 +59,7 @@
 
 **No MetaMask required** — Portfolio, Feed, and Resilience load in **public preview** automatically. Demo wallet readable even if a prior SIWE session left a JWT in the browser.
 
-1. [Dashboard Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF for monitored wallet  
+1. [Dashboard Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF; **Aave Position Controls** when signed-in  
 2. [Tempo page](https://spirited-heart-production-b5c5.up.railway.app/tempo) — **Tempo Explorer** links (not KeeperHub `/executions/…` — 404 outside org)  
 3. [Live Feed](https://spirited-heart-production-b5c5.up.railway.app/feed) — **On-chain proofs** default (35 mined) → swap / rotate / repay rows → BaseScan links  
 4. [Resilience](https://spirited-heart-production-b5c5.up.railway.app/resilience) — simulation → success arc  
@@ -73,7 +73,7 @@
 
 ## Honest gaps (say these proactively)
 
-1. **Dual-wallet** — Yield cron skips on-chain; PayChain debits agentic MPC wallet; proof scripts demonstrate rotate/swap on agentic signer  
+1. **Dual-wallet** — Yield cron skips on-chain; PayChain debits agentic MPC wallet; manual borrow needs credit delegation; manual withdraw uses agentic supply only  
 2. **KeeperHub OAuth ≠ API key** — paste org `kh_…` in KeeperHub Sync after SIWE for full MCP write access  
 3. **HF marketplace widget** — listing live + **paid mainnet x402 proof** ([BaseScan](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)); external paid calls execute on Base Sepolia; dashboard widget uses org MCP + local Aave fallback (no auto-pay)  
 4. **Sign & Hold** — blocked upstream on KeeperHub MCP (roadmap item)  

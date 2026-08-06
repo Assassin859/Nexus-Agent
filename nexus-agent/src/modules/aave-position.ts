@@ -135,20 +135,59 @@ async function simulateAaveAction(params: {
   return { wouldRevert: sim.wouldRevert, revertReason: sim.revertReason };
 }
 
+function sanitizeSimulationRevertReason(raw?: string): string | undefined {
+  if (!raw) return undefined;
+
+  const reasonMatch = raw.match(/reason="([^"]+)"/);
+  if (reasonMatch?.[1]) return reasonMatch[1];
+
+  if (/credit delegation|borrow allowance|delegation/i.test(raw)) {
+    return "missing Aave credit delegation";
+  }
+  if (/insufficient/i.test(raw)) {
+    return "insufficient balance or allowance";
+  }
+
+  const revertMatch = raw.match(/execution reverted(?: \(([^)]+)\))?/i);
+  const revertDetail = revertMatch?.[1];
+  if (
+    revertDetail
+    && revertDetail !== "unknown custom error"
+    && !revertDetail.startsWith("0x")
+    && revertDetail.length <= 80
+  ) {
+    return revertDetail;
+  }
+
+  // Ethers estimateGas dumps — never show hex blobs or RPC payloads in UI copy.
+  if (raw.length > 100 || /0x[a-fA-F0-9]{32,}/.test(raw) || /action="estimateGas"/i.test(raw)) {
+    return "transaction would revert on-chain";
+  }
+
+  return raw.length > 100 ? `${raw.slice(0, 97)}…` : raw;
+}
+
 function simulationBlockReason(
   action: AavePositionAction,
   sameWallet: boolean,
   revertReason?: string,
+  signerWallet?: string | null,
 ): string {
-  const detail = revertReason ? `: ${revertReason}` : "";
   if (action === "borrow" && !sameWallet) {
+    const agenticHint = signerWallet
+      ? ` (${signerWallet.slice(0, 6)}…${signerWallet.slice(-4)})`
+      : "";
     return (
-      `Borrow simulation failed in dual-wallet mode${detail}. ` +
-      "Your monitored wallet must grant Aave credit delegation to the agentic MPC wallet, " +
-      "or borrow onBehalfOf will revert on-chain."
+      "Borrow is unavailable in dual-wallet mode until your monitored wallet grants Aave credit delegation " +
+      `to the agentic MPC wallet${agenticHint}. Without delegation, borrow onBehalfOf reverts on-chain. ` +
+      "Supply and repay still work via onBehalfOf."
     );
   }
-  return `On-chain simulation failed${detail}`;
+
+  const short = sanitizeSimulationRevertReason(revertReason);
+  return short
+    ? `On-chain simulation failed: ${short}.`
+    : "On-chain simulation failed — this transaction would revert.";
 }
 
 async function getVerificationContext(
@@ -311,7 +350,7 @@ export async function previewAavePositionAction(params: {
     });
     if (sim.wouldRevert) {
       blocked = true;
-      blockReason = simulationBlockReason(action, ctx.sameWallet, sim.revertReason);
+      blockReason = simulationBlockReason(action, ctx.sameWallet, sim.revertReason, ctx.signerWallet);
     }
   }
 
@@ -413,7 +452,7 @@ export async function executeAavePositionAction(params: {
     });
     return {
       success: false,
-      message: simulationBlockReason(action, ctx.sameWallet, simResult.revertReason),
+      message: simulationBlockReason(action, ctx.sameWallet, simResult.revertReason, ctx.signerWallet),
       preview,
     };
   }

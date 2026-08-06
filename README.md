@@ -3,7 +3,7 @@
 > **Hackathon:** [Agents Onchain (DoraHacks)](https://dorahacks.io/) · July 27 – Aug 13, 2026  
 > **Repo:** [github.com/Assassin859/Nexus-Agent](https://github.com/Assassin859/Nexus-Agent)
 
-**NexusAgent doesn't trust its execution layer's word — it independently re-checks Aave on-chain state after every Guardian action, and refuses to broadcast anything the pre-flight simulation can't prove is safe.**
+**NexusAgent doesn't trust its execution layer's word — it independently re-checks Aave on-chain state after Guardian repays and manual position actions, and refuses to broadcast anything pre-flight simulation can't prove is safe.**
 
 Live production stack: **multi-candidate Reasoning Harness**, **mined Base Sepolia Guardian repays / DCA / yield rotates** (RPC-verified on Feed), **35 mined txs** on Feed (incl. live mining session Aug 6), **mainnet x402** paid marketplace consumption ([BaseScan](https://basescan.org/tx/0xd15442dc664d157c241d418434111442d8481d8bef9e4dd0233f7c0471591f68)), **4× Tempo Moderato** attestation txs, and a **published** KeeperHub listing (`nexus-guardian-hf-read`).
 
@@ -77,7 +77,7 @@ pnpm --prefix nexus-agent run smoke:live-triggers
 | Decision logic | Single LLM answer | **Multi-candidate Reasoning Harness** |
 | Failure handling | Hidden | **Resilience** feed (simulation intercept) |
 | KeeperHub | Consumer only | **Publisher** (`nexus-guardian-hf-read`) + Tempo MCP |
-| Tests | Ad hoc | **119** harness tests + production smoke (`smoke:tier2`, `smoke:live-triggers`) |
+| Tests | Ad hoc | **126** harness tests + production smoke (`smoke:tier2`, `smoke:live-triggers`) |
 
 Full competitor cross-check: [docs/COMPETITIVE_POSITION.md](docs/COMPETITIVE_POSITION.md)
 
@@ -87,7 +87,7 @@ Full competitor cross-check: [docs/COMPETITIVE_POSITION.md](docs/COMPETITIVE_POS
 
 AI brain that monitors Aave V3.2 health factors, runs a **multi-candidate Reasoning Harness**, pre-flight simulates every tx, and executes via **KeeperHub MCP** + Turnkey MPC wallet.
 
-**Guardian** — mined repay txs (HF recovery) plus documented simulation → success resilience arc. **PayChain** — KeeperHub cron payroll scheduling (USDC debits **agentic MPC wallet** in dual-wallet mode). **Tier 2** — marketplace HF-read listing, Tempo Moderato proofs. **DCA / Yield** — mined proof scripts (`dca:proof`, `yield:proof`); cron yield trigger skips on-chain when wallets differ.
+**Guardian** — mined repay txs (HF recovery) plus documented simulation → success resilience arc. **Manual Aave controls** — supply, borrow, repay, withdraw via Portfolio panel or chat (preview + simulation + RPC verify). **PayChain** — KeeperHub cron payroll scheduling (USDC debits **agentic MPC wallet** in dual-wallet mode). **Tier 2** — marketplace HF-read listing, Tempo Moderato proofs. **DCA / Yield** — mined proof scripts (`dca:proof`, `yield:proof`); cron yield trigger skips on-chain when wallets differ.
 
 ---
 
@@ -127,7 +127,7 @@ Browser: SIWE sign-in → KeeperHub Sync (`kh_...`) → Chat: *"What is my healt
 ## Verification (judges & developers)
 
 ```bash
-pnpm --prefix nexus-agent run verify              # 119 harness tests (Tier A + optional HTTP)
+pnpm --prefix nexus-agent run verify              # 126 harness tests (Tier A + optional HTTP)
 pnpm --prefix nexus-agent run verify:integration  # integration checks
 pnpm --prefix nexus-agent run smoke:tier2         # production Tier 2 (set AGENT_URL + DASHBOARD_URL)
 pnpm --prefix nexus-agent run smoke:live-triggers # guardian/dca/yield triggers + mined feed
@@ -205,7 +205,9 @@ Separate buyer wallet via `@keeperhub/wallet` (not org `kh_` key). Payment settl
 | Wallet | Env | Role |
 |--------|-----|------|
 | Monitored | `NEXT_PUBLIC_WALLET_ADDRESS` | MetaMask — Aave position reads |
-| Agentic signer | `AGENTIC_WALLET_ADDRESS` | KeeperHub MPC — signs repays (`onBehalfOf`), PayChain payroll, proof scripts |
+| Agentic signer | `AGENTIC_WALLET_ADDRESS` | KeeperHub MPC — signs repays/supply (`onBehalfOf`), PayChain payroll, manual Aave actions, proof scripts |
+
+**Manual Aave (signed-in):** Supply/repay use `onBehalfOf` monitored wallet (agentic pays USDC). Borrow uses `onBehalfOf` monitored — requires credit delegation in dual-wallet mode or simulation blocks. Withdraw has no `onBehalfOf` — dual-wallet withdraws agentic Aave supply only. Manual supply/repay share pending locks with Guardian cron on the same action type.
 
 Yield rotator **cron** skips on-chain when these differ (no Aave `withdraw` onBehalfOf). **Proof scripts** (`yield:proof`, `dca:proof`) execute on the agentic signer and log to the monitored wallet for Feed visibility. PayChain payroll USDC is debited from the agentic wallet — see dual-wallet banner on Workflows.
 
@@ -231,6 +233,8 @@ Dashboard uses **Next.js API proxies** for SIWE/settings (no browser CORS to age
 |-----|-----|
 | [docs/TECHNICAL_SPEC.md](docs/TECHNICAL_SPEC.md) | Architecture, harness, schemas, modules |
 | [docs/COMPETITIVE_POSITION.md](docs/COMPETITIVE_POSITION.md) | Why us vs. typical submissions |
+| [docs/DEMO_VIDEO_SCRIPT.md](docs/DEMO_VIDEO_SCRIPT.md) | 30s / 3min / 5min narration scripts + chat prompts |
+| [submission_runbook.md](submission_runbook.md) | Judge path, verify commands, DoraHacks fields |
 | [docs/DISCORD_UPSTREAM_PRS.md](docs/DISCORD_UPSTREAM_PRS.md) | Paste-ready Discord post for upstream PRs #1895–#1898 |
 
 ---
@@ -242,6 +246,7 @@ Dashboard uses **Next.js API proxies** for SIWE/settings (no browser CORS to age
 - **Public demo read** — demo wallet is always readable (even with stale JWT from a prior SIWE session)  
 - **Guardian at safe HF** — logs `hold`, not a new repay (by design — no wasted gas)  
 - **DCA live trigger** — Sepolia Uniswap illiquid; mined DCA proof uses USDC disbursement fallback  
+- **Manual Aave borrow (dual-wallet)** — preview simulation blocks unless credit delegation is set; withdraw uses agentic supply only  
 - **MCP availability** — if KeeperHub MCP is unreachable, workflows register locally until sync succeeds  
 
 ---

@@ -135,6 +135,21 @@ async function main() {
       withdrawPreview.warnings.some((w) => /agentic/i.test(w)),
       "Aave Preview — dual-wallet withdraw includes agentic warning",
     );
+    const borrowPreview = await previewAavePositionAction({
+      userWallet: demoUserWallet,
+      action: "borrow",
+      amountUSD: 50,
+    });
+    if (borrowPreview.blocked && borrowPreview.blockReason) {
+      assert(
+        !/estimateGas|0x[a-fA-F0-9]{32,}/i.test(borrowPreview.blockReason),
+        "Aave Preview — dual-wallet borrow blockReason is user-safe (no RPC dump)",
+      );
+      assert(
+        /credit delegation/i.test(borrowPreview.blockReason),
+        "Aave Preview — dual-wallet borrow mentions credit delegation",
+      );
+    }
   } else {
     logSkip("Aave Preview dual-wallet withdraw warning", "same-wallet or no agentic env");
   }
