@@ -6,6 +6,12 @@ export type AaveSnapshot = {
   collateralUSD: number;
 };
 
+export type IndependentVerificationAction =
+  | "repay"
+  | "supply_collateral"
+  | "borrow"
+  | "withdraw";
+
 export type IndependentVerification = {
   verified: boolean;
   keeperhubClaimedSuccess: boolean;
@@ -14,7 +20,7 @@ export type IndependentVerification = {
   hfAfter: number | null;
   debtBeforeUSD: number;
   debtAfterUSD: number;
-  expectedAction: "repay" | "supply_collateral";
+  expectedAction: IndependentVerificationAction;
   discrepancy?: string;
   checkedAt: string;
 };
@@ -68,6 +74,85 @@ export function evaluateRepayVerification(
   };
 }
 
+export function evaluateSupplyVerification(
+  before: AaveSnapshot,
+  after: AaveSnapshot,
+  keeperhubClaimedSuccess: boolean,
+): Pick<IndependentVerification, "verified" | "discrepancy"> {
+  if (!keeperhubClaimedSuccess) {
+    return { verified: false, discrepancy: "KeeperHub did not claim success — verification skipped" };
+  }
+
+  const collateralIncreased = after.collateralUSD > before.collateralUSD + DEBT_EPSILON_USD;
+  const hfImproved =
+    before.healthFactor != null &&
+    after.healthFactor != null &&
+    after.healthFactor > before.healthFactor + HF_EPSILON;
+
+  if (collateralIncreased || hfImproved) {
+    return { verified: true };
+  }
+
+  return {
+    verified: false,
+    discrepancy:
+      "KeeperHub reported success; independent Aave read shows no supply effect (collateral/HF unchanged within tolerance).",
+  };
+}
+
+export function evaluateBorrowVerification(
+  before: AaveSnapshot,
+  after: AaveSnapshot,
+  keeperhubClaimedSuccess: boolean,
+): Pick<IndependentVerification, "verified" | "discrepancy"> {
+  if (!keeperhubClaimedSuccess) {
+    return { verified: false, discrepancy: "KeeperHub did not claim success — verification skipped" };
+  }
+
+  const debtIncreased = after.debtUSD > before.debtUSD + DEBT_EPSILON_USD;
+  const hfDecreased =
+    before.healthFactor != null &&
+    after.healthFactor != null &&
+    after.healthFactor < before.healthFactor - HF_EPSILON;
+
+  if (debtIncreased || hfDecreased) {
+    return { verified: true };
+  }
+
+  return {
+    verified: false,
+    discrepancy:
+      "KeeperHub reported success; independent Aave read shows no borrow effect (debt/HF unchanged within tolerance).",
+  };
+}
+
+export function evaluateWithdrawVerification(
+  before: AaveSnapshot,
+  after: AaveSnapshot,
+  keeperhubClaimedSuccess: boolean,
+): Pick<IndependentVerification, "verified" | "discrepancy"> {
+  if (!keeperhubClaimedSuccess) {
+    return { verified: false, discrepancy: "KeeperHub did not claim success — verification skipped" };
+  }
+
+  const collateralDecreased = after.collateralUSD < before.collateralUSD - DEBT_EPSILON_USD;
+  const hfDecreased =
+    before.healthFactor != null &&
+    after.healthFactor != null &&
+    before.debtUSD > 0 &&
+    after.healthFactor < before.healthFactor - HF_EPSILON;
+
+  if (collateralDecreased || hfDecreased) {
+    return { verified: true };
+  }
+
+  return {
+    verified: false,
+    discrepancy:
+      "KeeperHub reported success; independent Aave read shows no withdraw effect (collateral/HF unchanged within tolerance).",
+  };
+}
+
 function snapshotFromPosition(pos: {
   healthFactor: number | null;
   debtUSD: number;
@@ -83,7 +168,7 @@ function snapshotFromPosition(pos: {
 function buildVerification(
   before: AaveSnapshot,
   after: AaveSnapshot,
-  action: "repay" | "supply_collateral",
+  action: IndependentVerificationAction,
   keeperhubClaimedSuccess: boolean,
   result: Pick<IndependentVerification, "verified" | "discrepancy">,
 ): IndependentVerification {
@@ -101,22 +186,36 @@ function buildVerification(
   };
 }
 
+function evaluateByAction(
+  action: IndependentVerificationAction,
+  before: AaveSnapshot,
+  after: AaveSnapshot,
+  keeperhubClaimedSuccess: boolean,
+): Pick<IndependentVerification, "verified" | "discrepancy"> {
+  switch (action) {
+    case "repay":
+      return evaluateRepayVerification(before, after, keeperhubClaimedSuccess);
+    case "supply_collateral":
+      return evaluateSupplyVerification(before, after, keeperhubClaimedSuccess);
+    case "borrow":
+      return evaluateBorrowVerification(before, after, keeperhubClaimedSuccess);
+    case "withdraw":
+      return evaluateWithdrawVerification(before, after, keeperhubClaimedSuccess);
+  }
+}
+
 /**
- * After KeeperHub reports a mined repay, re-read Aave via direct RPC (not MCP)
+ * After KeeperHub reports a mined Aave action, re-read position via direct RPC
  * and compare to the pre-action snapshot.
  */
 export async function verifyAaveAfterExecution(params: {
   wallet: string;
-  action: "repay" | "supply_collateral";
+  action: IndependentVerificationAction;
   before: AaveSnapshot;
   poll: ExecutionPollOutcome;
   waitMs?: number;
 }): Promise<IndependentVerification | null> {
   const { wallet, action, before, poll, waitMs = POST_TX_WAIT_MS } = params;
-
-  if (action !== "repay") {
-    return null;
-  }
 
   const claimedSuccess = keeperhubClaimedExecutionSuccess(poll);
   if (!claimedSuccess) {
@@ -134,6 +233,6 @@ export async function verifyAaveAfterExecution(params: {
   }
 
   const after = snapshotFromPosition(afterPosition);
-  const result = evaluateRepayVerification(before, after, claimedSuccess);
+  const result = evaluateByAction(action, before, after, claimedSuccess);
   return buildVerification(before, after, action, claimedSuccess, result);
 }

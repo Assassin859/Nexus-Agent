@@ -55,7 +55,7 @@ export function getDecisionBucketFromRow(row: LogRow): MatrixBucket {
   if (action === "block_transaction") return "blocked";
   if (action === "rotate") return "yield";
 
-  if (action === "repay" || action === "supply_collateral") {
+  if (action === "repay" || action === "supply_collateral" || action === "borrow" || action === "withdraw") {
     if (hf != null && hf < HF_CRITICAL) return "full";
     if (ss === "critical_liquidation_risk") return "full";
     if (hf != null && hf >= HF_CRITICAL && hf <= HF_WARNING) return "partial";

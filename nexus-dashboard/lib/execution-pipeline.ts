@@ -25,6 +25,8 @@ export type ExecutionDisplay = PipelineVisual & {
 const CHAIN_ACTIONS = new Set([
   "repay",
   "supply_collateral",
+  "borrow",
+  "withdraw",
   "swap",
   "rotate",
   "payroll",

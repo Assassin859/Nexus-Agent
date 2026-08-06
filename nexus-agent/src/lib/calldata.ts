@@ -97,6 +97,25 @@ export function encodeAaveSupply(
 }
 
 /**
+ * Encodes an Aave V3 `borrow(asset, amount, interestRateMode, referralCode, onBehalfOf)` call.
+ * Requires credit delegation when onBehalfOf differs from msg.sender.
+ */
+export function encodeAaveBorrow(
+  asset: string,
+  amountUSD: number,
+  onBehalfOf: string,
+  decimals = 6
+): string {
+  const amountRaw = parseUnits(amountUSD.toFixed(decimals), decimals);
+  const selector = "0xa415bcad";
+  const encoded = abi.encode(
+    ["address", "uint256", "uint256", "uint16", "address"],
+    [asset, amountRaw, VARIABLE_RATE, 0, onBehalfOf]
+  );
+  return selector + encoded.slice(2);
+}
+
+/**
  * Encodes a Uniswap V3 `exactInputSingle(params)` call.
  * USDC → WETH with 0.3% fee pool, 0.5% max slippage.
  * Used by DCA module.

@@ -32,6 +32,11 @@ import { registerGuardianWorkflow } from "./modules/guardian-register.js";
 import { registerYieldWorkflow } from "./modules/yield-register.js";
 import { handleCustomWorkflow } from "./modules/custom-workflow.js";
 import { handle as handlePaychain } from "./modules/paychain.js";
+import {
+  previewAavePositionAction,
+  executeAavePositionAction,
+  type AavePositionAction,
+} from "./modules/aave-position.js";
 import { syncKeeperHubState } from "./lib/keeperhub-sync.js";
 import { getAavePosition } from "./lib/aave.js";
 import { getCompoundUsdcSupplyAPY } from "./lib/compound.js";
@@ -792,6 +797,52 @@ app.post("/api/payroll", requireAuth, async (req: express.Request, res: express.
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: err instanceof Error ? err.message : "Payroll processing failed" });
+  }
+});
+
+app.post("/api/aave/preview", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const action = req.body?.action as AavePositionAction;
+    const amountUSD = Number(req.body?.amountUSD);
+    const validActions: AavePositionAction[] = ["supply", "borrow", "repay", "withdraw"];
+    if (!validActions.includes(action)) {
+      return res.status(400).json({ error: "action must be supply, borrow, repay, or withdraw" });
+    }
+    if (!Number.isFinite(amountUSD) || amountUSD < 1) {
+      return res.status(400).json({ error: "amountUSD must be >= 1" });
+    }
+    const preview = await previewAavePositionAction({ userWallet: wallet, action, amountUSD });
+    res.json(preview);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Aave preview failed" });
+  }
+});
+
+app.post("/api/aave/action", requireAuth, async (req: express.Request, res: express.Response) => {
+  try {
+    const authedReq = req as AuthedRequest;
+    const wallet = authedReq.userWallet;
+    const action = req.body?.action as AavePositionAction;
+    const amountUSD = Number(req.body?.amountUSD);
+    const confirm = req.body?.confirm === true;
+    const validActions: AavePositionAction[] = ["supply", "borrow", "repay", "withdraw"];
+    if (!validActions.includes(action)) {
+      return res.status(400).json({ error: "action must be supply, borrow, repay, or withdraw" });
+    }
+    if (!Number.isFinite(amountUSD) || amountUSD < 1) {
+      return res.status(400).json({ error: "amountUSD must be >= 1" });
+    }
+    if (!confirm) {
+      const preview = await previewAavePositionAction({ userWallet: wallet, action, amountUSD });
+      return res.json({ preview, verificationRequired: true });
+    }
+    const apiKey = await resolveKeeperHubApiKey(wallet);
+    const result = await executeAavePositionAction({ userWallet: wallet, action, amountUSD, apiKey });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: err instanceof Error ? err.message : "Aave action failed" });
   }
 });
 

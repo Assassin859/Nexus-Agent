@@ -13,6 +13,7 @@ import HfReadWidget from "@/components/HfReadWidget";
 import DemoModeBanner from "@/components/DemoModeBanner";
 import PersonalWalletBanner from "@/components/PersonalWalletBanner";
 import StaleDemoSessionBanner from "@/components/StaleDemoSessionBanner";
+import AavePositionPanel from "@/components/AavePositionPanel";
 import { HF_CRITICAL, HF_WARNING, NETWORK_LABEL } from "@/lib/guardian-thresholds";
 
 type PortfolioData = {
@@ -23,6 +24,8 @@ type PortfolioData = {
   availableBorrowsUSD: number;
   ltvPercent: number;
   usdcWalletBalance: number;
+  sameWallet?: boolean;
+  yieldRotationAvailable?: boolean;
   currentUSDCSupplyAPY: number;
   compoundUSDCSupplyAPY?: number;
   apyDeltaVsAave?: number;
@@ -242,6 +245,14 @@ export default function PortfolioPage() {
           })}
         </div>
       </div>
+
+      <AavePositionPanel
+        healthFactor={hf}
+        debtUSD={data?.debtUSD ?? 0}
+        collateralUSD={data?.collateralUSD ?? 0}
+        availableBorrowsUSD={data?.availableBorrowsUSD ?? 0}
+        sameWallet={data?.sameWallet ?? false}
+      />
 
       <EthPriceChart />
 

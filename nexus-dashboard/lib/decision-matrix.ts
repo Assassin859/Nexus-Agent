@@ -41,5 +41,9 @@ export function getDecisionBucket(item: ExecutionLogItem): MatrixBucket {
     return "partial";
   }
 
+  if (action === "borrow" || action === "withdraw") {
+    return "other";
+  }
+
   return "other";
 }

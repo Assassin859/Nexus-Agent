@@ -23,7 +23,9 @@ Live production stack: **multi-candidate Reasoning Harness**, **mined Base Sepol
 
 Open the dashboard **without signing in** — Portfolio, Feed, Resilience, Workflows, and Chat load in **public preview** (read-only live data for the monitored wallet). Demo wallet data stays readable even if a previous SIWE session left a JWT in the browser (no 403 on judge path).
 
-1. [Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF, collateral, workflows summary  
+**Manual Aave controls (signed-in):** After SIWE + KeeperHub Sync (`kh_…`), use **Aave Position Controls** on Portfolio or chat (*"Supply 50 USDC to Aave"*, *"Repay 25 USDC"*) — preview then confirm. USDC is debited from the **agentic MPC wallet**; supply/repay use `onBehalfOf` the monitored wallet. In **dual-wallet** mode, borrow may require Aave credit delegation; withdraw uses agentic Aave supply only.
+
+1. [Portfolio](https://spirited-heart-production-b5c5.up.railway.app) — live HF, collateral, workflows summary, Aave controls (signed-in)  
 2. [Resilience](https://spirited-heart-production-b5c5.up.railway.app/resilience) — simulation intercept → mined repay arc  
 3. [Feed](https://spirited-heart-production-b5c5.up.railway.app/feed) — defaults to **on-chain proofs** (pinned BaseScan/Tempo links + mined txs only); toggle **All decisions** for full cron log  
 4. [Workflows](https://spirited-heart-production-b5c5.up.railway.app/workflows) — PayChain, DCA, Guardian, Yield + platform modules  

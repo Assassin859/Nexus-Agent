@@ -13,6 +13,11 @@ import { cancelWorkflow } from "../lib/mcp-client.js";
 import { run as runGuardian } from "../modules/guardian.js";
 import { run as runYieldRotator } from "../modules/yield-rotator.js";
 import { run as runDCA } from "../modules/dca.js";
+import {
+  previewAavePositionAction,
+  executeAavePositionAction,
+  type AavePositionAction,
+} from "../modules/aave-position.js";
 import { eq, desc, and, ilike, gte } from "drizzle-orm";
 import {
   TEMPO_CHAIN_ID,
@@ -29,6 +34,28 @@ type ExecutionLogRow = {
   status: string;
   aiAnalysis?: unknown;
 };
+
+const AAVE_CONFIRM_RE = /^(yes|yep|confirm|confirmed|go ahead|do it|execute|proceed|ok|okay)\b/i;
+
+function getLatestUserMessage(conversationHistory: unknown[]): string {
+  for (let i = conversationHistory.length - 1; i >= 0; i--) {
+    const entry = conversationHistory[i] as { role?: string; content?: unknown } | undefined;
+    if (entry?.role === "user" && typeof entry.content === "string") {
+      return entry.content;
+    }
+  }
+  return "";
+}
+
+function userConfirmedAaveAction(conversationHistory: unknown[], confirmFlag: boolean): boolean {
+  if (confirmFlag) return true;
+  const latest = getLatestUserMessage(conversationHistory).trim();
+  if (!latest) return false;
+  return (
+    AAVE_CONFIRM_RE.test(latest)
+    || /confirm|go ahead|do it|execute|proceed/i.test(latest)
+  );
+}
 
 /** Map an execution log row to a chain-aware explorer link (for tests and chat tools). */
 export function mapExecutionLogToExplorer(log: ExecutionLogRow): {
@@ -500,6 +527,61 @@ export function createAgentTools(
           workflowId: res.workflowId,
           workflowKind: res.workflowKind,
           verificationRequired: res.verificationRequired,
+        };
+      },
+    }),
+
+    executeAavePosition: tool({
+      description:
+        "Manual Aave V3 position action: supply USDC collateral, borrow USDC, repay debt, or withdraw supplied USDC (e.g. 'supply 50 USDC to Aave', 'repay 25 USDC', 'borrow 100 USDC'). Requires confirm:true after preview.",
+      parameters: z.object({
+        action: z.enum(["supply", "borrow", "repay", "withdraw"]).describe("Aave action"),
+        amountUSD: z.number().describe("Amount in USDC"),
+        confirm: z.boolean().default(false).describe("Set true after user confirms preview"),
+      }),
+      execute: async ({ action, amountUSD, confirm }) => {
+        const shouldExecute = userConfirmedAaveAction(conversationHistory, confirm);
+        if (!shouldExecute) {
+          const preview = await previewAavePositionAction({
+            userWallet: wallet,
+            action: action as AavePositionAction,
+            amountUSD,
+          });
+          const hfLine =
+            preview.healthFactorBefore != null
+              ? `HF now ${preview.healthFactorBefore.toFixed(2)}`
+              : "No active loan";
+          const afterLine =
+            preview.estimatedHealthFactorAfter != null
+              ? ` → est. ${preview.estimatedHealthFactorAfter.toFixed(2)} after ${action}`
+              : "";
+          const warn = preview.warnings.length ? `\n⚠ ${preview.warnings.join(" ")}` : "";
+          if (preview.blocked) {
+            return {
+              success: false,
+              verificationRequired: false,
+              message: preview.blockReason ?? "Action blocked.",
+              preview,
+            };
+          }
+          return {
+            success: false,
+            verificationRequired: true,
+            message: `Preview ${action} $${preview.amountUSD.toFixed(2)} USDC: ${hfLine}${afterLine}.${warn}\nReply "confirm" to execute.`,
+            preview,
+          };
+        }
+        const result = await executeAavePositionAction({
+          userWallet: wallet,
+          action: action as AavePositionAction,
+          amountUSD,
+          apiKey,
+        });
+        return {
+          success: result.success,
+          message: result.message,
+          txHash: result.txHash,
+          preview: result.preview,
         };
       },
     }),

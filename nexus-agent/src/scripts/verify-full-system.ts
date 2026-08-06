@@ -4,13 +4,17 @@ import { getWalletContext } from "../lib/agentic-wallet.js";
 import { splitTeamPayroll } from "../lib/payroll-split.js";
 import { resolveCronSchedule } from "../lib/cron.js";
 import { shouldRunCronNow } from "../lib/cron-evaluator.js";
-import { encodeERC20Approve, USDC_SEPOLIA, AAVE_V3_POOL } from "../lib/calldata.js";
+import { encodeERC20Approve, encodeAaveBorrow, encodeAaveRepay, encodeAaveSupply, USDC_SEPOLIA, AAVE_V3_POOL } from "../lib/calldata.js";
+import { previewAavePositionAction } from "../modules/aave-position.js";
 import { getCompoundUsdcSupplyAPY } from "../lib/compound.js";
 import { ensureAllowance } from "../lib/allowance.js";
 import { selectBestCandidate, enforceCriticalHfFloor } from "../lib/guardian-candidate-select.js";
 import { getCycleRemaining, shouldReleaseCycleBudget, resolveExecutionLogStatus } from "../lib/repayment-cycle.js";
 import {
   evaluateRepayVerification,
+  evaluateSupplyVerification,
+  evaluateBorrowVerification,
+  evaluateWithdrawVerification,
   keeperhubClaimedExecutionSuccess,
 } from "../lib/independent-aave-verify.js";
 import { evaluateTempoReceipt } from "../lib/independent-tempo-verify.js";
@@ -115,6 +119,26 @@ async function main() {
   const approveCalldata = encodeERC20Approve(USDC_SEPOLIA, AAVE_V3_POOL, (1n << 256n) - 1n);
   assert(approveCalldata.startsWith("0x095ea7b3"), "Calldata — ERC20 approve selector 0x095ea7b3");
 
+  const aaveDemo = demoUserWallet;
+  assert(encodeAaveBorrow(USDC_SEPOLIA, 50, aaveDemo).startsWith("0xa415bcad"), "Calldata — Aave borrow selector 0xa415bcad");
+  assert(encodeAaveSupply(USDC_SEPOLIA, 50, aaveDemo).startsWith("0x617ba037"), "Calldata — Aave supply selector 0x617ba037");
+  assert(encodeAaveRepay(USDC_SEPOLIA, 50, aaveDemo).startsWith("0x573ade81"), "Calldata — Aave repay selector 0x573ade81");
+
+  const withdrawPreview = await previewAavePositionAction({
+    userWallet: demoUserWallet,
+    action: "withdraw",
+    amountUSD: 1,
+  });
+  const walletCtx = getWalletContext(demoUserWallet);
+  if (walletCtx && !walletCtx.sameWallet) {
+    assert(
+      withdrawPreview.warnings.some((w) => /agentic/i.test(w)),
+      "Aave Preview — dual-wallet withdraw includes agentic warning",
+    );
+  } else {
+    logSkip("Aave Preview dual-wallet withdraw warning", "same-wallet or no agentic env");
+  }
+
   // 6. Guardian Candidate Selection Harness
   const fallbackRec = { action: "hold" as const, asset: "USDC", amount: 0, reason: "Fallback hold" };
 
@@ -214,6 +238,15 @@ async function main() {
     mismatch.verified === false && Boolean(mismatch.discrepancy),
     "Independent verify — unchanged debt/HF flags discrepancy",
   );
+
+  const supplyOk = evaluateSupplyVerification(snap(500, 1.2), snap(550, 1.35), true);
+  assert(supplyOk.verified === true, "Independent verify — collateral increase confirms supply");
+
+  const borrowOk = evaluateBorrowVerification(snap(500, 1.5), snap(550, 1.35), true);
+  assert(borrowOk.verified === true, "Independent verify — debt increase confirms borrow");
+
+  const withdrawOk = evaluateWithdrawVerification(snap(500, 1.5), snap(450, 1.25), true);
+  assert(withdrawOk.verified === true, "Independent verify — collateral decrease confirms withdraw");
 
   assert(
     keeperhubClaimedExecutionSuccess({ status: "mined" }) === true,

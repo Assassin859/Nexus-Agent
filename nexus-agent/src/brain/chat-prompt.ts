@@ -27,6 +27,7 @@ Write tools (signed-in only):
 - scheduleGuardianMonitor: register Aave HF monitor on /workflows
 - scheduleYieldRotation: register yield rotator on /workflows
 - cancelWorkflows / cancelPayrolls: stop active workflows (payroll, dca, guardian, yield, or all)
+- executeAavePosition: manual Aave supply, borrow, repay, withdraw (preview first; user reply "confirm" or confirm:true to execute)
 - triggerStrategy: run guardian, dca, or yield immediately (one-shot, Feed)
 `;
 
